@@ -1,6 +1,6 @@
 # Protocol Lab Resource List
 
-Networking
+## Networking
   * https://man7.org/linux/man-pages/man7/socket.7.html
   * https://man7.org/linux/man-pages/man0/sys_socket.h.0p.html
   * https://man7.org/linux/man-pages/man7/ip.7.html
@@ -19,14 +19,13 @@ Networking
   * https://github.com/xdp-project/xdp-tutorial/tree/master/advanced03-AF_XDP
   * https://blog.emumba.com/af-xdp-101-getting-started-with-an-in-kernel-network-stack-bypass-6e6901a285c8
 
-Data Encoding
+## Data Encoding
   * https://github.com/organix/crlf/blob/master/BOSE.md
   * https://github.com/organix/crlf/blob/abcm/abcm/bose.h
   * https://github.com/organix/crlf/blob/abcm/abcm/bose.c
   * https://github.com/organix/crlf/blob/abcm/abcm/test.c
   * https://github.com/dalnefre/blockly/blob/BART/demos/dalnefre/bart.js#L906
 
-Miscellaneous
+## Miscellaneous
   * https://www.raspberrypi.org/documentation/linux/kernel/building.md
   * https://howtoraspberrypi.com/transfer-files-raspberry-ssh/
-
