@@ -178,25 +178,22 @@ parse_message(void *data, size_t limit, live_msg_t *live_in)
 }
 
 int
-process_message(live_msg_t *live_in, live_msg_t *live_out)
+process_message(live_msg_t *in, live_msg_t *out)
 {
-    int i, j, k;
-
     // act on message received
-    i = live_in->state + live_in->change;  // compute next state
-    if (i < 0) return -1;  // error
-    if (i > sizeof(next_inc) / sizeof(*next_inc)) return -1;  // error
-    j = next_inc[i];  // compute next increment
-    k = ++live_in->count;  // update message counter
-    live_out->state = i;
-    live_out->change = j;
-    live_out->count = k;
+    out->state = in->state + in->change;  // compute next state
+    if ((out->state < 0)  // range check
+    ||  (out->state >= sizeof(next_inc) / sizeof(*next_inc))) {
+        return -1;  // error
+    }
+    out->change = next_inc[out->state];  // compute next increment
+    out->count = in->count + 1;  // update message counter
 
-    printf("process_message: %d + %d -> %d (%+d), count=%d\n",
-        live_in->state, live_in->change, i, j, k);
+    printf("process_message: %d %+d #%d -> %d (%+d) #%d\n",
+        in->state, in->change, in->count,
+        out->state, out->change, out->count);
 
-    if (k > 5) {
-        k = 0;  // reset counter
+    if (out->count > 5) {
         return 0;  // FIXME: halt ping/pong!
     }
 
