@@ -12,6 +12,8 @@
 
 #define DEBUG(x)   /**/
 
+#define SHARED_COUNT 0  // message counter is shared (or local)
+
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
 //static BYTE proto_buf[ETH_ZLEN];  // message-transfer buffer
@@ -187,7 +189,11 @@ process_message(live_msg_t *in, live_msg_t *out)
         return -1;  // error
     }
     out->change = next_inc[out->state];  // compute next increment
+#if SHARED_COUNT
     out->count = in->count + 1;  // update message counter
+#else
+    out->count = out->count + 1;  // update message counter
+#endif
 
     printf("process_message: %d %+d #%d -> %d (%+d) #%d\n",
         in->state, in->change, in->count,
