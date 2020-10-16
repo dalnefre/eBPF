@@ -5,7 +5,6 @@
  *       With -DTEST_MAIN, it builds a standalone unit-test program.
  */
 #include "code.h"
-#include <stdio.h>
 
 static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
 {
@@ -15,15 +14,12 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
 
     if (data + offset >= end) return 0;  // out of bounds
     b = data[offset++];
-printf("b=0x%02x\n", b);
     switch (b) {
         case m_int_0: i = -1;  /* FALL-THRU */
         case p_int_0: {
             if (data + offset >= end) return 0;  // out of bounds
-printf("i=%d\n", i);
             b = data[offset++];
             int n = SMOL2INT(b);  // size (in bytes)
-printf("n=%d\n", n);
             if (n > sizeof(int)) return 0;  // too big for int
             if (data + offset + n > end) return 0;  // out of bounds
             switch (n) {
@@ -44,12 +40,10 @@ printf("n=%d\n", n);
         default: {
             i = SMOL2INT(b);
             if ((i < SMOL_MIN) || (i > SMOL_MAX)) return 0;  // range error
-printf("smol=%d\n", i);
             break;
         }
     }
     *int_ptr = i;  // store int value
-printf("offset=%d\n", offset);
     return offset;
 }
 

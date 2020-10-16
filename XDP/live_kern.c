@@ -9,7 +9,7 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
-#define USE_CODE_C 0
+#define USE_CODE_C 1
 
 #if USE_CODE_C
 #include "code.c"  // data encoding/decoding
