@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 #include <unistd.h>
 
 #define DEBUG(x)   /**/
@@ -30,6 +31,39 @@ static int next_inc[] = { 1, 1, -1 };
 
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+static void
+print_mac_addr(FILE *f, char *label, BYTE *addr)
+{
+    fprintf(f, "%s%02x:%02x:%02x:%02x:%02x:%02x\n",
+        label, addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+}
+
+static int
+print_resolution(char *label, clockid_t clock)
+{
+    struct timespec ts;
+
+    int rv = clock_getres(CLOCK_REALTIME, &ts);
+    if (rv >= 0) {
+        printf("%sresolution %zu.%09ld\n",
+            label, (size_t)ts.tv_sec, ts.tv_nsec);
+    }
+    return rv;
+}
+
+static int
+print_timestamp(char *label, clockid_t clock)
+{
+    struct timespec ts;
+
+    int rv = clock_gettime(CLOCK_REALTIME, &ts);
+    if (rv >= 0) {
+        printf("%stimestamp %zu.%09ld\n",
+            label, (size_t)ts.tv_sec, ts.tv_nsec);
+    }
+    return rv;
+}
 
 size_t
 create_message(void *data, size_t size, live_msg_t *live)
@@ -87,6 +121,8 @@ send_message(int fd, void *data, size_t size)
     struct sockaddr *addr = set_sockaddr(&address, &addr_len); 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
+    print_timestamp("REALTIME: (send) ", CLOCK_REALTIME);
+
     n = sendto(fd, data, size, 0, addr, addr_len);
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
@@ -108,6 +144,8 @@ recv_message(int fd, void *data, size_t limit)
     struct sockaddr *addr = clr_sockaddr(&address, &addr_len); 
     n = recvfrom(fd, data, limit, 0, addr, &addr_len);
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
+
+    print_timestamp("REALTIME: (recv) ", CLOCK_REALTIME);
 
 #if 1
     fprintf(stdout, "Message[%d] <-- \n", n);
@@ -206,13 +244,6 @@ process_message(live_msg_t *in, live_msg_t *out)
     return 1;  // continue...
 }
 
-static void
-print_mac_addr(FILE *f, char *label, BYTE *addr)
-{
-    fprintf(f, "%s%02x:%02x:%02x:%02x:%02x:%02x\n",
-        label, addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-}
-
 int
 server()
 {
@@ -292,6 +323,8 @@ main(int argc, char *argv[])
         fprintf(stderr, "usage: %s if=<interface>\n", argv[0]);
         return 1;
     }
+
+    print_resolution("REALTIME: ", CLOCK_REALTIME);
 
     rv = server();
     return rv;
