@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 #ifndef BYTE
-#define	BYTE uint8_t
+#define BYTE uint8_t
 #endif
 
 typedef struct bstr {

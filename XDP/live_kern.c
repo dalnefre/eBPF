@@ -12,7 +12,7 @@
 
 #define ETH_P_DALE (0xDA1E)
 
-#define PERMISSIVE 1  // allow non-protocol packet to pass through
+#define PERMISSIVE 1  // allow non-protocol packets to pass through
 
 static void swap_mac_addrs(void *ethhdr)
 {
@@ -111,13 +111,13 @@ static int handle_message(struct xdp_md *ctx)
     }
     ++seq_num;
 
-    bpf_printk("%d (+ %d) #%d -->\n", state, change, seq_num);
-
     // prepare reply message
     swap_mac_addrs(msg_base);
     msg_content[0] = INT2SMOL(state);
     msg_content[1] = INT2SMOL(change);
     msg_content[2] = INT2SMOL(seq_num);
+
+    bpf_printk("%d (+ %d) #%d -->\n", state, change, seq_num);
 
     return XDP_TX;  // send updated frame out on same interface
 }
