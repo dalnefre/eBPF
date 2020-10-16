@@ -420,7 +420,7 @@ decode_int(BYTE *buffer, size_t limit, int *data)
         size_t n = decode_int(buffer + offset, limit - offset, &j);
         if (n <= 0) return 0;  // error
         offset += n;
-        if (j >= sizeof(i)) return 0;  // too big!
+        if (j > sizeof(i)) return 0;  // too big!
         offset += j;
         if (offset > limit) return 0;  // out-of-bounds
         for (int k = 1; k <= j; ++k) {
@@ -461,7 +461,7 @@ decode_int64(BYTE *buffer, size_t limit, int64_t *data)
         size_t n = decode_int(buffer + offset, limit - offset, &j);
         if (n <= 0) return 0;  // error
         offset += n;
-        if (j >= sizeof(i)) return 0;  // too big!
+        if (j > sizeof(i)) return 0;  // too big!
         offset += j;
         if (offset > limit) return 0;  // out-of-bounds
         for (int k = 1; k <= j; ++k) {

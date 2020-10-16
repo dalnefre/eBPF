@@ -8,20 +8,37 @@
 #include <linux/if_ether.h>
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
-#include "code.h"
+
+#define USE_CODE_C 0
+
+#if USE_CODE_C
+#include "code.c"  // data encoding/decoding
+#else
+#include "code.h"  // data encoding/decoding
+#endif
 
 #define ETH_P_DALE (0xDA1E)
 
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
+
+static void copy_mac(void *dst, void* src)
+{
+    __u16 *d = dst;
+    __u16 *s = src;
+
+    d[0] = s[0];
+    d[1] = s[1];
+    d[2] = s[2];
+}
 
 static void swap_mac_addrs(void *ethhdr)
 {
     __u16 tmp[3];
     __u16 *eth = ethhdr;
 
-    tmp[0] = eth[0]; tmp[1] = eth[1]; tmp[2] = eth[2];
-    eth[0] = eth[3]; eth[1] = eth[4]; eth[2] = eth[5];
-    eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
+    copy_mac(tmp, eth);
+    copy_mac(eth, eth + 3);
+    copy_mac(eth + 3, tmp);
 }
 
 static int handle_message(struct xdp_md *ctx)
@@ -34,6 +51,9 @@ static int handle_message(struct xdp_md *ctx)
     __u8 *msg_end = msg_limit;
     int size = 0;
     int count = -1;
+#if USE_CODE_C
+    int n;
+#endif
 
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
     __u8 b = *msg_cursor++;
@@ -92,9 +112,16 @@ static int handle_message(struct xdp_md *ctx)
     }
 
     // get `seq_num` field
+#if USE_CODE_C
+    int seq_num;
+    n = parse_int(msg_cursor, msg_end, &seq_num);
+    if (n <= 0) return XDP_DROP;  // parse error
+    msg_cursor += n;
+#else
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
     b = *msg_cursor++;
     int seq_num = SMOL2INT(b);
+#endif
     if ((seq_num < 0) || (seq_num > 5)) {
         return XDP_DROP;  // bad seq
     }
