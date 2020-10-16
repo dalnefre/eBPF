@@ -9,6 +9,7 @@ ALL =	pass_kern.o \
 	ethertype_kern.o \
 	map_array_kern.o \
 	multi_kern.o \
+	live_kern.o \
 	nprocs
 
 all: $(ALL)
@@ -35,6 +36,9 @@ map_array_kern.o: map_array_kern.c
 
 multi_kern.o: multi_kern.c
 	clang $(CLANG_FLAGS) -c -o multi_kern.o multi_kern.c
+
+live_kern.o: live_kern.c
+	clang $(CLANG_FLAGS) -c -o live_kern.o live_kern.c
 
 nprocs: nprocs.c
 
