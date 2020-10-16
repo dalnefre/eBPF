@@ -23,15 +23,15 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
             if (n > sizeof(int)) return 0;  // too big for int
             if (data + offset + n > end) return 0;  // out of bounds
             switch (n) {
-                case 8: i = (i << 8) | data[offset + 7];  /* FALL-THRU */
-                case 7: i = (i << 8) | data[offset + 6];  /* FALL-THRU */
-                case 6: i = (i << 8) | data[offset + 5];  /* FALL-THRU */
-                case 5: i = (i << 8) | data[offset + 4];  /* FALL-THRU */
-                case 4: i = (i << 8) | data[offset + 3];  /* FALL-THRU */
-                case 3: i = (i << 8) | data[offset + 2];  /* FALL-THRU */
-                case 2: i = (i << 8) | data[offset + 1];  /* FALL-THRU */
-                case 1: i = (i << 8) | data[offset + 0];  /* FALL-THRU */
-                case 0: break;
+                case 8:  i = (i << 8) | data[offset + 7];  /* FALL-THRU */
+                case 7:  i = (i << 8) | data[offset + 6];  /* FALL-THRU */
+                case 6:  i = (i << 8) | data[offset + 5];  /* FALL-THRU */
+                case 5:  i = (i << 8) | data[offset + 4];  /* FALL-THRU */
+                case 4:  i = (i << 8) | data[offset + 3];  /* FALL-THRU */
+                case 3:  i = (i << 8) | data[offset + 2];  /* FALL-THRU */
+                case 2:  i = (i << 8) | data[offset + 1];  /* FALL-THRU */
+                case 1:  i = (i << 8) | data[offset + 0];  /* FALL-THRU */
+                case 0:  break;
                 default: return 0;  // range error
             }
             offset += n;
