@@ -9,7 +9,7 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
-#define USE_CODE_C 1
+#define USE_CODE_C 1  // include encode/decode helpers
 
 #if USE_CODE_C
 #include "code.c"  // data encoding/decoding
@@ -17,9 +17,9 @@
 #include "code.h"  // data encoding/decoding
 #endif
 
-#define ETH_P_DALE (0xDA1E)
-
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
+
+#define ETH_P_DALE (0xDA1E)
 
 static void copy_mac(void *dst, void* src)
 {
@@ -122,7 +122,7 @@ static int handle_message(struct xdp_md *ctx)
     b = *msg_cursor++;
     int seq_num = SMOL2INT(b);
 #endif
-    if ((seq_num < 0) || (seq_num > 5)) {
+    if ((seq_num < 0) || (seq_num > 13)) {  // FIXME: wrap-around?
         return XDP_DROP;  // bad seq
     }
 
