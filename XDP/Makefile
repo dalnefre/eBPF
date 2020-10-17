@@ -14,7 +14,9 @@ OBJS =	pass_kern.o \
 	live_kern.o \
 	multi_kern.o
 
-PROGS =	code \
+TEST =	code
+
+PROGS =	$(TEST) \
 	nprocs
 
 ALL =	$(PROGS) $(OBJS)
@@ -23,6 +25,9 @@ all: $(ALL)
 
 clean:
 	rm -f $(ALL) *.ll
+
+test: $(TEST)
+	./code
 
 pass_kern.o: pass_kern.c
 	clang $(CLANG_FLAGS) -c -o pass_kern.o pass_kern.c
