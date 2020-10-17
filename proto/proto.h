@@ -39,6 +39,7 @@ int find_mac_addr(int fd, void *mac_addr);
 struct sockaddr *clr_sockaddr(struct sockaddr_storage *store, size_t *len_ptr);
 struct sockaddr *set_sockaddr(struct sockaddr_storage *store, size_t *len_ptr);
 void dump_sockaddr(FILE *f, void *sockaddr, size_t len);
+void print_proto_opt(FILE *f);
 int parse_args(int *argc, char *argv[]);
 
 #endif /* _PROTO_H_ */

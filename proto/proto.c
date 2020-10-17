@@ -137,6 +137,65 @@ dump_sockaddr(FILE *f, void *ptr, size_t len)
     }
 }
 
+void
+print_proto_opt(FILE *f)
+{
+
+    // Protocol Family
+    switch (proto_opt.family) {
+        case AF_INET: { fputs(" AF_INET", f); break; }
+        case AF_PACKET: { fputs(" AF_PACKET", f); break; }
+#ifdef AF_XDP
+        case AF_XDP: { fputs(" AF_XDP", f); break; }
+#endif /* AF_XDP */
+    }
+
+    // Socket Type
+    switch (proto_opt.sock_type) {
+        case SOCK_DGRAM: { fputs(" SOCK_DGRAM", f); break; }
+        case SOCK_STREAM: { fputs(" SOCK_STREAM", f); break; }
+        case SOCK_RAW: { fputs(" SOCK_RAW", f); break; }
+    }
+
+    // Ethertype
+    switch (proto_opt.eth_proto) {
+        case ETH_P_IP: { fputs(" ETH_P_IP", f); break; }
+        case ETH_P_IPV6: { fputs(" ETH_P_IPV6", f); break; }
+        case ETH_P_ALL: { fputs(" ETH_P_ALL", f); break; }
+#ifdef ETH_P_DALE
+        case ETH_P_DALE: { fputs(" ETH_P_DALE", f); break; }
+#endif /* ETH_P_DALE */
+    }
+
+    // IP Protocol (AF_INET only)
+    if (proto_opt.family == AF_INET) {
+        switch (proto_opt.ip_proto) {
+            case IPPROTO_UDP: { fputs(" IPPROTO_UDP", f); break; }
+            case IPPROTO_TCP: { fputs(" IPPROTO_TCP", f); break; }
+            case IPPROTO_RAW: { fputs(" IPPROTO_RAW", f); break; }
+        }
+    }
+
+    // IP Protocol (AF_INET only)
+    if (proto_opt.family == AF_INET) {
+        if (proto_opt.ip_port == INADDR_ANY) {
+            fputs(" port=*", f);
+        } else {
+            fprintf(f, " port=%d\n", proto_opt.ip_port);
+        }
+    }
+
+    // Network Interface (AF_PACKET only)
+    if (proto_opt.family == AF_PACKET) {
+        if (proto_opt.if_index == 0) {
+            fputs(" if=*", f);
+        } else {
+            fprintf(f, " if=%d\n", proto_opt.if_index);
+        }
+    }
+
+}
+
 int
 parse_args(int *argc, char *argv[])
 {
@@ -219,13 +278,12 @@ parse_args(int *argc, char *argv[])
             proto_opt.ip_port = port;
         }
 
-        if (strncmp(arg, "if=", 3) == 0) {
+        if (strcmp(arg, "if=*") == 0) {
+            proto_opt.if_index = 0;
+        } else if (strncmp(arg, "if=", 3) == 0) {
             unsigned index = atoi(arg + 3);
-            if (index) {
-                DEBUG(printf("if: %u\n", index));
-            } else {
+            if (!index) {
                 index = if_nametoindex(arg + 3);
-                DEBUG(printf("if: %s -> %u\n", arg + 3, index));
             }
             proto_opt.if_index = index;
         }

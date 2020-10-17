@@ -62,6 +62,12 @@ main(int argc, char *argv[])
 {
     int rv = parse_args(&argc, argv);
     if (rv != 0) return rv;
+
+    fputs(argv[0], stdout);
+    print_proto_opt(stdout);
+    fputc('\n', stdout);
+
     rv = server();
+
     return rv;
 }
