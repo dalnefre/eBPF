@@ -13,8 +13,8 @@
 
 static char *message = "Hello, World!\n";
 
-static BYTE eth_archie[ETH_ALEN] =  { 0xb8, 0x27, 0xeb, 0xf3, 0x5a, 0xd2 };
-static BYTE eth_betty[ETH_ALEN] =   { 0xdc, 0xa6, 0x32, 0x67, 0x7e, 0xa7 };
+static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 size_t
 create_message(void *buffer, size_t size)
@@ -27,8 +27,8 @@ create_message(void *buffer, size_t size)
         // add Ethernet header for RAW PACKET
         if (size < ETH_HLEN) return 0;  // buffer too small
         struct ethhdr *hdr = buffer;
-        memcpy(hdr->h_dest, eth_archie, ETH_ALEN);
-        memcpy(hdr->h_source, eth_betty, ETH_ALEN);
+        memcpy(hdr->h_dest, eth_remote, ETH_ALEN);
+        memcpy(hdr->h_source, eth_local, ETH_ALEN);
         hdr->h_proto = htons(proto_opt.eth_proto);
         offset += ETH_HLEN;
     }
@@ -67,6 +67,14 @@ client()
         return -1;  // failure
     }
 
+    if (proto_opt.family == AF_PACKET) {
+        rv = find_mac_addr(fd, eth_local);
+        if (rv < 0) {
+            perror("find_mac_addr() failed");
+            return -1;  // failure
+        }
+    }
+
     n = create_message(proto_buf, sizeof(proto_buf));
     if (n <= 0) {
         fprintf(stderr, "exceeded message buffer size of %u\n",
@@ -94,7 +102,6 @@ main(int argc, char *argv[])
 
     fputs(argv[0], stdout);
     print_proto_opt(stdout);
-    fputc('\n', stdout);
 
     rv = client();
 

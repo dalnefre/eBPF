@@ -70,6 +70,15 @@ find_mac_addr(int fd, void *mac_addr)
     return 0;
 }
 
+void
+print_mac_addr(FILE *f, char *label, void *mac_addr)
+{
+    uint8_t *bp = mac_addr;
+
+    fprintf(f, "%s%02x:%02x:%02x:%02x:%02x:%02x\n",
+        label, bp[0], bp[1], bp[2], bp[3], bp[4], bp[5]);
+}
+
 struct sockaddr *
 clr_sockaddr(struct sockaddr_storage *store, size_t *len_ptr)
 {
@@ -181,7 +190,7 @@ print_proto_opt(FILE *f)
         if (proto_opt.ip_port == INADDR_ANY) {
             fputs(" port=*", f);
         } else {
-            fprintf(f, " port=%d\n", proto_opt.ip_port);
+            fprintf(f, " port=%d", proto_opt.ip_port);
         }
     }
 
@@ -190,10 +199,11 @@ print_proto_opt(FILE *f)
         if (proto_opt.if_index == 0) {
             fputs(" if=*", f);
         } else {
-            fprintf(f, " if=%d\n", proto_opt.if_index);
+            fprintf(f, " if=%d", proto_opt.if_index);
         }
     }
 
+    fputc('\n', f);
 }
 
 int

@@ -32,13 +32,6 @@ static int next_inc[] = { 1, 1, -1 };
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
-static void
-print_mac_addr(FILE *f, char *label, BYTE *addr)
-{
-    fprintf(f, "%s%02x:%02x:%02x:%02x:%02x:%02x\n",
-        label, addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-}
-
 static int
 print_resolution(char *label, clockid_t clock)
 {
@@ -261,7 +254,11 @@ server()
         return -1;
     }
 
-    find_mac_addr(fd, eth_local);
+    rv = find_mac_addr(fd, eth_local);
+    if (rv < 0) {
+        perror("find_mac_addr() failed");
+        return -1;  // failure
+    }
     print_mac_addr(stdout, "eth_remote = ", eth_remote);
     print_mac_addr(stdout, "eth_local = ", eth_local);
 
@@ -322,7 +319,6 @@ main(int argc, char *argv[])
 
     fputs(argv[0], stdout);
     print_proto_opt(stdout);
-    fputc('\n', stdout);
 
     if (proto_opt.if_index <= 0) {
         fprintf(stderr, "usage: %s if=<interface>\n", argv[0]);

@@ -24,7 +24,8 @@ recv_message(int fd, void *buffer, size_t limit)
     return n;
 }
 
-static BYTE proto_buf[256];  // message-transfer buffer
+//static BYTE proto_buf[256];  // message-transfer buffer
+static BYTE proto_buf[2048];  // message-transfer buffer
 
 int
 server()
@@ -65,7 +66,6 @@ main(int argc, char *argv[])
 
     fputs(argv[0], stdout);
     print_proto_opt(stdout);
-    fputc('\n', stdout);
 
     rv = server();
 
