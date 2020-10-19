@@ -22,6 +22,8 @@
 
 #define ETH_P_DALE (0xDA1E)
 
+#define IPPROTO_DEFAULT (0x00)
+
 typedef struct proto_opt {
     sa_family_t family;     // protocol family (AF_INET, AF_PACKET ...)
     int         sock_type;  // socket type (SOCK_STREAM, SOCK_DGRAM ...)

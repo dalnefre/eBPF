@@ -153,6 +153,7 @@ print_proto_opt(FILE *f)
     // Protocol Family
     switch (proto_opt.family) {
         case AF_INET: { fputs(" AF_INET", f); break; }
+        case AF_INET6: { fputs(" AF_INET6", f); break; }
         case AF_PACKET: { fputs(" AF_PACKET", f); break; }
 #ifdef AF_XDP
         case AF_XDP: { fputs(" AF_XDP", f); break; }
@@ -182,6 +183,9 @@ print_proto_opt(FILE *f)
             case IPPROTO_UDP: { fputs(" IPPROTO_UDP", f); break; }
             case IPPROTO_TCP: { fputs(" IPPROTO_TCP", f); break; }
             case IPPROTO_RAW: { fputs(" IPPROTO_RAW", f); break; }
+#ifdef IPPROTO_DEFAULT
+            case IPPROTO_DEFAULT: { fputs(" IPPROTO_DEFAULT", f); break; }
+#endif /* IPPROTO_DEFAULT */
         }
     }
 
@@ -212,8 +216,45 @@ parse_args(int *argc, char *argv[])
     while ((--*argc) > 0) {
         char *arg = *++argv;
 
+        if (strcmp(arg, "IP") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
+        } else if (strcmp(arg, "IPV4") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
+        } else if (strcmp(arg, "IPv4") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
+        } else if (strcmp(arg, "IPV6") == 0) {
+            proto_opt.family = AF_INET6;
+            proto_opt.eth_proto = ETH_P_IPV6;
+            continue;  // next arg
+        } else if (strcmp(arg, "IPv6") == 0) {
+            proto_opt.family = AF_INET6;
+            proto_opt.eth_proto = ETH_P_IPV6;
+            continue;  // next arg
+        }
+
+        if (strcmp(arg, "UDP") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.sock_type = SOCK_DGRAM;
+            proto_opt.ip_proto = IPPROTO_UDP;
+            continue;  // next arg
+        } else if (strcmp(arg, "TCP") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.sock_type = SOCK_STREAM;
+            proto_opt.ip_proto = IPPROTO_TCP;
+            continue;  // next arg
+        }
+
         if (strcmp(arg, "AF_INET") == 0) {
             proto_opt.family = AF_INET;
+            continue;  // next arg
+        } else if (strcmp(arg, "AF_INET6") == 0) {
+            proto_opt.family = AF_INET6;
             continue;  // next arg
         } else if (strcmp(arg, "AF_PACKET") == 0) {
             proto_opt.family = AF_PACKET;
@@ -245,22 +286,7 @@ parse_args(int *argc, char *argv[])
         if (strcmp(arg, "ETH_P_IP") == 0) {
             proto_opt.eth_proto = ETH_P_IP;
             continue;  // next arg
-        } else if (strcmp(arg, "IP") == 0) {
-            proto_opt.eth_proto = ETH_P_IP;
-            continue;  // next arg
-        } else if (strcmp(arg, "IPV4") == 0) {
-            proto_opt.eth_proto = ETH_P_IP;
-            continue;  // next arg
-        } else if (strcmp(arg, "IPv4") == 0) {
-            proto_opt.eth_proto = ETH_P_IP;
-            continue;  // next arg
         } else if (strcmp(arg, "ETH_P_IPV6") == 0) {
-            proto_opt.eth_proto = ETH_P_IPV6;
-            continue;  // next arg
-        } else if (strcmp(arg, "IPV6") == 0) {
-            proto_opt.eth_proto = ETH_P_IPV6;
-            continue;  // next arg
-        } else if (strcmp(arg, "IPv6") == 0) {
             proto_opt.eth_proto = ETH_P_IPV6;
             continue;  // next arg
         } else if (strcmp(arg, "ETH_P_ALL") == 0) {
@@ -279,18 +305,17 @@ parse_args(int *argc, char *argv[])
         if (strcmp(arg, "IPPROTO_UDP") == 0) {
             proto_opt.ip_proto = IPPROTO_UDP;
             continue;  // next arg
-        } else if (strcmp(arg, "UDP") == 0) {
-            proto_opt.ip_proto = IPPROTO_UDP;
-            continue;  // next arg
         } else if (strcmp(arg, "IPPROTO_TCP") == 0) {
-            proto_opt.ip_proto = IPPROTO_TCP;
-            continue;  // next arg
-        } else if (strcmp(arg, "TCP") == 0) {
             proto_opt.ip_proto = IPPROTO_TCP;
             continue;  // next arg
         } else if (strcmp(arg, "IPPROTO_RAW") == 0) {
             proto_opt.ip_proto = IPPROTO_RAW;
             continue;  // next arg
+#ifdef IPPROTO_DEFAULT
+        } else if (strcmp(arg, "IPPROTO_DEFAULT") == 0) {
+            proto_opt.ip_proto = IPPROTO_DEFAULT;
+            continue;  // next arg
+#endif /* IPPROTO_DEFAULT */
         } else if (strncmp(arg, "IPPROTO_", 8) == 0) {
             fprintf(stderr, "%s not supported.\n", arg);
             return -1;
