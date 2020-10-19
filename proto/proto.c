@@ -14,7 +14,7 @@ proto_opt_t proto_opt = {   // global options
     .if_index = 0,              // network interface index
     .eth_proto = ETH_P_IP,      // layer 3 protocol
     .ip_proto = 0,              // layer 4 protocol
-    .ip_addr = INADDR_ANY,      // IP address
+    .ip_addr = INADDR_LOOPBACK, // IP address
     .ip_port = 8080,            // IP port number
 };
 
@@ -185,13 +185,13 @@ print_proto_opt(FILE *f)
         }
     }
 
-    // IP Protocol (AF_INET only)
+    // IP Host/Port (AF_INET only)
     if (proto_opt.family == AF_INET) {
-        if (proto_opt.ip_port == INADDR_ANY) {
-            fputs(" port=*", f);
-        } else {
-            fprintf(f, " port=%d", proto_opt.ip_port);
-        }
+        struct in_addr addr = {
+            .s_addr = htonl(proto_opt.ip_addr),
+        };
+
+        fprintf(f, " %s:%d", inet_ntoa(addr), proto_opt.ip_port);
     }
 
     // Network Interface (AF_PACKET only)
@@ -276,18 +276,6 @@ parse_args(int *argc, char *argv[])
             return -1;
         }
 
-        if (strcmp(arg, "port=INADDR_ANY") == 0) {
-            proto_opt.ip_port = INADDR_ANY;
-        } else if (strcmp(arg, "port=ANY") == 0) {
-            proto_opt.ip_port = INADDR_ANY;
-        } else if (strcmp(arg, "port=*") == 0) {
-            proto_opt.ip_port = INADDR_ANY;
-        } else if (strncmp(arg, "port=", 5) == 0) {
-            int port = atoi(arg + 5);
-            DEBUG(printf("port: %d\n", port));
-            proto_opt.ip_port = port;
-        }
-
         if (strcmp(arg, "if=*") == 0) {
             proto_opt.if_index = 0;
         } else if (strncmp(arg, "if=", 3) == 0) {
@@ -296,6 +284,34 @@ parse_args(int *argc, char *argv[])
                 index = if_nametoindex(arg + 3);
             }
             proto_opt.if_index = index;
+        }
+
+        char *p = strrchr(arg, ':');
+        if (p) {
+            *p++ = '\0';  // split arg at ':'
+            int port = atoi(p);
+            if (port > 0) {
+                proto_opt.ip_port = port;
+            }
+        }
+        if (strcmp(arg, "") == 0) {
+            // use default address
+        } else if (strcmp(arg, "INADDR_ANY") == 0) {
+            proto_opt.ip_addr = INADDR_ANY;
+        } else if (strcmp(arg, "INADDR_LOOPBACK") == 0) {
+            proto_opt.ip_addr = INADDR_LOOPBACK;
+        } else if (strcmp(arg, "INADDR_BROADCAST") == 0) {
+            proto_opt.ip_addr = INADDR_BROADCAST;
+        } else {
+            struct in_addr addr = {
+                .s_addr = htonl(proto_opt.ip_addr),
+            };
+
+            if (inet_aton(arg, &addr) <= 0) {
+                fprintf(stderr, "bad address %s\n", arg);
+                return -1;
+            }
+            proto_opt.ip_addr = ntohl(addr.s_addr);
         }
 
     }

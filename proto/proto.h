@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <net/ethernet.h>
+#include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/udp.h>
 #include <linux/if_packet.h>
