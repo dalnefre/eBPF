@@ -214,11 +214,14 @@ parse_args(int *argc, char *argv[])
 
         if (strcmp(arg, "AF_INET") == 0) {
             proto_opt.family = AF_INET;
+            continue;  // next arg
         } else if (strcmp(arg, "AF_PACKET") == 0) {
             proto_opt.family = AF_PACKET;
+            continue;  // next arg
 #ifdef AF_XDP
         } else if (strcmp(arg, "AF_XDP") == 0) {
             proto_opt.family = AF_XDP;
+            continue;  // next arg
 #endif /* AF_XDP */
         } else if (strncmp(arg, "AF_", 3) == 0) {
             fprintf(stderr, "%s not supported.\n", arg);
@@ -227,10 +230,13 @@ parse_args(int *argc, char *argv[])
 
         if (strcmp(arg, "SOCK_DGRAM") == 0) {
             proto_opt.sock_type = SOCK_DGRAM;
+            continue;  // next arg
         } else if (strcmp(arg, "SOCK_STREAM") == 0) {
             proto_opt.sock_type = SOCK_STREAM;
+            continue;  // next arg
         } else if (strcmp(arg, "SOCK_RAW") == 0) {
             proto_opt.sock_type = SOCK_RAW;
+            continue;  // next arg
         } else if (strncmp(arg, "SOCK_", 5) == 0) {
             fprintf(stderr, "%s not supported.\n", arg);
             return -1;
@@ -238,23 +244,32 @@ parse_args(int *argc, char *argv[])
 
         if (strcmp(arg, "ETH_P_IP") == 0) {
             proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
         } else if (strcmp(arg, "IP") == 0) {
             proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
         } else if (strcmp(arg, "IPV4") == 0) {
             proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
         } else if (strcmp(arg, "IPv4") == 0) {
             proto_opt.eth_proto = ETH_P_IP;
+            continue;  // next arg
         } else if (strcmp(arg, "ETH_P_IPV6") == 0) {
             proto_opt.eth_proto = ETH_P_IPV6;
+            continue;  // next arg
         } else if (strcmp(arg, "IPV6") == 0) {
             proto_opt.eth_proto = ETH_P_IPV6;
+            continue;  // next arg
         } else if (strcmp(arg, "IPv6") == 0) {
             proto_opt.eth_proto = ETH_P_IPV6;
+            continue;  // next arg
         } else if (strcmp(arg, "ETH_P_ALL") == 0) {
             proto_opt.eth_proto = ETH_P_ALL;
+            continue;  // next arg
 #ifdef ETH_P_DALE
         } else if (strcmp(arg, "ETH_P_DALE") == 0) {
             proto_opt.eth_proto = ETH_P_DALE;
+            continue;  // next arg
 #endif /* ETH_P_DALE */
         } else if (strncmp(arg, "ETH_", 4) == 0) {
             fprintf(stderr, "%s not supported.\n", arg);
@@ -263,14 +278,19 @@ parse_args(int *argc, char *argv[])
 
         if (strcmp(arg, "IPPROTO_UDP") == 0) {
             proto_opt.ip_proto = IPPROTO_UDP;
+            continue;  // next arg
         } else if (strcmp(arg, "UDP") == 0) {
             proto_opt.ip_proto = IPPROTO_UDP;
+            continue;  // next arg
         } else if (strcmp(arg, "IPPROTO_TCP") == 0) {
             proto_opt.ip_proto = IPPROTO_TCP;
+            continue;  // next arg
         } else if (strcmp(arg, "TCP") == 0) {
             proto_opt.ip_proto = IPPROTO_TCP;
+            continue;  // next arg
         } else if (strcmp(arg, "IPPROTO_RAW") == 0) {
             proto_opt.ip_proto = IPPROTO_RAW;
+            continue;  // next arg
         } else if (strncmp(arg, "IPPROTO_", 8) == 0) {
             fprintf(stderr, "%s not supported.\n", arg);
             return -1;
@@ -278,41 +298,42 @@ parse_args(int *argc, char *argv[])
 
         if (strcmp(arg, "if=*") == 0) {
             proto_opt.if_index = 0;
+            continue;  // next arg
         } else if (strncmp(arg, "if=", 3) == 0) {
             unsigned index = atoi(arg + 3);
             if (!index) {
                 index = if_nametoindex(arg + 3);
             }
             proto_opt.if_index = index;
+            continue;  // next arg
         }
 
         char *p = strrchr(arg, ':');
         if (p) {
             *p++ = '\0';  // split arg at ':'
-            int port = atoi(p);
-            if (port > 0) {
-                proto_opt.ip_port = port;
-            }
+            proto_opt.ip_port = atoi(p);
         }
         if (strcmp(arg, "") == 0) {
             // use default address
+            continue;  // next arg
         } else if (strcmp(arg, "INADDR_ANY") == 0) {
             proto_opt.ip_addr = INADDR_ANY;
+            continue;  // next arg
         } else if (strcmp(arg, "INADDR_LOOPBACK") == 0) {
             proto_opt.ip_addr = INADDR_LOOPBACK;
+            continue;  // next arg
         } else if (strcmp(arg, "INADDR_BROADCAST") == 0) {
             proto_opt.ip_addr = INADDR_BROADCAST;
-        } else {
-            struct in_addr addr = {
-                .s_addr = htonl(proto_opt.ip_addr),
-            };
-
-            if (inet_aton(arg, &addr) <= 0) {
-                fprintf(stderr, "bad address %s\n", arg);
-                return -1;
-            }
-            proto_opt.ip_addr = ntohl(addr.s_addr);
+            continue;  // next arg
         }
+        struct in_addr addr = {
+            .s_addr = htonl(proto_opt.ip_addr),
+        };
+        if (inet_aton(arg, &addr) <= 0) {
+            fprintf(stderr, "bad address %s\n", arg);
+            return -1;
+        }
+        proto_opt.ip_addr = ntohl(addr.s_addr);
 
     }
     return 0;
