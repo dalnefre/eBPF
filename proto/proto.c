@@ -13,7 +13,7 @@ proto_opt_t proto_opt = {   // global options
     .sock_type = SOCK_DGRAM,    // socket type
     .if_index = 0,              // network interface index
     .eth_proto = ETH_P_IP,      // layer 3 protocol
-    .ip_proto = 0,              // layer 4 protocol
+    .ip_proto = IPPROTO_DEFAULT,// layer 4 protocol
     .ip_addr = INADDR_LOOPBACK, // IP address
     .ip_port = 8080,            // IP port number
 };
@@ -52,31 +52,6 @@ bind_socket(int fd)
     rv = bind(fd, addr, addr_len);
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
     return rv;
-}
-
-int
-find_mac_addr(int fd, void *mac_addr)
-{
-    struct ifreq ifr;
-    int rv;
-
-    ifr.ifr_addr.sa_family = proto_opt.family;
-    ifr.ifr_ifindex = proto_opt.if_index;
-    rv = ioctl(fd, SIOCGIFNAME, &ifr);
-    if (rv < 0) return rv;
-    rv = ioctl(fd, SIOCGIFHWADDR, &ifr);
-    if (rv < 0) return rv;
-    memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
-    return 0;
-}
-
-void
-print_mac_addr(FILE *f, char *label, void *mac_addr)
-{
-    uint8_t *bp = mac_addr;
-
-    fprintf(f, "%s%02x:%02x:%02x:%02x:%02x:%02x\n",
-        label, bp[0], bp[1], bp[2], bp[3], bp[4], bp[5]);
 }
 
 struct sockaddr *
@@ -144,6 +119,31 @@ dump_sockaddr(FILE *f, void *ptr, size_t len)
             len);
 
     }
+}
+
+int
+find_mac_addr(int fd, void *mac_addr)
+{
+    struct ifreq ifr;
+    int rv;
+
+    ifr.ifr_addr.sa_family = proto_opt.family;
+    ifr.ifr_ifindex = proto_opt.if_index;
+    rv = ioctl(fd, SIOCGIFNAME, &ifr);
+    if (rv < 0) return rv;
+    rv = ioctl(fd, SIOCGIFHWADDR, &ifr);
+    if (rv < 0) return rv;
+    memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    return 0;
+}
+
+void
+print_mac_addr(FILE *f, char *label, void *mac_addr)
+{
+    uint8_t *bp = mac_addr;
+
+    fprintf(f, "%s%02x:%02x:%02x:%02x:%02x:%02x\n",
+        label, bp[0], bp[1], bp[2], bp[3], bp[4], bp[5]);
 }
 
 void
@@ -216,6 +216,23 @@ parse_args(int *argc, char *argv[])
     while ((--*argc) > 0) {
         char *arg = *++argv;
 
+        if (strcmp(arg, "UDP") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.sock_type = SOCK_DGRAM;
+            proto_opt.ip_proto = IPPROTO_UDP;
+            continue;  // next arg
+        } else if (strcmp(arg, "TCP") == 0) {
+            proto_opt.family = AF_INET;
+            proto_opt.sock_type = SOCK_STREAM;
+            proto_opt.ip_proto = IPPROTO_TCP;
+            continue;  // next arg
+        } else if (strcmp(arg, "ETH") == 0) {
+            proto_opt.family = AF_PACKET;
+            proto_opt.sock_type = SOCK_RAW;
+            proto_opt.eth_proto = ETH_P_ALL;
+            continue;  // next arg
+        }
+
         if (strcmp(arg, "IP") == 0) {
             proto_opt.family = AF_INET;
             proto_opt.eth_proto = ETH_P_IP;
@@ -235,18 +252,6 @@ parse_args(int *argc, char *argv[])
         } else if (strcmp(arg, "IPv6") == 0) {
             proto_opt.family = AF_INET6;
             proto_opt.eth_proto = ETH_P_IPV6;
-            continue;  // next arg
-        }
-
-        if (strcmp(arg, "UDP") == 0) {
-            proto_opt.family = AF_INET;
-            proto_opt.sock_type = SOCK_DGRAM;
-            proto_opt.ip_proto = IPPROTO_UDP;
-            continue;  // next arg
-        } else if (strcmp(arg, "TCP") == 0) {
-            proto_opt.family = AF_INET;
-            proto_opt.sock_type = SOCK_STREAM;
-            proto_opt.ip_proto = IPPROTO_TCP;
             continue;  // next arg
         }
 
