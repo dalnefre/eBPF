@@ -28,9 +28,9 @@ A list of network interfaces is available through the following command-line pro
 $ ip link list
 ```
 
-An IP host address (`.ip_addr`, default = `127.0.0.1`) and port (`.ip_port`, default =`8080`)
-can be specified with dot/colon notation (e.g.: `127.0.0.1:8080`).
-Both parts are optional, so you can specify just a host (e.g.: `127.0.0.1`), or just a port (e.g.: `:8080`).
+An IP host address (`.ip_addr`, default = `127.0.0.1`) and port (`.ip_port`, default =`8888`)
+can be specified with dot/colon notation (e.g.: `127.0.0.1:8888`).
+Both parts are optional, so you can specify just a host (e.g.: `127.0.0.1`), or just a port (e.g.: `:8888`).
 A list of interface addresses is available through the following command-line program:
 
 ```
@@ -48,7 +48,7 @@ When a lab program is run, it normalizes recognized command-line arguments and p
 
 ### `client` Program
 
-The `client` program opens a socket, constructs a sample message, and attempts to send it to the specified interface/address, and exits.
+The `client` program opens a socket, constructs a sample message, attempts to send it to the specified interface/address, and exits.
 The sample message payload is:
 
 ```

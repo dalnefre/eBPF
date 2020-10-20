@@ -15,7 +15,7 @@ proto_opt_t proto_opt = {   // global options
     .eth_proto = ETH_P_IP,      // layer 3 protocol
     .ip_proto = IPPROTO_DEFAULT,// layer 4 protocol
     .ip_addr = INADDR_LOOPBACK, // IP address
-    .ip_port = 8080,            // IP port number
+    .ip_port = 8888,            // IP port number
 };
 
 int
