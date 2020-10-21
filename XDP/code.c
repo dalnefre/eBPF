@@ -47,6 +47,17 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
     return offset;
 }
 
+static int code_int16(__u8 *data, __u8 *end, __s16 i)
+{
+    if (data + 4 > end) return 0;  // out of bounds
+    data[0] = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    data[1] = n_2;  // size = 2
+    data[2] = i;  // lsb
+    data[3] = i >> 8;  // msb
+    return 4;
+}
+
+
 #ifdef TEST_MAIN
 #include <stdlib.h>
 #include <stdio.h>
@@ -70,6 +81,7 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
 void
 test_int()
 {
+    __u8 buf[16];
     __u8 buf_0[] = { n_0 };
     __u8 buf_1[] = { null };
     __u8 buf_2[] = { p_int_0, n_0 };
@@ -167,6 +179,13 @@ test_int()
     assert(n == 0);
     assert(i == 0xDEAD);
 
+    n = code_int16(buf, buf + sizeof(buf), -12345);
+    assert(n == 4);
+    i = 0xDEAD;
+    n = parse_int(buf, buf + sizeof(buf), &i);
+    printf("buf: n=%d i=%d (0x%x)\n", n, i, i);
+    assert(n == 4);
+    assert(i == -12345);
 }
 
 int

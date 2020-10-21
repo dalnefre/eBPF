@@ -142,7 +142,12 @@ static int handle_message(struct xdp_md *ctx)
     swap_mac_addrs(msg_base);
     msg_content[0] = INT2SMOL(state);
     msg_content[1] = INT2SMOL(change);
+#if USE_CODE_C
+    n = code_int16(msg_content + 2, msg_end, seq_num);
+    if (n <= 0) return XDP_DROP;  // coding error
+#else
     msg_content[2] = INT2SMOL(seq_num);
+#endif
 
     bpf_printk("%d (+ %d) #%d -->\n", state, change, seq_num);
 
