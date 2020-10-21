@@ -53,7 +53,10 @@ hexdump(FILE *f, void *data, size_t size)
 void
 test_util()
 {
-    /* FIXME: self-test code goes here... */
+    printf("sizeof(short)=%zu sizeof(int)=%zu sizeof(long)=%zu\n",
+        sizeof(short), sizeof(int), sizeof(long));
+    printf("sizeof(size_t)=%zu sizeof(ptrdiff_t)=%zu sizeof(intptr_t)=%zu\n",
+        sizeof(size_t), sizeof(ptrdiff_t), sizeof(intptr_t));
 }
 
 int

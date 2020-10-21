@@ -16,11 +16,11 @@
 #include <netinet/in.h>
 #include <netinet/udp.h>
 #include <linux/if_packet.h>
-#include <linux/if_xdp.h>
+//#include <linux/if_xdp.h>
 
 //#define AF_XDP (44)
 
-#define ETH_P_DALE (0xDA1E)
+#define ETH_P_DALE (0xDa1e)
 
 #define IPPROTO_DEFAULT (0x00)
 

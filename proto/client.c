@@ -77,7 +77,7 @@ client()
 
     n = create_message(proto_buf, sizeof(proto_buf));
     if (n <= 0) {
-        fprintf(stderr, "exceeded message buffer size of %u\n",
+        fprintf(stderr, "exceeded message buffer size of %zu\n",
             sizeof(proto_buf));
         return -1;  // failure
     }

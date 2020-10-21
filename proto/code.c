@@ -535,7 +535,7 @@ assert_buf(BYTE *expect, size_t size, BYTE *buf, size_t n)
         BYTE b = buf[i];
         if (a != b) {
             fprintf(stderr,
-                "mismatch at %p[%u], expect 0x%02x, actual 0x%02x\n",
+                "mismatch at %p[%zu], expect 0x%02x, actual 0x%02x\n",
                 buf, i, a, b);
         }
         assert(a == b);
@@ -708,8 +708,6 @@ test_decode()
     size_t n;
     int i;
 
-    DEBUG(printf("sizeof(int)=%zu sizeof(size_t)=%zu\n",
-        sizeof(int), sizeof(size_t)));
     test_3_int_array(buf_0, sizeof(buf_0));
     test_3_int_array(buf_1, sizeof(buf_1));
 
