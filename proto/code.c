@@ -52,7 +52,7 @@ bstr_free(bstr_t *bstr)
 }
 
 int
-bstr_put_byte(bstr_t *bstr, BYTE b)
+bstr_put_raw(bstr_t *bstr, BYTE b)
 {
     if (bstr->end >= bstr->limit) return -1;
     *bstr->end++ = b;
@@ -69,10 +69,71 @@ bstr_put_int(bstr_t *bstr, int i)
 }
 
 int
+bstr_put_int16(bstr_t *bstr, int16_t i)
+{
+    size_t n = 2 + sizeof(i);
+    if (bstr->end + n > bstr->limit) return -1;
+    BYTE b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    if (bstr_put_raw(bstr, n_2) < 0) return -1;  // size = 2
+    b = i;  // lsb
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 8;  // msb
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    return n;
+}
+
+int
+bstr_put_int32(bstr_t *bstr, int32_t i)
+{
+    size_t n = 2 + sizeof(i);
+    if (bstr->end + n > bstr->limit) return -1;
+    BYTE b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    if (bstr_put_raw(bstr, n_4) < 0) return -1;  // size = 2
+    b = i;  // lsb
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 8;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 16;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 24;  // msb
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    return n;
+}
+
+int
+bstr_put_int64(bstr_t *bstr, int64_t i)
+{
+    size_t n = 2 + sizeof(i);
+    if (bstr->end + n > bstr->limit) return -1;
+    BYTE b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    if (bstr_put_raw(bstr, n_8) < 0) return -1;  // size = 2
+    b = i;  // lsb
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 8;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 16;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 24;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 32;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 40;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 48;
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    b = i >> 56;  // msb
+    if (bstr_put_raw(bstr, b) < 0) return -1;
+    return n;
+}
+
+int
 bstr_open_array(bstr_t *bstr)
 {
     bstr->start = bstr->end;
-    if (bstr_put_byte(bstr, array) < 0) return -1;
+    if (bstr_put_raw(bstr, array) < 0) return -1;
     if (bstr_put_int(bstr, (bstr->limit - bstr->end)) < 0) return -1;
     bstr->content = bstr->end;
     bstr->cursor = bstr->end;
@@ -83,7 +144,7 @@ int
 bstr_open_array_n(bstr_t *bstr, size_t n)
 {
     bstr->start = bstr->end;
-    if (bstr_put_byte(bstr, array_n) < 0) return -1;
+    if (bstr_put_raw(bstr, array_n) < 0) return -1;
     if (bstr_put_int(bstr, (bstr->limit - bstr->end)) < 0) return -1;
     bstr->content = bstr->end;
     if (bstr_put_int(bstr, n) < 0) return -1;

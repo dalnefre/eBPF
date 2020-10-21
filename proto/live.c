@@ -86,7 +86,7 @@ create_message(void *data, size_t size, live_msg_t *live)
     if (bstr_open_array(&meta) < 0) return 0;
     if (bstr_put_int(&meta, live->state) < 0) return 0;
     if (bstr_put_int(&meta, live->change) < 0) return 0;
-    if (bstr_put_int(&meta, live->count) < 0) return 0;
+    if (bstr_put_int16(&meta, live->count) < 0) return 0;
     if (bstr_close_array(&meta) < 0) return 0;
 
     n = (meta.end - meta.start);  // number of bytes written to buffer
