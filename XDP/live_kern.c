@@ -9,6 +9,20 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
+#define USE_BPF_MAPS 1  // monitor/control from userspace
+
+#if USE_BPF_MAPS
+#include <iproute2/bpf_elf.h>
+
+struct bpf_elf_map liveness_map SEC("maps") = {
+    .type       = BPF_MAP_TYPE_ARRAY,
+    .size_key   = sizeof(__u32),
+    .size_value = sizeof(__u64),
+    .pinning    = PIN_GLOBAL_NS,
+    .max_elem   = 4,
+};
+#endif /* USE_BPF_MAPS */
+
 #define USE_CODE_C 1  // include encode/decode helpers
 
 #if USE_CODE_C
@@ -21,7 +35,7 @@
 
 #define ETH_P_DALE (0xDA1E)
 
-static void copy_mac(void *dst, void* src)
+static void copy_mac(void *dst, void *src)
 {
     __u16 *d = dst;
     __u16 *s = src;
@@ -39,6 +53,27 @@ static void swap_mac_addrs(void *ethhdr)
     copy_mac(tmp, eth);
     copy_mac(eth, eth + 3);
     copy_mac(eth + 3, tmp);
+}
+
+
+static int update_seq_num(int seq_num)
+{
+#if USE_BPF_MAPS
+    __u32 key;
+    __u64 *value_ptr;
+
+    key = 3;
+    value_ptr = bpf_map_lookup_elem(&liveness_map, &key);
+    if (value_ptr) {
+        __sync_fetch_and_add(value_ptr, 1);
+        seq_num = *value_ptr;
+    } else {
+        ++seq_num;
+    }
+#else
+    ++seq_num;
+#endif
+    return seq_num;
 }
 
 static int handle_message(struct xdp_md *ctx)
@@ -122,9 +157,6 @@ static int handle_message(struct xdp_md *ctx)
     b = *msg_cursor++;
     int seq_num = SMOL2INT(b);
 #endif
-    if ((seq_num < 0) || (seq_num > 13)) {  // FIXME: wrap-around?
-        return XDP_DROP;  // bad seq
-    }
 
     bpf_printk("%d (+ %d) #%d <--\n", state, change, seq_num);
 
@@ -136,7 +168,7 @@ static int handle_message(struct xdp_md *ctx)
         case 2: { change = -1; break; }
         default: return XDP_DROP;  // bad state
     }
-    ++seq_num;
+    seq_num = update_seq_num(seq_num);
 
     // prepare reply message
     swap_mac_addrs(msg_base);
