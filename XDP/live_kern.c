@@ -55,8 +55,31 @@ static void swap_mac_addrs(void *ethhdr)
     copy_mac(eth + 3, tmp);
 }
 
+static int
+fwd_state(int state)
+{
+    switch (state) {
+    case 0:  return 1;
+    case 1:  return 2;
+    case 2:  return 1;
+    default: return 0;
+    }
+}
 
-static int update_seq_num(int seq_num)
+#if 0
+static int
+rev_state(int state)
+{
+    switch (state) {
+    case 0:  return 0;
+    case 1:  return 2;
+    case 2:  return 1;
+    default: return 0;
+    }
+}
+#endif
+
+static int next_seq_num(int seq_num)
 {
 #if USE_BPF_MAPS
     __u32 key;
@@ -131,6 +154,7 @@ static int handle_message(struct xdp_md *ctx)
     __u8 *msg_content = msg_cursor;  // start of array elements
 //    bpf_printk("array size=%d count=%d\n", size, count);
 
+    // get `state` field
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
     b = *msg_cursor++;
     int state = SMOL2INT(b);
@@ -138,12 +162,12 @@ static int handle_message(struct xdp_md *ctx)
         return XDP_DROP;  // bad state
     }
 
-    // get `change` field
+    // get `other` field
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
     b = *msg_cursor++;
-    int change = SMOL2INT(b);
-    if ((change < SMOL_MIN) || (change > SMOL_MAX)) {
-        return XDP_DROP;  // bad change
+    int other = SMOL2INT(b);
+    if ((other < 0) || (other > 2)) {
+        return XDP_DROP;  // bad other
     }
 
     // get `seq_num` field
@@ -158,22 +182,17 @@ static int handle_message(struct xdp_md *ctx)
     int seq_num = SMOL2INT(b);
 #endif
 
-    bpf_printk("%d (+ %d) #%d <--\n", state, change, seq_num);
+    bpf_printk("%d,%d #%d <--\n", state, other, seq_num);
 
     // calculate new state
-    state += change;
-    switch (state) {
-        case 0: { change = +1; break; }
-        case 1: { change = +1; break; }
-        case 2: { change = -1; break; }
-        default: return XDP_DROP;  // bad state
-    }
-    seq_num = update_seq_num(seq_num);
+    state = other;  // swap self <-> other
+    other = fwd_state(state);
+    seq_num = next_seq_num(seq_num);
 
     // prepare reply message
     swap_mac_addrs(msg_base);
     msg_content[0] = INT2SMOL(state);
-    msg_content[1] = INT2SMOL(change);
+    msg_content[1] = INT2SMOL(other);
 #if USE_CODE_C
     n = code_int16(msg_content + 2, msg_end, seq_num);
     if (n <= 0) return XDP_DROP;  // coding error
@@ -181,7 +200,7 @@ static int handle_message(struct xdp_md *ctx)
     msg_content[2] = INT2SMOL(seq_num);
 #endif
 
-    bpf_printk("%d (+ %d) #%d -->\n", state, change, seq_num);
+    bpf_printk("%d,%d #%d <--\n", state, other, seq_num);
 
     return XDP_TX;  // send updated frame out on same interface
 }
