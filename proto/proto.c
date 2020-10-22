@@ -16,6 +16,7 @@ proto_opt_t proto_opt = {   // global options
     .ip_proto = IPPROTO_DEFAULT,// layer 4 protocol
     .ip_addr = INADDR_LOOPBACK, // IP address
     .ip_port = 8888,            // IP port number
+    .filter = FILTER_NONE,      // filter flags
 };
 
 int
@@ -75,50 +76,77 @@ set_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr)
     sockaddr->sa_family = proto_opt.family;
 
     if (proto_opt.family == AF_INET) {
-        struct sockaddr_in *addr = (void *)store;
+        struct sockaddr_in *sin = (void *)store;
 
-        addr->sin_addr.s_addr = htonl(proto_opt.ip_addr);
-        addr->sin_port = htons(proto_opt.ip_port);
+        sin->sin_addr.s_addr = htonl(proto_opt.ip_addr);
+        sin->sin_port = htons(proto_opt.ip_port);
 
     } else if (proto_opt.family == AF_PACKET) {
-        struct sockaddr_ll *addr = (void *)store;
+        struct sockaddr_ll *sll = (void *)store;
 
-        addr->sll_protocol = htons(proto_opt.eth_proto);
-        addr->sll_ifindex = proto_opt.if_index;
+        sll->sll_protocol = htons(proto_opt.eth_proto);
+        sll->sll_ifindex = proto_opt.if_index;
 
     }
     return sockaddr;
 }
 
 void
-dump_sockaddr(FILE *f, void *ptr, socklen_t len)
+dump_sockaddr(FILE *f, void *addr, socklen_t len)
 {
     fputs("sockaddr: ", stdout);
     DEBUG(fputc('\n', stdout));
-    DEBUG(hexdump(f, ptr, len));
+    DEBUG(hexdump(f, addr, len));
 
     if (proto_opt.family == AF_INET) {
-        struct sockaddr_in *addr = ptr;
+        struct sockaddr_in *sin = addr;
 
-        fprintf(f, "fam=%d, addr=%u.%u.%u.%u, port=%d, len=%lu\n",
-            addr->sin_family,
-            ((uint8_t *) &(addr->sin_addr.s_addr))[0],
-            ((uint8_t *) &(addr->sin_addr.s_addr))[1],
-            ((uint8_t *) &(addr->sin_addr.s_addr))[2],
-            ((uint8_t *) &(addr->sin_addr.s_addr))[3],
-            ntohs(addr->sin_port),
+        fprintf(f, "fam=%d, host=%u.%u.%u.%u, port=%d, len=%lu\n",
+            sin->sin_family,
+            ((uint8_t *) &(sin->sin_addr.s_addr))[0],
+            ((uint8_t *) &(sin->sin_addr.s_addr))[1],
+            ((uint8_t *) &(sin->sin_addr.s_addr))[2],
+            ((uint8_t *) &(sin->sin_addr.s_addr))[3],
+            ntohs(sin->sin_port),
             (unsigned long)len);
 
     } else if (proto_opt.family == AF_PACKET) {
-        struct sockaddr_ll *addr = ptr;
+        struct sockaddr_ll *sll = addr;
 
         fprintf(f, "fam=%d, proto=0x%04x, if=%d, len=%lu\n",
-            addr->sll_family,
-            ntohs(addr->sll_protocol),
-            addr->sll_ifindex,
+            sll->sll_family,
+            ntohs(sll->sll_protocol),
+            sll->sll_ifindex,
             (unsigned long)len);
 
     }
+}
+
+int
+filter_message(void *addr, void *data, size_t limit)
+{
+    if (proto_opt.filter == 0) {
+        return 0;  // pass message
+    } else if (proto_opt.family == AF_PACKET) {
+        struct sockaddr_ll *sll = addr;
+
+        if ((proto_opt.filter & FILTER_IP)
+        &&  (ntohs(sll->sll_protocol) == ETH_P_IP)) {
+            return 1;  // filter message
+        }
+
+        if ((proto_opt.filter & FILTER_IPV6)
+        &&  (ntohs(sll->sll_protocol) == ETH_P_IPV6)) {
+            return 1;  // filter message
+        }
+
+        if ((proto_opt.filter & FILTER_ARP)
+        &&  (ntohs(sll->sll_protocol) == ETH_P_ARP)) {
+            return 1;  // filter message
+        }
+
+    }
+    return 0;  // pass message
 }
 
 int
@@ -176,6 +204,11 @@ print_proto_opt(FILE *f)
         case ETH_P_DALE: { fputs(" ETH_P_DALE", f); break; }
 #endif /* ETH_P_DALE */
     }
+
+    // Filter Flags
+    if (proto_opt.filter & FILTER_IP) { fputs(" FILTER_IP", f); }
+    if (proto_opt.filter & FILTER_IPV6) { fputs(" FILTER_IPV6", f); }
+    if (proto_opt.filter & FILTER_ARP) { fputs(" FILTER_ARP", f); }
 
     // IP Protocol (AF_INET only)
     if (proto_opt.family == AF_INET) {
@@ -303,6 +336,23 @@ parse_args(int *argc, char *argv[])
             continue;  // next arg
 #endif /* ETH_P_DALE */
         } else if (strncmp(arg, "ETH_", 4) == 0) {
+            fprintf(stderr, "%s not supported.\n", arg);
+            return -1;
+        }
+
+        if (strcmp(arg, "FILTER_NONE") == 0) {
+            proto_opt.filter = FILTER_NONE;
+            continue;  // next arg
+        } else if (strcmp(arg, "FILTER_IP") == 0) {
+            proto_opt.filter |= FILTER_IP;
+            continue;  // next arg
+        } else if (strcmp(arg, "FILTER_IPV6") == 0) {
+            proto_opt.filter |= FILTER_IPV6;
+            continue;  // next arg
+        } else if (strcmp(arg, "FILTER_ARP") == 0) {
+            proto_opt.filter |= FILTER_ARP;
+            continue;  // next arg
+        } else if (strncmp(arg, "FILTER_", 4) == 0) {
             fprintf(stderr, "%s not supported.\n", arg);
             return -1;
         }

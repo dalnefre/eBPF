@@ -20,6 +20,7 @@ Keyword options include:
   * `.eth_proto` = `ETH_P_IP` (default), `ETH_P_ALL`
   * `.ip_proto` = `IPPROTO_DEFAULT` (default), `IPPROTO_UDP`, `IPPROTO_TCP`, `IPPROTO_RAW`
   * `.ip_addr` = `INADDR_LOOPBACK` (default), `INADDR_ANY`, `INADDR_BROADCAST`
+  * `.filter` = `FILTER_NONE` (default), `FILTER_IP`, `FILTER_IPV6`, `FILTER_ARP`
 
 Network interfaces (`.if_index`, default =`0`) can be specified by name (e.g.: `if=eth0`) or number (e.g.: `if=2`).
 A list of network interfaces is available through the following command-line program:

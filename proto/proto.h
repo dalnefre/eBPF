@@ -32,7 +32,13 @@ typedef struct proto_opt {
     uint8_t     ip_proto;   // layer 4 protocol (IPPROTO_TCP, IPPROTO_UDP ...)
     uint32_t    ip_addr;    // IP address
     in_port_t   ip_port;    // IP port number
+    int         filter;     // filter flags
 } proto_opt_t;
+
+#define FILTER_NONE (0)
+#define FILTER_IP   (1<<0)
+#define FILTER_IPV6 (1<<1)
+#define FILTER_ARP  (1<<2)
 
 extern proto_opt_t proto_opt;  // global options
 
@@ -41,6 +47,7 @@ int bind_socket(int fd);
 struct sockaddr *clr_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr);
 struct sockaddr *set_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr);
 void dump_sockaddr(FILE *f, void *sockaddr, socklen_t len);
+int filter_message(void *addr, void *data, size_t limit);
 int find_mac_addr(int fd, void *mac_addr);
 void print_mac_addr(FILE *f, char *label, void *mac_addr);
 void print_proto_opt(FILE *f);

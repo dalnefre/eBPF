@@ -49,7 +49,13 @@ send_message(int fd, void *buffer, size_t size)
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
     n = sendto(fd, buffer, size, 0, addr, addr_len);
+    if (n < 0) return n;  // sendto error
+
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
+
+    fputs("Message: \n", stdout);
+    hexdump(stdout, buffer, n);
+
     return n;
 }
 
@@ -87,8 +93,6 @@ client()
         perror("send_message() failed");
         return -1;  // failure
     }
-    fputs("Message: \n", stdout);
-    hexdump(stdout, proto_buf, n);
 
     rv = close(fd);
     return rv;

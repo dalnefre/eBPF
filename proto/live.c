@@ -141,6 +141,8 @@ send_message(int fd, void *data, size_t size)
     print_timestamp("REALTIME: (send) ", CLOCK_REALTIME);
 
     n = sendto(fd, data, size, 0, addr, addr_len);
+    if (n < 0) return n;  // sendto error
+
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
 #if 1
@@ -160,6 +162,12 @@ recv_message(int fd, void *data, size_t limit)
 
     struct sockaddr *addr = clr_sockaddr(&address, &addr_len); 
     n = recvfrom(fd, data, limit, 0, addr, &addr_len);
+    if (n < 0) return n;  // recvfrom error
+
+    if (filter_message(addr, data, n)) {
+        return n;  // early (succesful) exit
+    }
+
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
     print_timestamp("REALTIME: (recv) ", CLOCK_REALTIME);

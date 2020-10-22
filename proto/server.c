@@ -20,7 +20,17 @@ recv_message(int fd, void *buffer, size_t limit)
 
     struct sockaddr *addr = clr_sockaddr(&address, &addr_len); 
     n = recvfrom(fd, buffer, limit, 0, addr, &addr_len);
+    if (n < 0) return n;  // recvfrom error
+
+    if (filter_message(addr, buffer, n)) {
+        return n;  // early (succesful) exit
+    }
+
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
+
+    fputs("Message: \n", stdout);
+    hexdump(stdout, buffer, n);
+
     return n;
 }
 
@@ -50,8 +60,6 @@ server()
             perror("recv_message() failed");
             return -1;  // failure
         }
-        fputs("Message: \n", stdout);
-        hexdump(stdout, proto_buf, n);
     }
 
     rv = close(fd);
