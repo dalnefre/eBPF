@@ -45,7 +45,7 @@ int
 bind_socket(int fd)
 {
     struct sockaddr_storage address;
-    size_t addr_len;
+    socklen_t addr_len;
     int rv = -1;
 
     struct sockaddr *addr = set_sockaddr(&address, &addr_len); 
@@ -55,7 +55,7 @@ bind_socket(int fd)
 }
 
 struct sockaddr *
-clr_sockaddr(struct sockaddr_storage *store, size_t *len_ptr)
+clr_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr)
 {
     if (proto_opt.family == AF_INET) {
         *len_ptr = sizeof(struct sockaddr_in);
@@ -69,7 +69,7 @@ clr_sockaddr(struct sockaddr_storage *store, size_t *len_ptr)
 }
 
 struct sockaddr *
-set_sockaddr(struct sockaddr_storage *store, size_t *len_ptr)
+set_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr)
 {
     struct sockaddr *sockaddr = clr_sockaddr(store, len_ptr);
     sockaddr->sa_family = proto_opt.family;
@@ -91,7 +91,7 @@ set_sockaddr(struct sockaddr_storage *store, size_t *len_ptr)
 }
 
 void
-dump_sockaddr(FILE *f, void *ptr, size_t len)
+dump_sockaddr(FILE *f, void *ptr, socklen_t len)
 {
     fputs("sockaddr: ", stdout);
     DEBUG(fputc('\n', stdout));
@@ -100,23 +100,23 @@ dump_sockaddr(FILE *f, void *ptr, size_t len)
     if (proto_opt.family == AF_INET) {
         struct sockaddr_in *addr = ptr;
 
-        fprintf(f, "fam=%d, addr=%u.%u.%u.%u, port=%d, len=%zu\n",
+        fprintf(f, "fam=%d, addr=%u.%u.%u.%u, port=%d, len=%lu\n",
             addr->sin_family,
             ((uint8_t *) &(addr->sin_addr.s_addr))[0],
             ((uint8_t *) &(addr->sin_addr.s_addr))[1],
             ((uint8_t *) &(addr->sin_addr.s_addr))[2],
             ((uint8_t *) &(addr->sin_addr.s_addr))[3],
             ntohs(addr->sin_port),
-            len);
+            (unsigned long)len);
 
     } else if (proto_opt.family == AF_PACKET) {
         struct sockaddr_ll *addr = ptr;
 
-        fprintf(f, "fam=%d, proto=0x%04x, if=%d, len=%zu\n",
+        fprintf(f, "fam=%d, proto=0x%04x, if=%d, len=%lu\n",
             addr->sll_family,
             ntohs(addr->sll_protocol),
             addr->sll_ifindex,
-            len);
+            (unsigned long)len);
 
     }
 }

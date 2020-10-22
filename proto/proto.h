@@ -38,9 +38,9 @@ extern proto_opt_t proto_opt;  // global options
 
 int create_socket();
 int bind_socket(int fd);
-struct sockaddr *clr_sockaddr(struct sockaddr_storage *store, size_t *len_ptr);
-struct sockaddr *set_sockaddr(struct sockaddr_storage *store, size_t *len_ptr);
-void dump_sockaddr(FILE *f, void *sockaddr, size_t len);
+struct sockaddr *clr_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr);
+struct sockaddr *set_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr);
+void dump_sockaddr(FILE *f, void *sockaddr, socklen_t len);
 int find_mac_addr(int fd, void *mac_addr);
 void print_mac_addr(FILE *f, char *label, void *mac_addr);
 void print_proto_opt(FILE *f);
