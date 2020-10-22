@@ -15,7 +15,7 @@ int
 recv_message(int fd, void *buffer, size_t limit)
 {
     struct sockaddr_storage address;
-    size_t addr_len;
+    socklen_t addr_len;
     int n; 
 
     struct sockaddr *addr = clr_sockaddr(&address, &addr_len); 
