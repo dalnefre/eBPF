@@ -116,7 +116,6 @@ static int handle_message(struct xdp_md *ctx)
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
     __u8 b = *msg_cursor++;
     if (b == array) {
-
         // get array size (in bytes)
         if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
         b = *msg_cursor++;
@@ -126,27 +125,6 @@ static int handle_message(struct xdp_md *ctx)
         }
         msg_end = msg_cursor + size;  // limit to array contents
         if (msg_end > msg_limit) return XDP_DROP;  // out of bounds
-
-    } else if (b == array_n) {
-
-        // get array size (in bytes)
-        if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-        b = *msg_cursor++;
-        size = SMOL2INT(b);
-        if ((size < 0) || (size > SMOL_MAX)) {
-            return XDP_DROP;  // bad size
-        }
-        msg_end = msg_cursor + size;  // limit to array contents
-        if (msg_end > msg_limit) return XDP_DROP;  // out of bounds
-
-        // get array element count
-        if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-        b = *msg_cursor++;
-        count = SMOL2INT(b);
-        if ((count < 0) || (count >= size)) {
-            return XDP_DROP;  // bad count
-        }
-
     } else {
         return XDP_DROP;  // bad message type
     }
