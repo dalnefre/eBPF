@@ -47,6 +47,18 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
     return offset;
 }
 
+static int parse_blob16(__u8 *data, __u8 *end, __u8 *dst)
+{
+    if (data + 18 > end) return 0;  // out of bounds
+    if (data[0] != octets) return 0;  // require raw octets
+    if (data[1] != n_16) return 0;  // require size = 16
+    __u64 *d = (void *)dst;
+    __u64 *s = (void *)data + 2;
+    d[0] = s[0];
+    d[1] = s[1];
+    return 18;
+}
+
 static int code_int16(__u8 *data, __u8 *end, __s16 i)
 {
     if (data + 4 > end) return 0;  // out of bounds
@@ -55,6 +67,18 @@ static int code_int16(__u8 *data, __u8 *end, __s16 i)
     data[2] = i;  // lsb
     data[3] = i >> 8;  // msb
     return 4;
+}
+
+static int code_blob16(__u8 *data, __u8 *end, __u8 *src)
+{
+    if (data + 18 > end) return 0;  // out of bounds
+    data[0] = octets;  // raw octets
+    data[1] = n_16;  // size = 16
+    __u64 *d = (void *)data + 2;
+    __u64 *s = (void *)src;
+    d[0] = s[0];
+    d[1] = s[1];
+    return 18;
 }
 
 
@@ -81,7 +105,7 @@ static int code_int16(__u8 *data, __u8 *end, __s16 i)
 void
 test_int()
 {
-    __u8 buf[16];
+    __u8 buf[32];
     __u8 buf_0[] = { n_0 };
     __u8 buf_1[] = { null };
     __u8 buf_2[] = { p_int_0, n_0 };
@@ -100,6 +124,11 @@ test_int()
     __u8 buf_9[] = { p_int_0, n_4, 0x10, 0x32, 0x54, 0x76 };
     __u8 buf_10[] = { p_int_0, n_10,
         'N', 'o', 't', 'A', 'N', 'u', 'm', 'b', 'e', 'r' };
+    __u8 buf_11[] = { octets, n_16,
+        0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7,
+        0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF,
+        0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8,
+        0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0 };
     int n;
     int i;
 
@@ -186,6 +215,11 @@ test_int()
     printf("buf: n=%d i=%d (0x%x)\n", n, i, i);
     assert(n == 4);
     assert(i == -12345);
+
+    n = code_blob16(buf, buf + sizeof(buf), buf_11);
+    assert(n == 18);
+    n = parse_blob16(buf_11, buf_11 + sizeof(buf_11), buf);
+    assert(n == 18);
 }
 
 int

@@ -11,6 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "state.c"  // common code for shared state-machine
+
 #define DEBUG(x)   /**/
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
@@ -31,30 +33,6 @@ typedef struct live_msg {
 
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-
-static int
-fwd_state(int state)
-{
-    switch (state) {
-    case 0:  return 1;
-    case 1:  return 2;
-    case 2:  return 1;
-    default: return 0;
-    }
-}
-
-#if 0
-static int
-rev_state(int state)
-{
-    switch (state) {
-    case 0:  return 0;
-    case 1:  return 2;
-    case 2:  return 1;
-    default: return 0;
-    }
-}
-#endif
 
 static int
 print_resolution(char *label, clockid_t clock)
@@ -247,7 +225,7 @@ process_message(live_msg_t *in, live_msg_t *out)
 {
     // act on message received
     out->state = in->other;
-    out->other = fwd_state(out->state);
+    out->other = next_state(out->state);
 #if SHARED_COUNT
     out->count = in->count + 1;  // update message counter
 #else
@@ -258,7 +236,7 @@ process_message(live_msg_t *in, live_msg_t *out)
         in->state, in->other, in->count,
         out->state, out->other, out->count);
 
-    if (out->count > 5) {
+    if (out->count > 13) {
         return 0;  // FIXME: halt ping/pong!
     }
 

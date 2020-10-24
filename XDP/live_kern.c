@@ -9,6 +9,8 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
+#include "../proto/state.c"  // common code for shared state-machine
+
 #define USE_BPF_MAPS 1  // monitor/control from userspace
 
 #if USE_BPF_MAPS
@@ -35,6 +37,11 @@ struct bpf_elf_map liveness_map SEC("maps") = {
 
 #define ETH_P_DALE (0xDA1E)
 
+typedef struct ait {
+    __u64 i;  // outbound
+    __u64 u;  // inbound
+} ait_t;
+
 static void copy_mac(void *dst, void *src)
 {
     __u16 *d = dst;
@@ -55,29 +62,41 @@ static void swap_mac_addrs(void *ethhdr)
     copy_mac(eth + 3, tmp);
 }
 
-static int
-fwd_state(int state)
+static int next_state_ait(int state, ait_t *ait)
 {
-    switch (state) {
-    case 0:  return 1;
-    case 1:  return 2;
-    case 2:  return 1;
-    default: return 0;
-    }
-}
+    // conditional state transition (checks for AIT)
+    int next = next_state(state);
+#if USE_BPF_MAPS
+    __u32 key;
+    __u64 *value_ptr;
 
-#if 0
-static int
-rev_state(int state)
-{
-    switch (state) {
-    case 0:  return 0;
-    case 1:  return 2;
-    case 2:  return 1;
-    default: return 0;
+    key = 0;
+    value_ptr = bpf_map_lookup_elem(&liveness_map, &key);
+    if (value_ptr) {
+        if ((state == 1) || (state == 2)) {  // ping/pong
+            __u8 *bp = (void *)value_ptr;
+
+            if (bp[0] != null) {  // AIT ready to send
+                next = 3;
+            }
+        } else if (state == 6) {  // AIT completed
+            *value_ptr = -1;
+        }
+        ait->i = *value_ptr;
     }
-}
+
+    key = 1;
+    value_ptr = bpf_map_lookup_elem(&liveness_map, &key);
+    if (value_ptr) {
+        if (state == 5) {  // AIT acknowledged
+            *value_ptr = ait->u;
+        } else {
+            ait->u = *value_ptr;
+        }
+    }
 #endif
+    return next;
+}
 
 static int next_seq_num(int seq_num)
 {
@@ -108,9 +127,9 @@ static int handle_message(struct xdp_md *ctx)
     __u8 *msg_cursor = msg_start;
     __u8 *msg_end = msg_limit;
     int size = 0;
-    int count = -1;
 #if USE_CODE_C
     int n;
+    ait_t ait = { -1, -1 };
 #endif
 
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
@@ -130,7 +149,7 @@ static int handle_message(struct xdp_md *ctx)
     }
 
     __u8 *msg_content = msg_cursor;  // start of array elements
-//    bpf_printk("array size=%d count=%d\n", size, count);
+//    bpf_printk("array size=%d\n", size);
 
     // get `state` field
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
@@ -154,6 +173,9 @@ static int handle_message(struct xdp_md *ctx)
     n = parse_int(msg_cursor, msg_end, &seq_num);
     if (n <= 0) return XDP_DROP;  // parse error
     msg_cursor += n;
+
+    // get `ait` field(s)
+    n = parse_blob16(msg_cursor, msg_end, (void *)&ait);
 #else
     if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
     b = *msg_cursor++;
@@ -164,7 +186,7 @@ static int handle_message(struct xdp_md *ctx)
 
     // calculate new state
     state = other;  // swap self <-> other
-    other = fwd_state(state);
+    other = next_state_ait(state, &ait);
     seq_num = next_seq_num(seq_num);
 
     // prepare reply message
@@ -174,6 +196,7 @@ static int handle_message(struct xdp_md *ctx)
 #if USE_CODE_C
     n = code_int16(msg_content + 2, msg_end, seq_num);
     if (n <= 0) return XDP_DROP;  // coding error
+    n = code_blob16(msg_cursor, msg_end, (void *)&ait);
 #else
     msg_content[2] = INT2SMOL(seq_num);
 #endif

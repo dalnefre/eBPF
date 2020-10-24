@@ -9,6 +9,7 @@ CFLAGS = -O2 -Wall -g
 
 TEST =	code \
 	json \
+	state \
 	util
 
 ALL =	client \
@@ -25,13 +26,17 @@ clean:
 test: $(TEST)
 	./code
 	./json
+	./state
 	./util
 
 client: client.o proto.o code.o util.o
 
 server: server.c proto.o util.o
 
-live: live.o proto.o code.o json.o util.o
+live: live.o state.c proto.o code.o json.o util.o
+
+state: state.c
+	cc $(CFLAGS) -DTEST_MAIN -o state state.c
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o
