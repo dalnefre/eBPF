@@ -32,9 +32,6 @@ typedef struct live_msg {
     } ait;
 } live_msg_t;
 
-//static char *msg_hello = "Hello, World!\n";
-//static int next_inc[] = { 1, 1, -1 };
-
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
@@ -99,14 +96,6 @@ create_message(void *data, size_t size, live_msg_t *live)
     n = (meta.end - meta.start);  // number of bytes written to buffer
     if (n <= 0) return 0;  // error
     offset += n;
-
-#if 0
-    // add extra blob content
-    n =  encode_blob(buffer + offset, size - offset,
-        msg_hello, strlen(msg_hello));
-    if (n <= 0) return 0;  // error
-    offset += n;
-#endif
 
     return offset;
 }
@@ -174,8 +163,7 @@ parse_message(void *data, size_t limit, live_msg_t *live_in)
     if (offset >= limit) return -1;  // out-of-bounds
     struct ethhdr *hdr = data;
     if (hdr->h_proto != htons(proto_opt.eth_proto)) return -1;  // bad protocol
-//    memcpy(eth_local, hdr->h_dest, ETH_ALEN);
-    memcpy(eth_remote, hdr->h_source, ETH_ALEN);
+    memcpy(eth_remote, hdr->h_source, ETH_ALEN);  // remember remote MAC
 
     // parse top-level value
     bstr_t bstr = {
@@ -248,8 +236,8 @@ process_message(live_msg_t *in, live_msg_t *out)
     printf("process_message: %d,%d #%d -> %d,%d #%d\n",
         in->state, in->other, in->count,
         out->state, out->other, out->count);
-    hexdump(stdout, &in->ait, sizeof(in->ait));
-    hexdump(stdout, &out->ait, sizeof(out->ait));
+//    hexdump(stdout, &in->ait, sizeof(in->ait));
+//    hexdump(stdout, &out->ait, sizeof(out->ait));
 
     if (out->count > 13) {
         return 0;  // FIXME: halt ping/pong!
@@ -282,7 +270,7 @@ server()
         perror("find_mac_addr() failed");
         return -1;  // failure
     }
-    print_mac_addr(stdout, "eth_remote = ", eth_remote);
+//    print_mac_addr(stdout, "eth_remote = ", eth_remote);
     print_mac_addr(stdout, "eth_local = ", eth_local);
 
     rv = bind_socket(fd);
@@ -326,6 +314,7 @@ server()
     }
 
     close(fd);
+
     return rv;
 }
 
@@ -351,5 +340,6 @@ main(int argc, char *argv[])
     print_resolution("REALTIME: ", CLOCK_REALTIME);
 
     rv = server();
+
     return rv;
 }
