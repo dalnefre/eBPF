@@ -100,6 +100,7 @@ extern int bstr_put_int(bstr_t *bstr, int i);
 extern int bstr_put_int16(bstr_t *bstr, int16_t i);
 extern int bstr_put_int32(bstr_t *bstr, int32_t i);
 extern int bstr_put_int64(bstr_t *bstr, int64_t i);
+extern int bstr_put_blob(bstr_t *bstr, void *data, size_t size);
 extern int bstr_open_array(bstr_t *bstr);
 extern int bstr_open_array_n(bstr_t *bstr, size_t n);
 extern int bstr_close_array(bstr_t *bstr);

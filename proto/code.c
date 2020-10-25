@@ -55,6 +55,7 @@ int
 bstr_put_raw(bstr_t *bstr, BYTE b)
 {
     if (bstr->end >= bstr->limit) return -1;
+    DEBUG(printf("bstr_put_raw: *%p = 0x%02x\n", bstr->end, b));
     *bstr->end++ = b;
     return 1;
 }
@@ -130,31 +131,46 @@ bstr_put_int64(bstr_t *bstr, int64_t i)
 }
 
 int
+bstr_put_blob(bstr_t *bstr, void *data, size_t size)
+{
+    size_t n = encode_blob(bstr->end, (bstr->limit - bstr->end), data, size);
+    DEBUG(printf("bstr_put_blob: encoded %zu bytes\n", n));
+    if (n == 0) return -1;
+    bstr->end += n;
+    return n;
+}
+
+int
 bstr_open_array(bstr_t *bstr)
 {
+    DEBUG(printf("> bstr_open_array\n"));
     bstr->start = bstr->end;
     if (bstr_put_raw(bstr, array) < 0) return -1;
     if (bstr_put_int(bstr, (bstr->limit - bstr->end)) < 0) return -1;
     bstr->content = bstr->end;
     bstr->cursor = bstr->end;
+    DEBUG(printf("< bstr_open_array %tu\n", bstr->end - bstr->start));
     return (bstr->end - bstr->start);  // number of bytes written to buffer
 }
 
 int
 bstr_open_array_n(bstr_t *bstr, size_t n)
 {
+    DEBUG(printf("> bstr_open_array_n %zu\n", n));
     bstr->start = bstr->end;
     if (bstr_put_raw(bstr, array_n) < 0) return -1;
     if (bstr_put_int(bstr, (bstr->limit - bstr->end)) < 0) return -1;
     bstr->content = bstr->end;
     if (bstr_put_int(bstr, n) < 0) return -1;
     bstr->cursor = bstr->end;
+    DEBUG(printf("< bstr_open_array_n %tu\n", bstr->end - bstr->start));
     return (bstr->end - bstr->start);  // number of bytes written to buffer
 }
 
 int
 bstr_close_array(bstr_t *bstr)
 {
+    DEBUG(printf("> bstr_close_array\n"));
     BYTE *bp = bstr->start + 1;
     DEBUG(hexdump(stdout, bstr->start, (bstr->end - bstr->start)));
     DEBUG(printf("start=%p bp=%p content=%p cursor=%p end=%p limit=%p\n",
@@ -163,6 +179,7 @@ bstr_close_array(bstr_t *bstr)
     size_t w = bstr->content - bp;
     size_t n = encode_int_fixed(bp, w, m);
     if (n == 0) return -1;
+    DEBUG(printf("< bstr_close_array %tu\n", bstr->end - bstr->start));
     return (bstr->end - bstr->start);  // number of bytes written to buffer
 }
 

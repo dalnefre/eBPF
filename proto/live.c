@@ -26,6 +26,10 @@ typedef struct live_msg {
     int         state;      // self state
     int         other;      // other state
     int         count;      // message count
+    struct {
+        int64_t     i;      // outbound ait
+        int64_t     u;      // inbound ait
+    } ait;
 } live_msg_t;
 
 //static char *msg_hello = "Hello, World!\n";
@@ -89,6 +93,7 @@ create_message(void *data, size_t size, live_msg_t *live)
     if (bstr_put_int(&meta, live->state) < 0) return 0;
     if (bstr_put_int(&meta, live->other) < 0) return 0;
     if (bstr_put_int16(&meta, live->count) < 0) return 0;
+    if (bstr_put_blob(&meta, &live->ait, sizeof(live->ait)) < 0) return 0;
     if (bstr_close_array(&meta) < 0) return 0;
 
     n = (meta.end - meta.start);  // number of bytes written to buffer
@@ -216,6 +221,14 @@ parse_message(void *data, size_t limit, live_msg_t *live_in)
     if (rv <= 0) return -1;  // error
     live_in->count = item.val.num.bits;
 
+    // read "ait" from message
+    rv = json_get_value(&item);
+    if (rv <= 0) return -1;  // error
+    if (item.type != JSON_String) return -1;  // require String
+    rv = sizeof(live_in->ait);
+    if (item.count != rv) return -1;  // require size = 16
+    memcpy(&live_in->ait, part.cursor, rv);
+
     offset = bstr.end - bstr.base;  // update final offset
     return offset;
 }
@@ -235,6 +248,8 @@ process_message(live_msg_t *in, live_msg_t *out)
     printf("process_message: %d,%d #%d -> %d,%d #%d\n",
         in->state, in->other, in->count,
         out->state, out->other, out->count);
+    hexdump(stdout, &in->ait, sizeof(in->ait));
+    hexdump(stdout, &out->ait, sizeof(out->ait));
 
     if (out->count > 13) {
         return 0;  // FIXME: halt ping/pong!
@@ -251,6 +266,8 @@ server()
         .state = 0,
         .other = 0,
         .count = 0,
+        .ait.i = null,
+        .ait.u = null,
     };
     live_msg_t live_in;
 
