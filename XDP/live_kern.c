@@ -118,68 +118,57 @@ static int next_seq_num(int seq_num)
     return seq_num;
 }
 
-static int handle_message(struct xdp_md *ctx)
+static int handle_message(__u8 *data, __u8 *end)
 {
-    __u8 *msg_base = (void *)(long)ctx->data;
-    __u8 *msg_start = msg_base + ETH_HLEN;
-    __u8 *msg_limit = (void *)(long)ctx->data_end;
-
-    __u8 *msg_cursor = msg_start;
-    __u8 *msg_end = msg_limit;
+    int offset = ETH_HLEN;
     int size = 0;
+    int state;
+    int other;
+    __s16 seq_num;
+    ait_t ait = { -1, -1 };
 #if USE_CODE_C
     int n;
-    ait_t ait = { -1, -1 };
 #endif
 
-    if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-    __u8 b = *msg_cursor++;
-    if (b == array) {
-        // get array size (in bytes)
-        if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-        b = *msg_cursor++;
-        size = SMOL2INT(b);
-        if ((size < SMOL_MIN) || (size > SMOL_MAX)) {
-            return XDP_DROP;  // bad size
-        }
-        msg_end = msg_cursor + size;  // limit to array contents
-        if (msg_end > msg_limit) return XDP_DROP;  // out of bounds
-    } else {
-        return XDP_DROP;  // bad message type
-    }
+    if (data + offset >= end) return XDP_DROP;  // out of bounds
+    if (data[offset++] != array) return XDP_DROP;  // bad message type
 
-    __u8 *msg_content = msg_cursor;  // start of array elements
+    // get array size (in bytes)
+    size = SMOL2INT(data[offset++]);
+    if ((size < SMOL_MIN) || (size > SMOL_MAX)) {
+        return XDP_DROP;  // bad size
+    }
 //    bpf_printk("array size=%d\n", size);
+    if (data + offset + size > end) return XDP_DROP;  // array to large
 
     // get `state` field
-    if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-    b = *msg_cursor++;
-    int state = SMOL2INT(b);
-    if ((state < 0) || (state > 2)) {
+    state = SMOL2INT(data[offset++]);
+    if ((state < 0) || (state > 6)) {
         return XDP_DROP;  // bad state
     }
 
     // get `other` field
-    if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-    b = *msg_cursor++;
-    int other = SMOL2INT(b);
-    if ((other < 0) || (other > 2)) {
+    other = SMOL2INT(data[offset++]);
+    if ((other < 0) || (other > 6)) {
         return XDP_DROP;  // bad other
     }
 
     // get `seq_num` field
 #if USE_CODE_C
-    int seq_num;
-    n = parse_int(msg_cursor, msg_end, &seq_num);
+    n = parse_int16(data + offset, end, &seq_num);
     if (n <= 0) return XDP_DROP;  // parse error
-    msg_cursor += n;
 
     // get `ait` field(s)
-    n = parse_blob16(msg_cursor, msg_end, (void *)&ait);
+    if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
+    if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
+    ait.i = bytes_to_u64(data + offset, end);
+    offset += 8;
+    ait.u = bytes_to_u64(data + offset, end);
 #else
-    if (msg_cursor >= msg_end) return XDP_DROP;  // out of bounds
-    b = *msg_cursor++;
-    int seq_num = SMOL2INT(b);
+    seq_num = SMOL2INT(data[offset++]);
+    if ((seq_num < SMOL_MIN) || (seq_num > SMOL_MAX)) {
+        return XDP_DROP;  // bad size
+    }
 #endif
 
     bpf_printk("%d,%d #%d <--\n", state, other, seq_num);
@@ -190,15 +179,22 @@ static int handle_message(struct xdp_md *ctx)
     seq_num = next_seq_num(seq_num);
 
     // prepare reply message
-    swap_mac_addrs(msg_base);
-    msg_content[0] = INT2SMOL(state);
-    msg_content[1] = INT2SMOL(other);
+    swap_mac_addrs(data);
+    offset = ETH_HLEN;
+    data[offset++] = INT2SMOL(state);
+    data[offset++] = INT2SMOL(other);
 #if USE_CODE_C
-    n = code_int16(msg_content + 2, msg_end, seq_num);
+    n = code_int16(data + offset, end, seq_num);
     if (n <= 0) return XDP_DROP;  // coding error
-    n = code_blob16(msg_cursor, msg_end, (void *)&ait);
+    offset += n;
+    data[offset++] = octets;  // raw bytes
+    data[offset++] = n_16;  // size = 16
+    n = u64_to_bytes(data + offset, end, ait.i);
+    if (n <= 0) return XDP_DROP;  // coding error
+    n = u64_to_bytes(data + offset, end, ait.u);
+    if (n <= 0) return XDP_DROP;  // coding error
 #else
-    msg_content[2] = INT2SMOL(seq_num);
+    data[offset++] = INT2SMOL(seq_num);
 #endif
 
     bpf_printk("%d,%d #%d <--\n", state, other, seq_num);
@@ -210,10 +206,10 @@ SEC("prog")
 int xdp_filter(struct xdp_md *ctx)
 {
 //    __u32 data_len = ctx->data_end - ctx->data;
-    void *data_end = (void *)(long)ctx->data_end;
+    void *end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
 
-    if (data + ETH_ZLEN > data_end) {
+    if (data + ETH_ZLEN > end) {
         return XDP_DROP;  // frame too small
     }
     struct ethhdr *eth = data;
@@ -226,7 +222,7 @@ int xdp_filter(struct xdp_md *ctx)
 #endif
     }
 
-    int rc = handle_message(ctx);
+    int rc = handle_message(data, end);
 //    bpf_printk("proto=0x%x len=%lu rc=%d\n", eth_proto, data_len, rc);
 
     return rc;

@@ -6,6 +6,50 @@
  */
 #include "code.h"
 
+static int u64_to_bytes(__u8 *data, __u8 *end, __u64 num)
+{
+    if (data + 8 > end) return 0;
+    data[0] = num;
+    num >>= 8;
+    data[1] = num;
+    num >>= 8;
+    data[2] = num;
+    num >>= 8;
+    data[3] = num;
+    num >>= 8;
+    data[4] = num;
+    num >>= 8;
+    data[5] = num;
+    num >>= 8;
+    data[6] = num;
+    num >>= 8;
+    data[7] = num;
+    return 8;
+}
+
+static __u64 bytes_to_u64(__u8 *data, __u8 *end)
+{
+    __u64 num = 0;
+
+    if (data + 8 > end) return 0;
+    num |= data[7];
+    num <<= 8;
+    num |= data[6];
+    num <<= 8;
+    num |= data[5];
+    num <<= 8;
+    num |= data[4];
+    num <<= 8;
+    num |= data[3];
+    num <<= 8;
+    num |= data[2];
+    num <<= 8;
+    num |= data[1];
+    num <<= 8;
+    num |= data[0];
+    return num;
+}
+
 static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
 {
     int offset = 0;
@@ -47,16 +91,23 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
     return offset;
 }
 
-static int parse_blob16(__u8 *data, __u8 *end, __u8 *dst)
+static int parse_int16(__u8 *data, __u8 *end, __s16 *ip)
 {
-    if (data + 18 > end) return 0;  // out of bounds
-    if (data[0] != octets) return 0;  // require raw octets
-    if (data[1] != n_16) return 0;  // require size = 16
-    __u64 *d = (void *)dst;
-    __u64 *s = (void *)data + 2;
-    d[0] = s[0];
-    d[1] = s[1];
-    return 18;
+    __s16 i = 0;
+
+    if (data + 4 > end) return 0;  // out of bounds
+    if (data[0] == m_int_0) {
+        i = -1;
+    } else if (data[0] != p_int_0) {
+        return 0;  // require +/- Int pad=0
+    }
+    if (data[1] != n_2) return 0;  // require size=2
+    i <<= 8;
+    i |= data[2];
+    i <<= 8;
+    i |= data[3];
+    *ip = i;
+    return 4;
 }
 
 static int code_int16(__u8 *data, __u8 *end, __s16 i)
@@ -67,18 +118,6 @@ static int code_int16(__u8 *data, __u8 *end, __s16 i)
     data[2] = i;  // lsb
     data[3] = i >> 8;  // msb
     return 4;
-}
-
-static int code_blob16(__u8 *data, __u8 *end, __u8 *src)
-{
-    if (data + 18 > end) return 0;  // out of bounds
-    data[0] = octets;  // raw octets
-    data[1] = n_16;  // size = 16
-    __u64 *d = (void *)data + 2;
-    __u64 *s = (void *)src;
-    d[0] = s[0];
-    d[1] = s[1];
-    return 18;
 }
 
 
@@ -129,6 +168,7 @@ test_int()
         0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF,
         0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8,
         0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0 };
+    __u64 u;
     int n;
     int i;
 
@@ -216,10 +256,8 @@ test_int()
     assert(n == 4);
     assert(i == -12345);
 
-    n = code_blob16(buf, buf + sizeof(buf), buf_11);
-    assert(n == 18);
-    n = parse_blob16(buf_11, buf_11 + sizeof(buf_11), buf);
-    assert(n == 18);
+    u = bytes_to_u64(buf_11 + 2, buf_11 + 10);
+    u64_to_bytes(buf, buf + sizeof(buf), u);
 }
 
 int
