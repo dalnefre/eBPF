@@ -9,8 +9,6 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
-#include "../proto/state.c"  // common code for shared state-machine
-
 #define USE_BPF_MAPS 1  // monitor/control from userspace
 
 #if USE_BPF_MAPS
@@ -61,6 +59,38 @@ static void swap_mac_addrs(void *ethhdr)
     copy_mac(eth, eth + 3);
     copy_mac(eth + 3, tmp);
 }
+
+static int
+next_state(int state)
+{
+    switch (state) {
+    case 0:  return 1;
+    case 1:  return 2;
+    case 2:  return 1;
+    case 3:  return 4;
+    case 4:  return 5;
+    case 5:  return 6;
+    case 6:  return 1;
+    default: return 0;
+    }
+}
+
+#if 0
+static int
+prev_state(int state)
+{
+    switch (state) {
+    case 0:  return 0;
+    case 1:  return 2;
+    case 2:  return 1;
+    case 3:  return 2;
+    case 4:  return 3;
+    case 5:  return 4;
+    case 6:  return 5;
+    default: return 0;
+    }
+}
+#endif
 
 static int next_state_ait(int state, ait_t *ait)
 {

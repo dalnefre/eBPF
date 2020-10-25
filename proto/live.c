@@ -11,8 +11,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#include "state.c"  // common code for shared state-machine
-
 #define DEBUG(x)   /**/
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
@@ -34,6 +32,38 @@ typedef struct live_msg {
 
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+
+static int
+next_state(int state)
+{
+    switch (state) {
+    case 0:  return 1;
+    case 1:  return 2;
+    case 2:  return 1;
+    case 3:  return 4;
+    case 4:  return 5;
+    case 5:  return 6;
+    case 6:  return 1;
+    default: return 0;
+    }
+}
+
+#if 0
+static int
+prev_state(int state)
+{
+    switch (state) {
+    case 0:  return 0;
+    case 1:  return 2;
+    case 2:  return 1;
+    case 3:  return 2;
+    case 4:  return 3;
+    case 5:  return 4;
+    case 6:  return 5;
+    default: return 0;
+    }
+}
+#endif
 
 static int
 print_resolution(char *label, clockid_t clock)
