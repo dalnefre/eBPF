@@ -27,7 +27,7 @@ static int u64_to_bytes(__u8 *data, __u8 *end, __u64 num)
     return 8;
 }
 
-static __u64 bytes_to_u64(__u8 *data, __u8 *end)
+static int bytes_to_u64(__u8 *data, __u8 *end, __u64 *ptr)
 {
     __u64 num = 0;
 
@@ -47,32 +47,33 @@ static __u64 bytes_to_u64(__u8 *data, __u8 *end)
     num |= data[1];
     num <<= 8;
     num |= data[0];
-    return num;
+    *ptr = num;
+    return 8;
 }
 
-static int parse_int16(__u8 *data, __u8 *end, __s16 *ip)
+static int parse_int16(__u8 *data, __u8 *end, __s16 *ptr)
 {
-    __s16 i;
+    __s16 num;
 
     if (data + 4 > end) return 0;  // out of bounds
     switch (data[0]) {
-        case p_int_0:   i = 0;     break;
-        case m_int_0:   i = -1;    break;
+        case p_int_0:   num = 0;   break;
+        case m_int_0:   num = -1;  break;
         default:        return 0;  // require +/- Int pad=0
     }
     if (data[1] != n_2) return 0;  // require size=2
-    i = (i << 16) | (data[3] << 8) | data[2];
-    *ip = i;
+    num = (num << 16) | (data[3] << 8) | data[2];
+    *ptr = num;
     return 4;
 }
 
-static int code_int16(__u8 *data, __u8 *end, __s16 i)
+static int code_int16(__u8 *data, __u8 *end, __s16 num)
 {
     if (data + 4 > end) return 0;  // out of bounds
-    data[0] = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    data[0] = (num < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
     data[1] = n_2;  // size = 2
-    data[2] = i;  // lsb
-    data[3] = i >> 8;  // msb
+    data[2] = num;  // lsb
+    data[3] = num >> 8;  // msb
     return 4;
 }
 
@@ -143,7 +144,8 @@ test_int()
     assert(len == 4);
     assert(s16 == -12345);
 
-    u64 = bytes_to_u64(buf_11 + 2, buf_11 + 10);
+    len = bytes_to_u64(buf_11 + 2, buf_11 + 10, &u64);
+    assert(len == sizeof(u64));
     u64_to_bytes(buf, buf + sizeof(buf), u64);
 }
 

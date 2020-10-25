@@ -167,9 +167,12 @@ static int handle_message(__u8 *data, __u8 *end)
     if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
     if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
 //    bpf_printk("octets n_16 offset=%d\n", offset);
-    ait.i = bytes_to_u64(data + offset, end);
-    offset += 8;
-    ait.u = bytes_to_u64(data + offset, end);
+    n = bytes_to_u64(data + offset, end, &ait.i);
+    if (n <= 0) return XDP_DROP;  // parse error
+    offset += n;
+    n = bytes_to_u64(data + offset, end, &ait.u);
+    if (n <= 0) return XDP_DROP;  // parse error
+    offset += n;
 #else
     seq_num = SMOL2INT(data[offset++]);
     if ((seq_num < SMOL_MIN) || (seq_num > SMOL_MAX)) {
