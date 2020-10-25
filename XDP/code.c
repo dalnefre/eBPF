@@ -93,19 +93,16 @@ static int parse_int(__u8 *data, __u8 *end, int *int_ptr)
 
 static int parse_int16(__u8 *data, __u8 *end, __s16 *ip)
 {
-    __s16 i = 0;
+    __s16 i;
 
     if (data + 4 > end) return 0;  // out of bounds
-    if (data[0] == m_int_0) {
-        i = -1;
-    } else if (data[0] != p_int_0) {
-        return 0;  // require +/- Int pad=0
+    switch (data[0]) {
+        case p_int_0:   i = 0;     break;
+        case m_int_0:   i = -1;    break;
+        default:        return 0;  // require +/- Int pad=0
     }
     if (data[1] != n_2) return 0;  // require size=2
-    i <<= 8;
-    i |= data[2];
-    i <<= 8;
-    i |= data[3];
+    i = (i << 16) | (data[3] << 8) | data[2];
     *ip = i;
     return 4;
 }

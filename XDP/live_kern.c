@@ -125,7 +125,7 @@ static int handle_message(__u8 *data, __u8 *end)
     int state;
     int other;
     __s16 seq_num;
-    ait_t ait = { -1, -1 };
+    ait_t ait = { null, null };
 #if USE_CODE_C
     int n;
 #endif
@@ -153,14 +153,20 @@ static int handle_message(__u8 *data, __u8 *end)
         return XDP_DROP;  // bad other
     }
 
+//    bpf_printk("state=%d other=%d\n", state, other);
+
     // get `seq_num` field
 #if USE_CODE_C
     n = parse_int16(data + offset, end, &seq_num);
+//    bpf_printk("n=%d seq_num=%d\n", n, (int)seq_num);
     if (n <= 0) return XDP_DROP;  // parse error
+    offset += n;
 
     // get `ait` field(s)
+//    bpf_printk("data+%d: 0x%x 0x%x\n", offset, data[offset], data[offset+1]);
     if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
     if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
+//    bpf_printk("octets n_16 offset=%d\n", offset);
     ait.i = bytes_to_u64(data + offset, end);
     offset += 8;
     ait.u = bytes_to_u64(data + offset, end);
@@ -177,10 +183,14 @@ static int handle_message(__u8 *data, __u8 *end)
     state = other;  // swap self <-> other
     other = next_state_ait(state, &ait);
     seq_num = next_seq_num(seq_num);
+//    bpf_printk("state=%d other=%d seq_num=%d\n", state, other, seq_num);
 
     // prepare reply message
     swap_mac_addrs(data);
     offset = ETH_HLEN;
+    data[offset++] = array;
+    data[offset++] = INT2SMOL(ETH_ZLEN - (ETH_HLEN + 2));  // max array size
+    int content = offset;
     data[offset++] = INT2SMOL(state);
     data[offset++] = INT2SMOL(other);
 #if USE_CODE_C
@@ -191,13 +201,17 @@ static int handle_message(__u8 *data, __u8 *end)
     data[offset++] = n_16;  // size = 16
     n = u64_to_bytes(data + offset, end, ait.i);
     if (n <= 0) return XDP_DROP;  // coding error
+    offset += 8;
     n = u64_to_bytes(data + offset, end, ait.u);
     if (n <= 0) return XDP_DROP;  // coding error
+    offset += 8;
 #else
     data[offset++] = INT2SMOL(seq_num);
 #endif
+//    bpf_printk("content=%d offset=%d\n", content, offset);
+    data[content - 1] = INT2SMOL(offset - content);  // final array size
 
-    bpf_printk("%d,%d #%d <--\n", state, other, seq_num);
+    bpf_printk("%d,%d #%d -->\n", state, other, seq_num);
 
     return XDP_TX;  // send updated frame out on same interface
 }
