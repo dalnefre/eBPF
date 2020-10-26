@@ -1,5 +1,5 @@
 /*
- * live.c -- Link liveness protocol
+ * ait.c -- Atomic Information Transfer protocol
  */
 #include "proto.h"
 #include "util.h"
@@ -20,11 +20,15 @@ static BYTE proto_buf[64];  // message-transfer buffer
 //static BYTE proto_buf[ETH_ZLEN];  // message-transfer buffer
 //static BYTE proto_buf[ETH_MIN_MTU];  // message-transfer buffer
 
-typedef struct live_msg {
+typedef struct ait_msg {
     int         state;      // self state
     int         other;      // other state
     int         count;      // message count
-} live_msg_t;
+    struct {
+        int64_t     i;      // outbound ait
+        int64_t     u;      // inbound ait
+    } ait;
+} ait_msg_t;
 
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -88,7 +92,7 @@ print_timestamp(char *label, clockid_t clock)
 }
 
 size_t
-create_message(void *data, size_t size, live_msg_t *msg)
+create_message(void *data, size_t size, ait_msg_t *msg)
 {
     size_t offset = 0;
     ptrdiff_t n;
@@ -116,6 +120,7 @@ create_message(void *data, size_t size, live_msg_t *msg)
     if (bstr_put_int(&meta, msg->state) < 0) return 0;
     if (bstr_put_int(&meta, msg->other) < 0) return 0;
     if (bstr_put_int16(&meta, msg->count) < 0) return 0;
+    if (bstr_put_blob(&meta, &msg->ait, sizeof(msg->ait)) < 0) return 0;
     if (bstr_close_array(&meta) < 0) return 0;
 
     n = (meta.end - meta.start);  // number of bytes written to buffer
@@ -178,7 +183,7 @@ recv_message(int fd, void *data, size_t limit)
 }
 
 int
-parse_message(void *data, size_t limit, live_msg_t *msg_in)
+parse_message(void *data, size_t limit, ait_msg_t *msg_in)
 {
     size_t offset = 0;
     int rv;
@@ -234,12 +239,20 @@ parse_message(void *data, size_t limit, live_msg_t *msg_in)
     if (rv <= 0) return -1;  // error
     msg_in->count = item.val.num.bits;
 
+    // read "ait" from message
+    rv = json_get_value(&item);
+    if (rv <= 0) return -1;  // error
+    if (item.type != JSON_String) return -1;  // require String
+    rv = sizeof(msg_in->ait);
+    if (item.count != rv) return -1;  // require size = 16
+    memcpy(&msg_in->ait, part.cursor, rv);
+
     offset = bstr.end - bstr.base;  // update final offset
     return offset;
 }
 
 int
-process_message(live_msg_t *in, live_msg_t *out)
+process_message(ait_msg_t *in, ait_msg_t *out)
 {
     // act on message received
     out->state = in->other;
@@ -253,6 +266,8 @@ process_message(live_msg_t *in, live_msg_t *out)
     printf("process_message: %d,%d #%d -> %d,%d #%d\n",
         in->state, in->other, in->count,
         out->state, out->other, out->count);
+//    hexdump(stdout, &in->ait, sizeof(in->ait));
+//    hexdump(stdout, &out->ait, sizeof(out->ait));
 
     if (out->count > 13) {
         return 0;  // FIXME: halt ping/pong!
@@ -265,12 +280,14 @@ int
 server()
 {
     int fd, rv = -1;
-    live_msg_t msg_out = {
+    ait_msg_t msg_out = {
         .state = 0,
         .other = 0,
         .count = 0,
+        .ait.i = null,
+        .ait.u = null,
     };
-    live_msg_t msg_in;
+    ait_msg_t msg_in;
 
     fd = create_socket();
     if (fd < 0) {
