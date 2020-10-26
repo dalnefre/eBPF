@@ -12,6 +12,7 @@ OBJS =	pass_kern.o \
 	ethertype_kern.o \
 	map_array_kern.o \
 	live_kern.o \
+	ait_kern.o \
 	multi_kern.o
 
 TEST =	code
@@ -48,6 +49,9 @@ map_array_kern.o: map_array_kern.c
 
 live_kern.o: live_kern.c code.c
 	clang $(CLANG_FLAGS) -c -o live_kern.o live_kern.c
+
+ait_kern.o: ait_kern.c code.c
+	clang $(CLANG_FLAGS) -c -o ait_kern.o ait_kern.c
 
 multi_kern.o: multi_kern.c
 	clang $(CLANG_FLAGS) -c -o multi_kern.o multi_kern.c

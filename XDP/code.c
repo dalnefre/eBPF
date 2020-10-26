@@ -10,51 +10,6 @@
 #define __inline  inline __attribute__((always_inline))
 #endif
 
-static int u64_to_bytes(__u8 *data, __u8 *end, __u64 num)
-{
-    if (data + 8 > end) return 0;
-    data[0] = num;
-    num >>= 8;
-    data[1] = num;
-    num >>= 8;
-    data[2] = num;
-    num >>= 8;
-    data[3] = num;
-    num >>= 8;
-    data[4] = num;
-    num >>= 8;
-    data[5] = num;
-    num >>= 8;
-    data[6] = num;
-    num >>= 8;
-    data[7] = num;
-    return 8;
-}
-
-static int bytes_to_u64(__u8 *data, __u8 *end, __u64 *ptr)
-{
-    __u64 num = 0;
-
-    if (data + 8 > end) return 0;
-    num |= data[7];
-    num <<= 8;
-    num |= data[6];
-    num <<= 8;
-    num |= data[5];
-    num <<= 8;
-    num |= data[4];
-    num <<= 8;
-    num |= data[3];
-    num <<= 8;
-    num |= data[2];
-    num <<= 8;
-    num |= data[1];
-    num <<= 8;
-    num |= data[0];
-    *ptr = num;
-    return 8;
-}
-
 static __inline __s16 bytes_to_int16(__u8 *data)
 {
     return (__s16)(data[1]) << 8
@@ -218,9 +173,8 @@ test_int()
     assert(len == 4);
     assert(s16 == -12345);
 
-    len = bytes_to_u64(buf_11 + 2, buf_11 + 10, &u64);
-    assert(len == sizeof(u64));
-    u64_to_bytes(buf, buf + sizeof(buf), u64);
+    u64 = bytes_to_int64(buf_11 + 2);
+    int64_to_bytes(buf, u64);
 }
 
 int

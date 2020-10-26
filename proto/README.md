@@ -66,7 +66,7 @@ A hexdump of each message is printed to `stdout`.
 The `live` program is a client/server implementing a basic link-liveness protocol.
 It sets default options `AF_PACKET SOCK_RAW ETH_P_DALE` before processing command-line arguments.
 It opens a socket, binds it, sends an initialization message, and waits for messages in a loop.
-It responds to each link-liveness message it receives, up to a message-count limit (currently 5).
+It responds to each link-liveness message it receives, up to a message-count limit (currently 13).
 Note that opening an `AF_PACKET` socket requires root permission, so run the program like this:
 
 ```

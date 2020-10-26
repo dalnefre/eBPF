@@ -1,7 +1,7 @@
 /*
- * live_kern.c -- XDP in-kernel eBPF filter
+ * ait_kern.c -- XDP in-kernel eBPF filter
  *
- * Implement link-liveness protocol in XDP
+ * Implement atomic information transfer protocol in XDP
  */
 #include <stddef.h>
 #include <linux/bpf.h>
@@ -9,19 +9,15 @@
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
 
-#define USE_BPF_MAPS 1  // monitor/control from userspace
-
-#if USE_BPF_MAPS
 #include <iproute2/bpf_elf.h>
 
-struct bpf_elf_map liveness_map SEC("maps") = {
+struct bpf_elf_map ait_map SEC("maps") = {
     .type       = BPF_MAP_TYPE_ARRAY,
     .size_key   = sizeof(__u32),
     .size_value = sizeof(__u64),
     .pinning    = PIN_GLOBAL_NS,
     .max_elem   = 4,
 };
-#endif /* USE_BPF_MAPS */
 
 #define USE_CODE_C 1  // include encode/decode helpers
 
@@ -34,6 +30,11 @@ struct bpf_elf_map liveness_map SEC("maps") = {
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
 
 #define ETH_P_DALE (0xDA1E)
+
+typedef struct ait {
+    __u64 i;  // outbound
+    __u64 u;  // inbound
+} ait_t;
 
 static void copy_mac(void *dst, void *src)
 {
@@ -87,23 +88,54 @@ prev_state(int state)
 }
 #endif
 
+static int next_state_ait(int state, ait_t *ait)
+{
+    // conditional state transition (checks for AIT)
+    __u32 key;
+    __u64 *value_ptr;
+
+    int next = next_state(state);
+
+    key = 0;
+    value_ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (value_ptr) {
+        if ((state == 1) || (state == 2)) {  // ping/pong
+            __u8 *bp = (void *)value_ptr;
+
+            if (bp[0] != null) {  // AIT ready to send
+                next = 3;
+            }
+        } else if (state == 6) {  // AIT completed
+            *value_ptr = -1;
+        }
+        ait->i = *value_ptr;
+    }
+
+    key = 1;
+    value_ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (value_ptr) {
+        if (state == 5) {  // AIT acknowledged
+            *value_ptr = ait->u;
+        } else {
+            ait->u = *value_ptr;
+        }
+    }
+    return next;
+}
+
 static int next_seq_num(int seq_num)
 {
-#if USE_BPF_MAPS
     __u32 key;
     __u64 *value_ptr;
 
     key = 3;
-    value_ptr = bpf_map_lookup_elem(&liveness_map, &key);
+    value_ptr = bpf_map_lookup_elem(&ait_map, &key);
     if (value_ptr) {
         __sync_fetch_and_add(value_ptr, 1);
         seq_num = *value_ptr;
     } else {
         ++seq_num;
     }
-#else
-    ++seq_num;
-#endif
     return seq_num;
 }
 
@@ -114,6 +146,7 @@ static int handle_message(__u8 *data, __u8 *end)
     int state;
     int other;
     __s16 seq_num;
+    ait_t ait = { null, null };
 #if USE_CODE_C
     int n;
 #endif
@@ -149,6 +182,16 @@ static int handle_message(__u8 *data, __u8 *end)
 //    bpf_printk("n=%d seq_num=%d\n", n, (int)seq_num);
     if (n <= 0) return XDP_DROP;  // parse error
     offset += n;
+
+    // get `ait` field(s)
+//    bpf_printk("data+%d: 0x%x 0x%x\n", offset, data[offset], data[offset+1]);
+    if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
+    if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
+//    bpf_printk("octets n_16 offset=%d\n", offset);
+    ait.i = bytes_to_int64(data + offset);
+    offset += 8;
+    ait.u = bytes_to_int64(data + offset);
+    offset += 8;
 #else
     seq_num = SMOL2INT(data[offset++]);
     if ((seq_num < SMOL_MIN) || (seq_num > SMOL_MAX)) {
@@ -160,7 +203,7 @@ static int handle_message(__u8 *data, __u8 *end)
 
     // calculate new state
     state = other;  // swap self <-> other
-    other = next_state(state);
+    other = next_state_ait(state, &ait);
     seq_num = next_seq_num(seq_num);
 //    bpf_printk("state=%d other=%d seq_num=%d\n", state, other, seq_num);
 
@@ -176,6 +219,12 @@ static int handle_message(__u8 *data, __u8 *end)
     n = code_int16(data + offset, end, seq_num);
     if (n <= 0) return XDP_DROP;  // coding error
     offset += n;
+    data[offset++] = octets;  // raw bytes
+    data[offset++] = n_16;  // size = 16
+    int64_to_bytes(data + offset, ait.i);
+    offset += 8;
+    int64_to_bytes(data + offset, ait.u);
+    offset += 8;
 #else
     data[offset++] = INT2SMOL(seq_num);
 #endif
