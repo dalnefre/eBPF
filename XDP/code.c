@@ -6,6 +6,10 @@
  */
 #include "code.h"
 
+#ifndef __inline
+#define __inline  inline __attribute__((always_inline))
+#endif
+
 static int u64_to_bytes(__u8 *data, __u8 *end, __u64 num)
 {
     if (data + 8 > end) return 0;
@@ -51,30 +55,100 @@ static int bytes_to_u64(__u8 *data, __u8 *end, __u64 *ptr)
     return 8;
 }
 
+static __inline __s16 bytes_to_int16(__u8 *data)
+{
+    return (__s16)(data[1]) << 8
+         | (__s16)(data[0]);
+}
+
+static __inline void int16_to_bytes(__u8 *data, __s16 num)
+{
+    data[0] = num;  // lsb
+    data[1] = num >> 8;  // msb
+}
+
+static __inline __s32 bytes_to_int32(__u8 *data)
+{
+    return (__s32)(data[3]) << 24
+         | (__s32)(data[2]) << 16
+         | (__s32)(data[1]) << 8
+         | (__s32)(data[0]);
+}
+
+static __inline void int32_to_bytes(__u8 *data, __s32 num)
+{
+    data[0] = num;  // lsb
+    data[1] = num >> 8;
+    data[2] = num >> 16;
+    data[3] = num >> 24;  // msb
+}
+
+static __inline __s64 bytes_to_int64(__u8 *data)
+{
+    return (__s64)(data[7]) << 56
+         | (__s64)(data[6]) << 48
+         | (__s64)(data[5]) << 40
+         | (__s64)(data[4]) << 32
+         | (__s64)(data[3]) << 24
+         | (__s64)(data[2]) << 16
+         | (__s64)(data[1]) << 8
+         | (__s64)(data[0]);
+}
+
+static __inline void int64_to_bytes(__u8 *data, __s64 num)
+{
+    data[0] = num;  // lsb
+    data[1] = num >> 8;
+    data[2] = num >> 16;
+    data[3] = num >> 24;
+    data[4] = num >> 32;
+    data[5] = num >> 40;
+    data[6] = num >> 48;
+    data[7] = num >> 56;  // msb
+}
+
+static int parse_int_n(__u8 *data, __u8 *end, int *ptr, size_t n)
+{
+    if (data + 2 + n > end) return 0;  // out of bounds
+    if ((data[0] & 0xF0) != 0x10) return 0;  // require +/- Int
+    if (data[1] != INT2SMOL(n)) return 0;  // require size=n
+    switch (n) {
+        case 2:  *ptr = (int)bytes_to_int16(data + 2);  break;
+        case 4:  *ptr = (int)bytes_to_int32(data + 2);  break;
+        case 8:  *ptr = (int)bytes_to_int64(data + 2);  break;
+        default: return 0;  // bad size
+    }
+    return 2 + n;
+}
+
+static int code_int_n(__u8 *data, __u8 *end, int num, size_t n)
+{
+    if (data + 2 + n > end) return 0;  // out of bounds
+    data[0] = (num < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    data[1] = INT2SMOL(n);  // size = n
+    switch (n) {
+        case 2:  int16_to_bytes(data + 2, (__s16)num);  break;
+        case 4:  int32_to_bytes(data + 2, (__s32)num);  break;
+        case 8:  int64_to_bytes(data + 2, (__s64)num);  break;
+        default: return 0;  // bad size
+    }
+    return 2 + n;
+}
+
 static int parse_int16(__u8 *data, __u8 *end, __s16 *ptr)
 {
-    __s16 num;
-
-    if (data + 4 > end) return 0;  // out of bounds
-    switch (data[0]) {
-        case p_int_0:   num = 0;   break;
-        case m_int_0:   num = -1;  break;
-        default:        return 0;  // require +/- Int pad=0
+    int num = 0;
+    int n = parse_int_n(data, end, &num, sizeof(*ptr));
+    if (n > 0) {
+        *ptr = (__s16)num;
     }
-    if (data[1] != n_2) return 0;  // require size=2
-    num = (num << 16) | (data[3] << 8) | data[2];
-    *ptr = num;
-    return 4;
+    return n;
 }
 
 static int code_int16(__u8 *data, __u8 *end, __s16 num)
 {
-    if (data + 4 > end) return 0;  // out of bounds
-    data[0] = (num < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
-    data[1] = n_2;  // size = 2
-    data[2] = num;  // lsb
-    data[3] = num >> 8;  // msb
-    return 4;
+    int i = num;
+    return code_int_n(data, end, i, sizeof(num));
 }
 
 

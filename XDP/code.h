@@ -4,6 +4,7 @@
 #ifndef _CODE_H_
 #define _CODE_H_
 
+#include <stddef.h>
 #include <linux/types.h>
 
 #ifndef BYTE
