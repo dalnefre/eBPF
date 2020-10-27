@@ -120,7 +120,9 @@ create_message(void *data, size_t size, ait_msg_t *msg)
     if (bstr_put_int(&meta, msg->state) < 0) return 0;
     if (bstr_put_int(&meta, msg->other) < 0) return 0;
     if (bstr_put_int16(&meta, msg->count) < 0) return 0;
-    if (bstr_put_blob(&meta, &msg->ait, sizeof(msg->ait)) < 0) return 0;
+    if (msg->other > 2) {
+        if (bstr_put_blob(&meta, &msg->ait, sizeof(msg->ait)) < 0) return 0;
+    }
     if (bstr_close_array(&meta) < 0) return 0;
 
     n = (meta.end - meta.start);  // number of bytes written to buffer
@@ -240,12 +242,14 @@ parse_message(void *data, size_t limit, ait_msg_t *msg_in)
     msg_in->count = item.val.num.bits;
 
     // read "ait" from message
-    rv = json_get_value(&item);
-    if (rv <= 0) return -1;  // error
-    if (item.type != JSON_String) return -1;  // require String
-    rv = sizeof(msg_in->ait);
-    if (item.count != rv) return -1;  // require size = 16
-    memcpy(&msg_in->ait, part.cursor, rv);
+    if (msg_in->other > 2) {
+        rv = json_get_value(&item);
+        if (rv <= 0) return -1;  // error
+        if (item.type != JSON_String) return -1;  // require String
+        rv = sizeof(msg_in->ait);
+        if (item.count != rv) return -1;  // require size = 16
+        memcpy(&msg_in->ait, part.cursor, rv);
+    }
 
     offset = bstr.end - bstr.base;  // update final offset
     return offset;

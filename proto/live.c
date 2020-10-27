@@ -36,10 +36,7 @@ next_state(int state)
     case 0:  return 1;
     case 1:  return 2;
     case 2:  return 1;
-    case 3:  return 4;
-    case 4:  return 5;
-    case 5:  return 6;
-    case 6:  return 1;
+    case 3:  return 2;  // reject ait
     default: return 0;
     }
 }
@@ -52,10 +49,6 @@ prev_state(int state)
     case 0:  return 0;
     case 1:  return 2;
     case 2:  return 1;
-    case 3:  return 2;
-    case 4:  return 3;
-    case 5:  return 4;
-    case 6:  return 5;
     default: return 0;
     }
 }
