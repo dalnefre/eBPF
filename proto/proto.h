@@ -33,6 +33,7 @@ typedef struct proto_opt {
     uint32_t    ip_addr;    // IP address
     in_port_t   ip_port;    // IP port number
     int         filter;     // filter flags
+    char        *ait;       // atomic information transfer
 } proto_opt_t;
 
 #define FILTER_NONE (0)

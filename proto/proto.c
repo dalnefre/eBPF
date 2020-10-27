@@ -17,6 +17,7 @@ proto_opt_t proto_opt = {   // global options
     .ip_addr = INADDR_LOOPBACK, // IP address
     .ip_port = 8888,            // IP port number
     .filter = FILTER_NONE,      // filter flags
+    .ait = NULL,                // atomic information transfer
 };
 
 int
@@ -240,6 +241,11 @@ print_proto_opt(FILE *f)
         }
     }
 
+    // Atomic Information Transfer
+    if (proto_opt.ait) {
+        fprintf(f, " ait=\"%s\"", proto_opt.ait);
+    }
+
     fputc('\n', f);
 }
 
@@ -385,6 +391,11 @@ parse_args(int *argc, char *argv[])
                 index = if_nametoindex(arg + 3);
             }
             proto_opt.if_index = index;
+            continue;  // next arg
+        }
+
+        if (strncmp(arg, "ait=", 4) == 0) {
+            proto_opt.ait = arg + 4;
             continue;  // next arg
         }
 

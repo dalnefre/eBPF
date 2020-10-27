@@ -258,9 +258,35 @@ parse_message(void *data, size_t limit, ait_msg_t *msg_in)
 int
 process_message(ait_msg_t *in, ait_msg_t *out)
 {
+    // deliver ait
+    if (in->other == 5) {
+        fputs("AIT received:\n", stdout);
+        hexdump(stdout, &in->ait, sizeof(in->ait));
+    }
+
     // act on message received
     out->state = in->other;
     out->other = next_state(out->state);
+    out->ait.u = in->ait.i;
+    if (proto_opt.ait) {
+        size_t z = sizeof(out->ait.i);
+        switch (out->state) {
+            case 1:  // FALL-THRU
+            case 2:
+                strncpy((char *)&out->ait.i, proto_opt.ait, z);
+                out->other = 3;
+                break;
+            case 6:
+                if (strlen(proto_opt.ait) < z) {
+                    proto_opt.ait = NULL;
+                } else {
+                    proto_opt.ait += z;
+                }
+                break;
+        }
+    } else {
+        out->ait.i = -1;
+    }
 #if SHARED_COUNT
     out->count = in->count + 1;  // update message counter
 #else
@@ -270,7 +296,6 @@ process_message(ait_msg_t *in, ait_msg_t *out)
     printf("process_message: %d,%d #%d -> %d,%d #%d\n",
         in->state, in->other, in->count,
         out->state, out->other, out->count);
-//    hexdump(stdout, &in->ait, sizeof(in->ait));
 //    hexdump(stdout, &out->ait, sizeof(out->ait));
 
     if (out->count > 13) {
