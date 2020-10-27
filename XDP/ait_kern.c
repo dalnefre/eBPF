@@ -83,6 +83,7 @@ static int next_state_ait(int state, ait_t *ait)
     __u64 *value_ptr;
 
     int next = next_state(state);
+    ait->u = ait->i;
 
     key = 0;
     value_ptr = bpf_map_lookup_elem(&ait_map, &key);
@@ -94,6 +95,7 @@ static int next_state_ait(int state, ait_t *ait)
                 next = 3;
             }
         } else if (state == 6) {  // AIT completed
+            bpf_printk("SENT: 0x%llx\n", __builtin_bswap64(*value_ptr));
             *value_ptr = -1;
         }
         ait->i = *value_ptr;
@@ -103,6 +105,7 @@ static int next_state_ait(int state, ait_t *ait)
     value_ptr = bpf_map_lookup_elem(&ait_map, &key);
     if (value_ptr) {
         if (state == 5) {  // AIT acknowledged
+            bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(ait->u));
             *value_ptr = ait->u;
         } else {
             ait->u = *value_ptr;
