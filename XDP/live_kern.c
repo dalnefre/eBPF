@@ -35,24 +35,18 @@ struct bpf_elf_map liveness_map SEC("maps") = {
 
 #define ETH_P_DALE (0xDA1E)
 
-static void copy_mac(void *dst, void *src)
-{
-    __u16 *d = dst;
-    __u16 *s = src;
+#ifndef __inline
+#define __inline  inline __attribute__((always_inline))
+#endif
 
-    d[0] = s[0];
-    d[1] = s[1];
-    d[2] = s[2];
-}
-
-static void swap_mac_addrs(void *ethhdr)
+static __inline void swap_mac_addrs(void *ethhdr)
 {
     __u16 tmp[3];
     __u16 *eth = ethhdr;
 
-    copy_mac(tmp, eth);
-    copy_mac(eth, eth + 3);
-    copy_mac(eth + 3, tmp);
+    __builtin_memcpy(tmp, eth, 6);
+    __builtin_memcpy(eth, eth + 3, 6);
+    __builtin_memcpy(eth + 3, tmp, 6);
 }
 
 static int
@@ -62,10 +56,7 @@ next_state(int state)
     case 0:  return 1;
     case 1:  return 2;
     case 2:  return 1;
-    case 3:  return 4;
-    case 4:  return 5;
-    case 5:  return 6;
-    case 6:  return 1;
+    case 3:  return 2;  // reject ait
     default: return 0;
     }
 }
@@ -78,10 +69,6 @@ prev_state(int state)
     case 0:  return 0;
     case 1:  return 2;
     case 2:  return 1;
-    case 3:  return 2;
-    case 4:  return 3;
-    case 5:  return 4;
-    case 6:  return 5;
     default: return 0;
     }
 }
@@ -170,6 +157,7 @@ static int handle_message(__u8 *data, __u8 *end)
     data[offset++] = array;
     data[offset++] = INT2SMOL(ETH_ZLEN - (ETH_HLEN + 2));  // max array size
     int content = offset;
+    __builtin_memset((data + content), 0xFF, ETH_ZLEN - (ETH_HLEN + 2));
     data[offset++] = INT2SMOL(state);
     data[offset++] = INT2SMOL(other);
 #if USE_CODE_C

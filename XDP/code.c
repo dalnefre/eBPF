@@ -62,7 +62,7 @@ static __inline void int64_to_bytes(__u8 *data, __s64 num)
     data[7] = num >> 56;  // msb
 }
 
-static int parse_int_n(__u8 *data, __u8 *end, int *ptr, size_t n)
+static __inline int parse_int_n(__u8 *data, __u8 *end, int *ptr, size_t n)
 {
     if (data + 2 + n > end) return 0;  // out of bounds
     if ((data[0] & 0xF0) != 0x10) return 0;  // require +/- Int
@@ -76,7 +76,7 @@ static int parse_int_n(__u8 *data, __u8 *end, int *ptr, size_t n)
     return 2 + n;
 }
 
-static int code_int_n(__u8 *data, __u8 *end, int num, size_t n)
+static __inline int code_int_n(__u8 *data, __u8 *end, int num, size_t n)
 {
     if (data + 2 + n > end) return 0;  // out of bounds
     data[0] = (num < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0

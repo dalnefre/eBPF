@@ -19,13 +19,7 @@ struct bpf_elf_map ait_map SEC("maps") = {
     .max_elem   = 4,
 };
 
-#define USE_CODE_C 1  // include encode/decode helpers
-
-#if USE_CODE_C
 #include "code.c"  // data encoding/decoding
-#else
-#include "code.h"  // data encoding/decoding
-#endif
 
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
 
@@ -36,24 +30,18 @@ typedef struct ait {
     __u64 u;  // inbound
 } ait_t;
 
-static void copy_mac(void *dst, void *src)
+#ifndef __inline
+#define __inline  inline __attribute__((always_inline))
+#endif
+
+static __inline void swap_mac_addrs(void *ethhdr)
 {
-    __u16 *d = dst;
-    __u16 *s = src;
+    __u8 tmp[6];
+    __u8 *eth = ethhdr;
 
-    d[0] = s[0];
-    d[1] = s[1];
-    d[2] = s[2];
-}
-
-static void swap_mac_addrs(void *ethhdr)
-{
-    __u16 tmp[3];
-    __u16 *eth = ethhdr;
-
-    copy_mac(tmp, eth);
-    copy_mac(eth, eth + 3);
-    copy_mac(eth + 3, tmp);
+    __builtin_memcpy(tmp, eth, 6);
+    __builtin_memcpy(eth, eth + 6, 6);
+    __builtin_memcpy(eth + 6, tmp, 6);
 }
 
 static int
@@ -147,9 +135,7 @@ static int handle_message(__u8 *data, __u8 *end)
     int other;
     __s16 seq_num;
     ait_t ait = { null, null };
-#if USE_CODE_C
     int n;
-#endif
 
     if (data + offset >= end) return XDP_DROP;  // out of bounds
     if (data[offset++] != array) return XDP_DROP;  // bad message type
@@ -177,27 +163,22 @@ static int handle_message(__u8 *data, __u8 *end)
 //    bpf_printk("state=%d other=%d\n", state, other);
 
     // get `seq_num` field
-#if USE_CODE_C
     n = parse_int16(data + offset, end, &seq_num);
 //    bpf_printk("n=%d seq_num=%d\n", n, (int)seq_num);
     if (n <= 0) return XDP_DROP;  // parse error
     offset += n;
 
     // get `ait` field(s)
-//    bpf_printk("data+%d: 0x%x 0x%x\n", offset, data[offset], data[offset+1]);
-    if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
-    if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
-//    bpf_printk("octets n_16 offset=%d\n", offset);
-    ait.i = bytes_to_int64(data + offset);
-    offset += 8;
-    ait.u = bytes_to_int64(data + offset);
-    offset += 8;
-#else
-    seq_num = SMOL2INT(data[offset++]);
-    if ((seq_num < SMOL_MIN) || (seq_num > SMOL_MAX)) {
-        return XDP_DROP;  // bad size
+    if (other > 2) {
+//        bpf_printk("data+%d: 0x%x 0x%x\n", offset, data[offset], data[offset+1]);
+        if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
+        if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
+//        bpf_printk("octets n_16 offset=%d\n", offset);
+        ait.i = bytes_to_int64(data + offset);
+        offset += 8;
+        ait.u = bytes_to_int64(data + offset);
+        offset += 8;
     }
-#endif
 
     bpf_printk("%d,%d #%d <--\n", state, other, seq_num);
 
@@ -211,23 +192,23 @@ static int handle_message(__u8 *data, __u8 *end)
     swap_mac_addrs(data);
     offset = ETH_HLEN;
     data[offset++] = array;
-    data[offset++] = INT2SMOL(ETH_ZLEN - (ETH_HLEN + 2));  // max array size
+    int max_content = ETH_ZLEN - (ETH_HLEN + 2);
+    data[offset++] = INT2SMOL(max_content);  // max array size
     int content = offset;
+    __builtin_memset((data + content), 0xFF, max_content);
     data[offset++] = INT2SMOL(state);
     data[offset++] = INT2SMOL(other);
-#if USE_CODE_C
     n = code_int16(data + offset, end, seq_num);
     if (n <= 0) return XDP_DROP;  // coding error
     offset += n;
-    data[offset++] = octets;  // raw bytes
-    data[offset++] = n_16;  // size = 16
-    int64_to_bytes(data + offset, ait.i);
-    offset += 8;
-    int64_to_bytes(data + offset, ait.u);
-    offset += 8;
-#else
-    data[offset++] = INT2SMOL(seq_num);
-#endif
+    if (other > 2) {
+        data[offset++] = octets;  // raw bytes
+        data[offset++] = n_16;  // size = 16
+        int64_to_bytes(data + offset, ait.i);
+        offset += 8;
+        int64_to_bytes(data + offset, ait.u);
+        offset += 8;
+    }
 //    bpf_printk("content=%d offset=%d\n", content, offset);
     data[content - 1] = INT2SMOL(offset - content);  // final array size
 
