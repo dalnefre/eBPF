@@ -14,6 +14,7 @@
 #define DEBUG(x)   /**/
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
+#define DUMP_PACKETS 0  // hexdump raw packets send/received
 
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
@@ -21,6 +22,7 @@ static BYTE proto_buf[64];  // message-transfer buffer
 //static BYTE proto_buf[ETH_MIN_MTU];  // message-transfer buffer
 
 typedef struct ait_msg {
+    struct timespec ts;     // timestamp
     int         state;      // self state
     int         other;      // other state
     int         count;      // message count
@@ -65,32 +67,6 @@ prev_state(int state)
 }
 #endif
 
-static int
-print_resolution(char *label, clockid_t clock)
-{
-    struct timespec ts;
-
-    int rv = clock_getres(CLOCK_REALTIME, &ts);
-    if (rv >= 0) {
-        printf("%sresolution %zu.%09ld\n",
-            label, (size_t)ts.tv_sec, ts.tv_nsec);
-    }
-    return rv;
-}
-
-static int
-print_timestamp(char *label, clockid_t clock)
-{
-    struct timespec ts;
-
-    int rv = clock_gettime(CLOCK_REALTIME, &ts);
-    if (rv >= 0) {
-        printf("%stimestamp %zu.%09ld\n",
-            label, (size_t)ts.tv_sec, ts.tv_nsec);
-    }
-    return rv;
-}
-
 size_t
 create_message(void *data, size_t size, ait_msg_t *msg)
 {
@@ -133,7 +109,7 @@ create_message(void *data, size_t size, ait_msg_t *msg)
 }
 
 int
-send_message(int fd, void *data, size_t size)
+send_message(int fd, void *data, size_t size, ait_msg_t *msg)
 {
     struct sockaddr_storage address;
     socklen_t addr_len;
@@ -142,15 +118,16 @@ send_message(int fd, void *data, size_t size)
     struct sockaddr *addr = set_sockaddr(&address, &addr_len); 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
-    print_timestamp("REALTIME: (send) ", CLOCK_REALTIME);
+    clock_gettime(CLOCK_REALTIME, &msg->ts);
 
     n = sendto(fd, data, size, 0, addr, addr_len);
     if (n < 0) return n;  // sendto error
 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
-#if 1
-    fprintf(stdout, "Message[%d] --> \n", n);
+#if DUMP_PACKETS
+    fprintf(stdout, "%zu.%09ld Message[%d] --> \n",
+        (size_t)msg->ts.tv_sec, (long)msg->ts.tv_nsec, n);
     hexdump(stdout, data, size);
 #endif
 
@@ -158,7 +135,7 @@ send_message(int fd, void *data, size_t size)
 }
 
 int
-recv_message(int fd, void *data, size_t limit)
+recv_message(int fd, void *data, size_t limit, ait_msg_t *msg)
 {
     struct sockaddr_storage address;
     socklen_t addr_len;
@@ -168,16 +145,17 @@ recv_message(int fd, void *data, size_t limit)
     n = recvfrom(fd, data, limit, 0, addr, &addr_len);
     if (n < 0) return n;  // recvfrom error
 
+    clock_gettime(CLOCK_REALTIME, &msg->ts);
+
     if (filter_message(addr, data, n)) {
         return n;  // early (succesful) exit
     }
 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
-    print_timestamp("REALTIME: (recv) ", CLOCK_REALTIME);
-
-#if 1
-    fprintf(stdout, "Message[%d] <-- \n", n);
+#if DUMP_PACKETS
+    fprintf(stdout, "%zu.%09ld Message[%d] <-- \n",
+        (size_t)msg->ts.tv_sec, (long)msg->ts.tv_nsec, n);
     hexdump(stdout, proto_buf, (n < 0 ? limit : n));
 #endif
 
@@ -260,8 +238,8 @@ process_message(ait_msg_t *in, ait_msg_t *out)
 {
     // deliver ait
     if (in->other == 5) {
-        fputs("AIT received:\n", stdout);
-        hexdump(stdout, &in->ait, sizeof(in->ait));
+        fputs("AIT rcvd:\n", stdout);
+        hexdump(stdout, &in->ait.i, sizeof(in->ait.i));
     }
 
     // act on message received
@@ -275,6 +253,8 @@ process_message(ait_msg_t *in, ait_msg_t *out)
             case 2:
                 strncpy((char *)&out->ait.i, proto_opt.ait, z);
                 out->other = 3;
+                fputs("AIT send:\n", stdout);
+                hexdump(stdout, &out->ait.i, sizeof(out->ait.i));
                 break;
             case 6:
                 if (strlen(proto_opt.ait) < z) {
@@ -293,10 +273,10 @@ process_message(ait_msg_t *in, ait_msg_t *out)
     out->count = out->count + 1;  // update message counter
 #endif
 
-    printf("process_message: %d,%d #%d -> %d,%d #%d\n",
+    printf("process_message: %zu.%09ld %d,%d #%d -> %d,%d #%d\n",
+        (size_t)in->ts.tv_sec, (long)in->ts.tv_nsec,
         in->state, in->other, in->count,
         out->state, out->other, out->count);
-//    hexdump(stdout, &out->ait, sizeof(out->ait));
 
     if (out->count > 13) {
         return 0;  // FIXME: halt ping/pong!
@@ -349,13 +329,13 @@ server()
         }
 
 //        rv = send_message(fd, proto_buf, n);
-        rv = send_message(fd, proto_buf, ETH_ZLEN);
+        rv = send_message(fd, proto_buf, ETH_ZLEN, &msg_out);
         if (rv <= 0) {
             perror("send_message() failed");
             break;  // failure
         }
 
-        rv = recv_message(fd, proto_buf, sizeof(proto_buf));
+        rv = recv_message(fd, proto_buf, sizeof(proto_buf), &msg_in);
         if (rv <= 0) {
             perror("recv_message() failed");
             break;  // failure
@@ -396,7 +376,14 @@ main(int argc, char *argv[])
         return 1;
     }
 
-    print_resolution("REALTIME: ", CLOCK_REALTIME);
+    // print real-time resolution
+    struct timespec ts;
+    if (clock_getres(CLOCK_REALTIME, &ts) < 0) {
+        perror("clock_getres() failed");
+        return -1;
+    }
+    printf("CLOCK_REALTIME resolution %zu.%09ld\n",
+        (size_t)ts.tv_sec, (long)ts.tv_nsec);
 
     rv = server();
 

@@ -14,6 +14,7 @@
 #define DEBUG(x)   /**/
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
+#define DUMP_PACKETS 1  // hexdump raw packets send/received
 
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
@@ -135,7 +136,7 @@ send_message(int fd, void *data, size_t size)
 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
-#if 1
+#if DUMP_PACKETS
     fprintf(stdout, "Message[%d] --> \n", n);
     hexdump(stdout, data, size);
 #endif
@@ -162,7 +163,7 @@ recv_message(int fd, void *data, size_t limit)
 
     print_timestamp("REALTIME: (recv) ", CLOCK_REALTIME);
 
-#if 1
+#if DUMP_PACKETS
     fprintf(stdout, "Message[%d] <-- \n", n);
     hexdump(stdout, proto_buf, (n < 0 ? limit : n));
 #endif
