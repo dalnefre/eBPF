@@ -24,7 +24,9 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
 #define TIMESTAMPS 0  // record packet processing timestamps
 #define MONOLITHIC 1  // use straight-line code for packet handling
+#define ZERO_COPY  1  // apply in-place edits to packet buffer
 #define UNALIGNED  1  // assume unaligned access for packet data
+#define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define AIT_IN_MAP 1  // communicate AIT through BPF MAP
 #define LOG_PROTO  1  // log all protocol messages exchanged
 
@@ -90,6 +92,94 @@ static __inline int prev_state(int state)
 #endif
 
 #if MONOLITHIC
+#if ZERO_COPY
+#define MESSAGE_OFS   (ETH_HLEN + 0)
+#define MSG_LEN_OFS   (MESSAGE_OFS + 1)
+#define MSG_DATA_OFS  (MESSAGE_OFS + 2)
+#define STATE_OFS     (MSG_DATA_OFS + 0)
+#define OTHER_OFS     (MSG_DATA_OFS + 1)
+#define COUNT_OFS     (MSG_DATA_OFS + 2)
+#define COUNT_LEN_OFS (COUNT_OFS + 1)
+#define COUNT_LSB_OFS (COUNT_OFS + 2)
+#define COUNT_MSB_OFS (COUNT_OFS + 3)
+#define BLOB_OFS      (COUNT_OFS + 4)
+#define BLOB_LEN_OFS  (BLOB_OFS + 1)
+#define BLOB_AIT_OFS  (BLOB_OFS + 2)
+#define AIT_SIZE      (8)
+#define AIT_I_OFS     (BLOB_AIT_OFS + 0)
+#define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE)
+#define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)
+
+static int handle_message(__u8 *data, __u8 *end)
+{
+    __u8 b;
+    __s16 n;
+
+    if (data + MSG_END_OFS > end) return XDP_DROP;  // message too small
+    if (data[MESSAGE_OFS] != array) return XDP_DROP;  // require array
+    if (data[COUNT_OFS] != p_int_0) return XDP_DROP;  // require +INT (pad=0)
+    if (data[COUNT_LEN_OFS] != n_2) return XDP_DROP;  // require size=2
+    b = data[OTHER_OFS];
+    n = (data[COUNT_MSB_OFS] << 8) | data[COUNT_LSB_OFS];
+#if LOG_PROTO
+    bpf_printk("%d,%d #%d <--\n", SMOL2INT(data[STATE_OFS]), SMOL2INT(b), n);
+#endif
+    if (data[MSG_LEN_OFS] == n_24) {  // ait len = 6 + 18
+        // message carries AIT
+        if (data[BLOB_OFS] != octets) return XDP_DROP;  // require octets
+        if (data[BLOB_LEN_OFS] != n_16) return XDP_DROP;  // require size=16
+        switch (b) {
+            case n_3: {  // got ait
+                data[OTHER_OFS] = n_4;
+                break;
+            }
+            case n_4: {  // ack ait
+                data[OTHER_OFS] = n_5;
+                break;
+            }
+            case n_5: {  // ack ack
+                data[OTHER_OFS] = n_6;
+                break;
+            }
+            case n_6: {  // complete
+                data[OTHER_OFS] = n_1;
+                break;
+            }
+            default: return XDP_DROP;  // bad state
+        }
+        __builtin_memcpy(data + AIT_U_OFS, data + AIT_I_OFS, AIT_SIZE);
+    } else if (data[MSG_LEN_OFS] != n_6) {  // liveness len = 6
+        return XDP_DROP;  // bad message length
+    } else {
+        // liveness message
+        switch (b) {
+            case n_0: {  // init
+                data[OTHER_OFS] = n_1;
+                break;
+            }
+            case n_1: {  // ping
+                data[OTHER_OFS] = n_2;
+                break;
+            }
+            case n_2: {  // pong
+                data[OTHER_OFS] = n_1;
+                break;
+            }
+            default: return XDP_DROP;  // bad state
+        }
+    }
+    // common processing
+    data[STATE_OFS] = b;  // processing state
+    ++n;  // update sequence number
+    data[COUNT_LSB_OFS] = n;
+    data[COUNT_MSB_OFS] = n >> 8;
+    swap_mac_addrs(data);
+#if LOG_PROTO
+    bpf_printk("%d,%d #%d -->\n", SMOL2INT(b), SMOL2INT(data[OTHER_OFS]), n);
+#endif
+    return XDP_TX;  // send updated frame out on same interface
+}
+#else /* !ZERO_COPY */
 static int next_state_ait(int state, ait_t *ait)
 {
     // conditional state transition (checks for AIT)
@@ -175,10 +265,22 @@ static int handle_message(__u8 *data, __u8 *end)
         if (data[offset++] != octets) return XDP_DROP;  // require raw bytes
         if (data[offset++] != n_16) return XDP_DROP;  // require size = 16
 //        bpf_printk("octets n_16 offset=%d\n", offset);
+#if UNALIGNED
+#if USE_MEMCPY
+        __builtin_memcpy(&ait, data + offset, sizeof(ait));
+        offset += sizeof(ait);
+#else
         ait.i = bytes_to_int64(data + offset);
         offset += 8;
         ait.u = bytes_to_int64(data + offset);
         offset += 8;
+#endif
+#else
+        ait.i = *(__u64 *)(data + offset);
+        offset += 8;
+        ait.u = *(__u64 *)(data + offset);
+        offset += 8;
+#endif
     }
 
 #if LOG_PROTO
@@ -207,10 +309,22 @@ static int handle_message(__u8 *data, __u8 *end)
     if (other > 2) {
         data[offset++] = octets;  // raw bytes
         data[offset++] = n_16;  // size = 16
+#if UNALIGNED
+#if USE_MEMCPY
+        __builtin_memcpy(data + offset, &ait, sizeof(ait));
+        offset += sizeof(ait);
+#else
         int64_to_bytes(data + offset, ait.i);
         offset += 8;
         int64_to_bytes(data + offset, ait.u);
         offset += 8;
+#endif
+#else
+        *(__u64 *)(data + offset) = ait.i;
+        offset += 8;
+        *(__u64 *)(data + offset) = ait.u;
+        offset += 8;
+#endif
     }
 //    bpf_printk("content=%d offset=%d\n", content, offset);
     data[content - 1] = INT2SMOL(offset - content);  // final array size
@@ -221,6 +335,7 @@ static int handle_message(__u8 *data, __u8 *end)
 
     return XDP_TX;  // send updated frame out on same interface
 }
+#endif /* ZERO_COPY */
 #else /* !MONOLITHIC */
 static int parse_message(__u8 *data, __u8 *end, ait_msg_t *in)
 {
