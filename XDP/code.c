@@ -90,22 +90,6 @@ static __inline int code_int_n(__u8 *data, __u8 *end, int num, size_t n)
     return 2 + n;
 }
 
-static int parse_int16(__u8 *data, __u8 *end, __s16 *ptr)
-{
-    int num = 0;
-    int n = parse_int_n(data, end, &num, sizeof(*ptr));
-    if (n > 0) {
-        *ptr = (__s16)num;
-    }
-    return n;
-}
-
-static int code_int16(__u8 *data, __u8 *end, __s16 num)
-{
-    int i = num;
-    return code_int_n(data, end, i, sizeof(num));
-}
-
 
 #ifdef TEST_MAIN
 #include <stdlib.h>
@@ -137,43 +121,42 @@ test_int()
         0x8, 0x9, 0xA, 0xB, 0xC, 0xD, 0xE, 0xF,
         0xF, 0xE, 0xD, 0xC, 0xB, 0xA, 0x9, 0x8,
         0x7, 0x6, 0x5, 0x4, 0x3, 0x2, 0x1, 0x0 };
-    __s16 s16;
-    __u64 u64;
+    int num;
     int len;
 
-    s16 = 0xDEAD;
-    len = parse_int16(buf_0, buf_0 + sizeof(buf_0), &s16);
-    printf("buf_0: len=%d s16=%d (0x%x)\n", len, (int)s16, (int)s16);
+    num = 0xDEAD;
+    len = parse_int_n(buf_0, buf_0 + sizeof(buf_0), &num, 2);
+    printf("buf_0: len=%d num=%d (0x%x)\n", len, num, num);
     assert(len == 4);
-    assert(s16 == 0);
+    assert(num == 0);
 
-    s16 = 0xDEAD;
-    len = parse_int16(buf_1, buf_1 + sizeof(buf_1), &s16);
-    printf("buf_1: len=%d s16=%d (0x%x)\n", len, (int)s16, (int)s16);
+    num = 0xDEAD;
+    len = parse_int_n(buf_1, buf_1 + sizeof(buf_1), &num, 2);
+    printf("buf_1: len=%d num=%d (0x%x)\n", len, num, num);
     assert(len == 4);
-    assert(s16 == 1);
+    assert(num == 1);
 
-    s16 = 0xDEAD;
-    len = parse_int16(buf_2, buf_2 + sizeof(buf_2), &s16);
-    printf("buf_2: len=%d s16=%d (0x%x)\n", len, (int)s16, (int)s16);
+    num = 0xDEAD;
+    len = parse_int_n(buf_2, buf_2 + sizeof(buf_2), &num, 2);
+    printf("buf_2: len=%d num=%d (0x%x)\n", len, num, num);
     assert(len == 4);
-    assert(s16 == 32767);
+    assert(num == 32767);
 
-    s16 = 0xDEAD;
-    len = parse_int16(buf_3, buf_3 + sizeof(buf_3), &s16);
-    printf("buf_3: len=%d s16=%d (0x%x)\n", len, (int)s16, (int)s16);
+    num = 0xDEAD;
+    len = parse_int_n(buf_3, buf_3 + sizeof(buf_3), &num, 2);
+    printf("buf_3: len=%d num=%d (0x%x)\n", len, num, num);
     assert(len == 4);
-    assert(s16 == -1);
+    assert(num == -1);
 
-    len = code_int16(buf, buf + sizeof(buf), -12345);
+    len = code_int_n(buf, buf + sizeof(buf), -12345, 2);
     assert(len == 4);
-    s16 = 0xDEAD;
-    len = parse_int16(buf, buf + sizeof(buf), &s16);
-    printf("buf: len=%d s16=%d (0x%x)\n", len, (int)s16, (int)s16);
+    num = 0xDEAD;
+    len = parse_int_n(buf, buf + sizeof(buf), &num, 2);
+    printf("buf: len=%d num=%d (0x%x)\n", len, num, num);
     assert(len == 4);
-    assert(s16 == -12345);
+    assert(num == -12345);
 
-    u64 = bytes_to_int64(buf_11 + 2);
+    __u64 u64 = bytes_to_int64(buf_11 + 2);
     int64_to_bytes(buf, u64);
 }
 

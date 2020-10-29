@@ -100,7 +100,7 @@ static int handle_message(__u8 *data, __u8 *end)
     int size = 0;
     int state;
     int other;
-    __s16 seq_num;
+    int seq_num;
 #if USE_CODE_C
     int n;
 #endif
@@ -132,7 +132,7 @@ static int handle_message(__u8 *data, __u8 *end)
 
     // get `seq_num` field
 #if USE_CODE_C
-    n = parse_int16(data + offset, end, &seq_num);
+    n = parse_int_n(data + offset, end, &seq_num, 2);
 //    bpf_printk("n=%d seq_num=%d\n", n, (int)seq_num);
     if (n <= 0) return XDP_DROP;  // parse error
     offset += n;
@@ -161,7 +161,7 @@ static int handle_message(__u8 *data, __u8 *end)
     data[offset++] = INT2SMOL(state);
     data[offset++] = INT2SMOL(other);
 #if USE_CODE_C
-    n = code_int16(data + offset, end, seq_num);
+    n = code_int_n(data + offset, end, seq_num, 2);
     if (n <= 0) return XDP_DROP;  // coding error
     offset += n;
 #else
