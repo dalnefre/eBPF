@@ -14,6 +14,7 @@
 #define DEBUG(x)   /**/
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
+#define LOG_PROTO    1  // log each protocol messages exchange
 #define DUMP_PACKETS 0  // hexdump raw packets send/received
 
 //static BYTE proto_buf[256];  // message-transfer buffer
@@ -273,10 +274,12 @@ process_message(ait_msg_t *in, ait_msg_t *out)
     out->count = out->count + 1;  // update message counter
 #endif
 
-    printf("process_message: %zu.%09ld %d,%d #%d -> %d,%d #%d\n",
+#if LOG_PROTO
+    printf("  %zu.%09ld %d,%d #%d -> %d,%d #%d\n",
         (size_t)in->ts.tv_sec, (long)in->ts.tv_nsec,
         in->state, in->other, in->count,
         out->state, out->other, out->count);
+#endif
 
     if (out->count > 13) {
         return 0;  // FIXME: halt ping/pong!
