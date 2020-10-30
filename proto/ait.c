@@ -15,7 +15,7 @@
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
 #define LOG_PROTO    1  // log each protocol messages exchange
-#define DUMP_PACKETS 1  // hexdump raw packets send/received
+#define DUMP_PACKETS 0  // hexdump raw packets send/received
 
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
@@ -228,6 +228,9 @@ parse_message(void *data, size_t limit, ait_msg_t *msg_in)
         rv = sizeof(msg_in->ait);
         if (item.count != rv) return -1;  // require size = 16
         memcpy(&msg_in->ait, part.cursor, rv);
+    } else {
+        msg_in->ait.i = -1;
+        msg_in->ait.u = -1;
     }
 
     offset = bstr.end - bstr.base;  // update final offset
