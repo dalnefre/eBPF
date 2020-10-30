@@ -22,35 +22,30 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #include "code.c"  // data encoding/decoding
 
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
-#define TIMESTAMPS 0  // record packet processing timestamps
-#define MONOLITHIC 1  // use straight-line code for packet handling
 #define ZERO_COPY  1  // apply in-place edits to packet buffer
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
-#define AIT_IN_MAP 1  // communicate AIT through BPF MAP
 #define LOG_PROTO  0  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
 
 #define ETH_P_DALE (0xDA1E)
 
-typedef struct ait {
-    __u64 i;  // outbound
-    __u64 u;  // inbound
-} ait_t;
-
-typedef struct ait_msg {
-    int   state;  // self state
-    int   other;  // other state
-    int   count;  // message count
-    ait_t ait;    // AIT buffers
-#if TIMESTAMPS
-    __u64 ts;     // timestamp
-#endif
-} ait_msg_t;
-
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))
 #endif
+
+static __inline void
+swap_mac_addrs(void *ethhdr)
+{
+    __u16 tmp[3];
+    __u16 *eth = ethhdr;
+
+    tmp[0] = eth[0]; tmp[1] = eth[1]; tmp[2] = eth[2];
+    eth[0] = eth[3]; eth[1] = eth[4]; eth[2] = eth[5];
+    eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
+}
+
+#if ZERO_COPY
 
 static __inline void
 copy_ait(void *dst, void *src)
@@ -65,49 +60,6 @@ copy_ait(void *dst, void *src)
     *((__u64 *) dst) = *((__u64 *) src);
 #endif
 }
-
-static __inline void
-swap_mac_addrs(void *ethhdr)
-{
-    __u16 tmp[3];
-    __u16 *eth = ethhdr;
-
-    tmp[0] = eth[0]; tmp[1] = eth[1]; tmp[2] = eth[2];
-    eth[0] = eth[3]; eth[1] = eth[4]; eth[2] = eth[5];
-    eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
-}
-
-static __inline int
-next_state(int state)
-{
-    switch (state) {
-    case 0:  return 1;
-    case 1:  return 2;
-    case 2:  return 1;
-    case 3:  return 4;
-    case 4:  return 5;
-    case 5:  return 6;
-    case 6:  return 1;
-    default: return 0;
-    }
-}
-
-#if 0
-static __inline int
-prev_state(int state)
-{
-    switch (state) {
-    case 0:  return 0;
-    case 1:  return 2;
-    case 2:  return 1;
-    case 3:  return 2;
-    case 4:  return 3;
-    case 5:  return 4;
-    case 6:  return 5;
-    default: return 0;
-    }
-}
-#endif
 
 static __inline __u64 *
 acquire_ait()
@@ -145,8 +97,6 @@ update_seq_num(int seq_num)
     return seq_num;
 }
 
-#if MONOLITHIC
-#if ZERO_COPY
 #define MESSAGE_OFS   (ETH_HLEN + 0)
 #define MSG_LEN_OFS   (MESSAGE_OFS + 1)
 #define MSG_DATA_OFS  (MESSAGE_OFS + 2)
@@ -176,8 +126,8 @@ handle_message(__u8 *data, __u8 *end)
     if (data[MESSAGE_OFS] != array) return XDP_DROP;  // require array
     if (data[COUNT_OFS] != p_int_0) return XDP_DROP;  // require +INT (pad=0)
     if (data[COUNT_LEN_OFS] != n_2) return XDP_DROP;  // require size=2
-    b = data[OTHER_OFS];
     n = (data[COUNT_MSB_OFS] << 8) | data[COUNT_LSB_OFS];
+    b = data[OTHER_OFS];
 #if LOG_PROTO
     bpf_printk("%d,%d #%d <--\n", SMOL2INT(data[STATE_OFS]), SMOL2INT(b), n);
 #endif
@@ -262,7 +212,46 @@ handle_message(__u8 *data, __u8 *end)
 #endif
     return XDP_TX;  // send updated frame out on same interface
 }
+
 #else /* !ZERO_COPY */
+
+typedef struct ait {
+    __u64 i;  // outbound
+    __u64 u;  // inbound
+} ait_t;
+
+static __inline int
+next_state(int state)
+{
+    switch (state) {
+    case 0:  return 1;
+    case 1:  return 2;
+    case 2:  return 1;
+    case 3:  return 4;
+    case 4:  return 5;
+    case 5:  return 6;
+    case 6:  return 1;
+    default: return 0;
+    }
+}
+
+#if 0
+static __inline int
+prev_state(int state)
+{
+    switch (state) {
+    case 0:  return 0;
+    case 1:  return 2;
+    case 2:  return 1;
+    case 3:  return 2;
+    case 4:  return 3;
+    case 5:  return 4;
+    case 6:  return 5;
+    default: return 0;
+    }
+}
+#endif
+
 static int
 next_state_ait(int state, ait_t *ait)
 {
@@ -420,255 +409,8 @@ handle_message(__u8 *data, __u8 *end)
 
     return XDP_TX;  // send updated frame out on same interface
 }
+
 #endif /* ZERO_COPY */
-#else /* !MONOLITHIC */
-static int
-parse_message(__u8 *data, __u8 *end, ait_msg_t *in)
-{
-    int n;
-
-    if (data + ETH_ZLEN > end) return -1;  // packet too small
-#if TIMESTAMPS
-    in->ts = bpf_ktime_get_ns();
-#endif
-
-    data += ETH_HLEN;  // skip Ethernet header
-    if (data + 2 > end) return -1;  // out of bounds
-    if (data[0] != array) return -1;  // require array
-    int size = SMOL2INT(data[1]);  // array size (in bytes)
-//    bpf_printk("array size=%d\n", size);
-    if ((size < 6) || (size > SMOL_MAX)) {
-        return -1;  // bad size
-    }
-
-    data += 2;
-    if (data + size > end) return -1;  // array to large
-
-    // get `state` field
-    n = SMOL2INT(data[0]);
-    if ((n < 0) || (n > 6)) {
-        return -1;  // bad state
-    }
-    in->state = n;
-
-    // get `other` field
-    n = SMOL2INT(data[1]);
-    if ((n < 0) || (n > 6)) {
-        return -1;  // bad other
-    }
-    in->other = n;
-
-//    bpf_printk("state=%d other=%d\n", in->state, in->other);
-
-    // get `seq_num` field
-    if (data[2] != p_int_0) return -1;  // require +INT (pad=0)
-    if (data[3] != n_2) return -1;  // require size = 2
-    in->count = bytes_to_int16(data + 4);
-
-    // get `ait` field(s)
-    if (size > 6) {
-        if (size < 6 + 18) return -1;  // AIT too small
-        data += 6;
-        if (data + 18 > end) return -1;  // FIXME: superflous check?
-        if (data[0] != octets) return -1;  // require raw bytes
-        if (data[1] != n_16) return -1;  // require size = 16
-#if UNALIGNED
-//        in->ait.i = bytes_to_int64(data + 2);
-//        in->ait.u = bytes_to_int64(data + 10);
-        __builtin_memcpy(&in->ait, data + 2, sizeof(in->ait));
-#else
-        in->ait.i = *(__u64 *)(data + 2);
-        in->ait.u = *(__u64 *)(data + 10);
-#endif
-    }
-
-#if LOG_PROTO
-    bpf_printk("%d,%d #%d <--\n", in->state, in->other, in->count);
-#endif
-    return 0;
-}
-
-static int
-process_message(ait_msg_t *in, ait_msg_t *out)
-{
-    __u32 key;
-    __u64 *value_ptr;
-    __u64 value;
-
-    out->state = in->other;  // swap self <-> other
-    out->other = next_state(out->state);
-    out->ait.u = in->ait.i;
-
-#if AIT_IN_MAP
-#if 1
-    switch (out->state) {
-        case 1: // FALL-THRU
-        case 2: {
-            key = 0;
-            value_ptr = bpf_map_lookup_elem(&ait_map, &key);
-            if (value_ptr) {
-                value = *value_ptr;
-#if 1
-                if (value != -1) {
-                    out->other = 3;  // begin AIT send
-                }
-#else
-                __u8 *bp = (__u8 *)&value;
-                if (bp[0] != null) {  // AIT ready to send
-                    out->other = 3;
-                } else {
-                    value = -1;
-                }
-#endif
-                out->ait.i = value;
-            }
-            break;
-        }
-        case 3: {
-            out->ait.i = -1;
-            break;
-        }
-        case 4: {
-            out->ait.i = in->ait.u;
-            break;
-        }
-        case 5: {
-            key = 1;
-            value = out->ait.u;
-            if (bpf_map_update_elem(&ait_map, &key, &value, BPF_ANY) < 0) {
-                return -1;  // map update failed!
-            }
-            bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(value));
-            out->ait.i = -1;
-            break;
-        }
-        case 6: {
-            value = in->ait.u;
-            bpf_printk("SENT: 0x%llx\n", __builtin_bswap64(value));
-            key = 0;
-            value = -1;  // clear outbound AIT
-            if (bpf_map_update_elem(&ait_map, &key, &value, BPF_ANY) < 0) {
-                return -1;  // map update failed!
-            }
-            out->ait.i = value;
-            break;
-        }
-    }
-#else
-    // outbound ait
-    key = 0;
-    value_ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (value_ptr) {
-        __u64 value = *value_ptr;
-        if ((out->state == 1) || (out->state == 2)) {  // ping/pong
-            __u8 *bp = (__u8 *)&value;
-
-            if (bp[0] != null) {  // AIT ready to send
-                out->other = 3;
-            }
-        } else if (out->state == 6) {  // AIT completed
-            bpf_printk("SENT: 0x%llx\n", __builtin_bswap64(value));
-            value = -1;  // clear AIT
-            *value_ptr = value;  // FIXME: use map_update instead?
-        }
-        out->ait.i = value;
-    }
-
-    // inbound ait
-    key = 1;
-    value_ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (value_ptr) {
-        if (out->state == 5) {  // AIT acknowledged
-            __u64 value = out->ait.u;
-            bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(value));
-            *value_ptr = value;  // FIXME: use map_update instead?
-        }
-    }
-#endif
-#endif /* AIT_IN_MAP */
-
-    // sequence number
-    __s16 seq_num = in->count + 1;
-    key = 3;
-    value_ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (value_ptr) {
-        __sync_fetch_and_add(value_ptr, 1);
-        seq_num = *value_ptr;
-    }
-    out->count = seq_num;
-
-//    bpf_printk("state=%d other=%d count=%d\n", out->state, out->other, out->count);
-    return 0;  // FIXME: maybe return -1 if map_lookup fails?
-}
-
-static int
-code_message(__u8 *data, __u8 *end, ait_msg_t *out)
-{
-    if (data + ETH_ZLEN > end) return -1;  // buffer too small
-    swap_mac_addrs(data);
-
-    data += ETH_HLEN;
-    data[0] = array;
-#if AIT_IN_MAP
-    int size = (out->other < 3) ? 6 : 6 + 18;  // array size in bytes
-#else
-    int size = 6;  // array size in bytes
-#endif
-    data[1] = INT2SMOL(size);
-
-    data += 2;
-    data[0] = INT2SMOL(out->state);
-    data[1] = INT2SMOL(out->other);
-    data[2] = p_int_0;  // +INT (pad=0)
-    data[3] = n_2;  // size = 2
-    int16_to_bytes(data + 4, out->count);
-#if AIT_IN_MAP
-    if (out->other > 2) {
-        data += 6;
-        if (data + 18 > end) return -1;  // FIXME: superflous check?
-        data[0] = octets;  // raw bytes
-        data[1] = n_16;  // size = 16
-#if UNALIGNED
-//        int64_to_bytes(data + 2, out->ait.i);
-//        int64_to_bytes(data + 10, out->ait.u);
-        __builtin_memcpy(data + 2, &out->ait, sizeof(out->ait));
-#else
-        *(__u64 *)(data + 2) = out->ait.i;
-        *(__u64 *)(data + 10) = out->ait.u;
-#endif
-    }
-#endif /* AIT_IN_MAP */
-
-#if TIMESTAMPS
-    out->ts = bpf_ktime_get_ns();
-#endif
-
-#if LOG_PROTO
-    bpf_printk("%d,%d #%d -->\n", out->state, out->other, out->count);
-#endif
-    return 0;
-}
-
-static int
-handle_message(__u8 *data, __u8 *end)
-{
-    ait_msg_t msg_in, msg_out;
-
-    if (parse_message(data, end, &msg_in) < 0) {
-        return XDP_DROP;  // parsing error
-    }
-
-    if (process_message(&msg_in, &msg_out) < 0) {
-        return XDP_DROP;  // processing error
-    }
-
-    if (code_message(data, end, &msg_out) < 0) {
-        return XDP_DROP;  // coding error
-    }
-
-    return XDP_TX;  // send updated frame out on same interface
-}
-#endif /* MONOLITHIC */
 
 SEC("prog") int
 xdp_filter(struct xdp_md *ctx)
