@@ -25,10 +25,11 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define TIMESTAMPS 0  // record packet processing timestamps
 #define MONOLITHIC 1  // use straight-line code for packet handling
 #define ZERO_COPY  1  // apply in-place edits to packet buffer
-#define UNALIGNED  1  // assume unaligned access for packet data
+#define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define AIT_IN_MAP 1  // communicate AIT through BPF MAP
-#define LOG_PROTO  1  // log all protocol messages exchanged
+#define LOG_PROTO  0  // log all protocol messages exchanged
+#define LOG_AIT    1  // log each AIT sent/recv
 
 #define ETH_P_DALE (0xDA1E)
 
@@ -51,7 +52,22 @@ typedef struct ait_msg {
 #define __inline  inline __attribute__((always_inline))
 #endif
 
-static __inline void swap_mac_addrs(void *ethhdr)
+static __inline void
+copy_ait(void *dst, void *src)
+{
+#if UNALIGNED
+#if USE_MEMCPY
+    __builtin_memcpy(dst, src, 8);
+#else
+#error No implementation for copy_ait()
+#endif
+#else
+    *((__u64 *) dst) = *((__u64 *) src);
+#endif
+}
+
+static __inline void
+swap_mac_addrs(void *ethhdr)
 {
     __u16 tmp[3];
     __u16 *eth = ethhdr;
@@ -61,7 +77,8 @@ static __inline void swap_mac_addrs(void *ethhdr)
     eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
 }
 
-static __inline int next_state(int state)
+static __inline int
+next_state(int state)
 {
     switch (state) {
     case 0:  return 1;
@@ -76,7 +93,8 @@ static __inline int next_state(int state)
 }
 
 #if 0
-static __inline int prev_state(int state)
+static __inline int
+prev_state(int state)
 {
     switch (state) {
     case 0:  return 0;
@@ -90,6 +108,42 @@ static __inline int prev_state(int state)
     }
 }
 #endif
+
+static __inline __u64 *
+acquire_ait()
+{
+    __u32 key = 0;
+    return bpf_map_lookup_elem(&ait_map, &key);
+}
+
+static __inline int
+clear_outbound()
+{
+    __u32 key = 0;
+    __u64 ait = -1;
+    return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
+}
+
+static __inline int
+release_ait(__u64 ait)
+{
+    __u32 key = 1;
+    return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
+}
+
+static __inline int
+update_seq_num(int seq_num)
+{
+    __u32 key = 3;
+    __u64 *value_ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (value_ptr) {
+        __sync_add_and_fetch(value_ptr, 1);
+        seq_num = *value_ptr;
+    } else {
+        ++seq_num;
+    }
+    return seq_num;
+}
 
 #if MONOLITHIC
 #if ZERO_COPY
@@ -110,10 +164,13 @@ static __inline int prev_state(int state)
 #define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE)
 #define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)
 
-static int handle_message(__u8 *data, __u8 *end)
+static int
+handle_message(__u8 *data, __u8 *end)
 {
     __u8 b;
     __s16 n;
+    __u64 i = -1;
+    __u64 u = -1;
 
     if (data + MSG_END_OFS > end) return XDP_DROP;  // message too small
     if (data[MESSAGE_OFS] != array) return XDP_DROP;  // require array
@@ -128,6 +185,7 @@ static int handle_message(__u8 *data, __u8 *end)
         // message carries AIT
         if (data[BLOB_OFS] != octets) return XDP_DROP;  // require octets
         if (data[BLOB_LEN_OFS] != n_16) return XDP_DROP;  // require size=16
+        copy_ait(&u, data + AIT_I_OFS);
         switch (b) {
             case n_3: {  // got ait
                 data[OTHER_OFS] = n_4;
@@ -135,19 +193,32 @@ static int handle_message(__u8 *data, __u8 *end)
             }
             case n_4: {  // ack ait
                 data[OTHER_OFS] = n_5;
+                copy_ait(&i, data + AIT_U_OFS);
                 break;
             }
             case n_5: {  // ack ack
                 data[OTHER_OFS] = n_6;
+                if (release_ait(u) < 0) return XDP_DROP;  // release failed
+#if LOG_AIT
+                bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(u));
+#endif
                 break;
             }
             case n_6: {  // complete
                 data[OTHER_OFS] = n_1;
+                data[MSG_LEN_OFS] = n_6;
+                data[BLOB_OFS] = null;
+                data[BLOB_LEN_OFS] = null;
+                if (clear_outbound() < 0) return XDP_DROP;  // clear failed
+#if LOG_AIT
+                copy_ait(&i, data + AIT_U_OFS);
+                bpf_printk("SENT: 0x%llx\n", __builtin_bswap64(i));
+#endif
+                i = u = -1;  // clear ait
                 break;
             }
             default: return XDP_DROP;  // bad state
         }
-        __builtin_memcpy(data + AIT_U_OFS, data + AIT_I_OFS, AIT_SIZE);
     } else if (data[MSG_LEN_OFS] != n_6) {  // liveness len = 6
         return XDP_DROP;  // bad message length
     } else {
@@ -167,20 +238,33 @@ static int handle_message(__u8 *data, __u8 *end)
             }
             default: return XDP_DROP;  // bad state
         }
+        if (b != n_0) {  // check for ait
+            __u64 *p = acquire_ait();
+            if (p && (*p != -1)) {
+                i = *p;
+                data[OTHER_OFS] = n_3;
+                data[MSG_LEN_OFS] = n_24;
+                data[BLOB_OFS] = octets;
+                data[BLOB_LEN_OFS] = n_16;
+            }
+        }
     }
     // common processing
     data[STATE_OFS] = b;  // processing state
-    ++n;  // update sequence number
+    n = update_seq_num(n);
     data[COUNT_LSB_OFS] = n;
     data[COUNT_MSB_OFS] = n >> 8;
     swap_mac_addrs(data);
+    copy_ait(data + AIT_I_OFS, &i);
+    copy_ait(data + AIT_U_OFS, &u);
 #if LOG_PROTO
     bpf_printk("%d,%d #%d -->\n", SMOL2INT(b), SMOL2INT(data[OTHER_OFS]), n);
 #endif
     return XDP_TX;  // send updated frame out on same interface
 }
 #else /* !ZERO_COPY */
-static int next_state_ait(int state, ait_t *ait)
+static int
+next_state_ait(int state, ait_t *ait)
 {
     // conditional state transition (checks for AIT)
     __u32 key;
@@ -218,7 +302,8 @@ static int next_state_ait(int state, ait_t *ait)
     return next;
 }
 
-static int handle_message(__u8 *data, __u8 *end)
+static int
+handle_message(__u8 *data, __u8 *end)
 {
     int offset = ETH_HLEN;
     int size = 0;
@@ -337,7 +422,8 @@ static int handle_message(__u8 *data, __u8 *end)
 }
 #endif /* ZERO_COPY */
 #else /* !MONOLITHIC */
-static int parse_message(__u8 *data, __u8 *end, ait_msg_t *in)
+static int
+parse_message(__u8 *data, __u8 *end, ait_msg_t *in)
 {
     int n;
 
@@ -402,7 +488,8 @@ static int parse_message(__u8 *data, __u8 *end, ait_msg_t *in)
     return 0;
 }
 
-static int process_message(ait_msg_t *in, ait_msg_t *out)
+static int
+process_message(ait_msg_t *in, ait_msg_t *out)
 {
     __u32 key;
     __u64 *value_ptr;
@@ -514,7 +601,8 @@ static int process_message(ait_msg_t *in, ait_msg_t *out)
     return 0;  // FIXME: maybe return -1 if map_lookup fails?
 }
 
-static int code_message(__u8 *data, __u8 *end, ait_msg_t *out)
+static int
+code_message(__u8 *data, __u8 *end, ait_msg_t *out)
 {
     if (data + ETH_ZLEN > end) return -1;  // buffer too small
     swap_mac_addrs(data);
@@ -561,7 +649,8 @@ static int code_message(__u8 *data, __u8 *end, ait_msg_t *out)
     return 0;
 }
 
-static int handle_message(__u8 *data, __u8 *end)
+static int
+handle_message(__u8 *data, __u8 *end)
 {
     ait_msg_t msg_in, msg_out;
 
@@ -581,8 +670,8 @@ static int handle_message(__u8 *data, __u8 *end)
 }
 #endif /* MONOLITHIC */
 
-SEC("prog")
-int xdp_filter(struct xdp_md *ctx)
+SEC("prog") int
+xdp_filter(struct xdp_md *ctx)
 {
 //    __u32 data_len = ctx->data_end - ctx->data;
     void *end = (void *)(long)ctx->data_end;
