@@ -15,7 +15,8 @@
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
 #define LOG_PROTO    1  // log each protocol messages exchange
-#define DUMP_PACKETS 0  // hexdump raw packets send/received
+#define DUMP_PACKETS 1  // hexdump raw packets send/received
+#define PACKET_LIMIT 13 // halt ping/pong after limited number of packets
 
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
@@ -157,7 +158,7 @@ recv_message(int fd, void *data, size_t limit, ait_msg_t *msg)
 #if DUMP_PACKETS
     fprintf(stdout, "%zu.%09ld Message[%d] <-- \n",
         (size_t)msg->ts.tv_sec, (long)msg->ts.tv_nsec, n);
-    hexdump(stdout, proto_buf, (n < 0 ? limit : n));
+    hexdump(stdout, data, (n < 0 ? limit : n));
 #endif
 
     return n;
@@ -290,9 +291,9 @@ process_message(ait_msg_t *in, ait_msg_t *out)
 #endif
 #endif
 
-    if (out->count > 13) {
-        return 0;  // FIXME: halt ping/pong!
-    }
+#if PACKET_LIMIT
+    if (out->count > PACKET_LIMIT) return 0;  // FIXME: halt ping/pong!
+#endif
 
     return 1;  // continue...
 }
