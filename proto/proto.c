@@ -126,9 +126,8 @@ dump_sockaddr(FILE *f, void *addr, socklen_t len)
 int
 filter_message(void *addr, void *data, size_t limit)
 {
-    if (proto_opt.filter == 0) {
-        return 0;  // pass message
-    } else if (proto_opt.family == AF_PACKET) {
+    if (proto_opt.filter == FILTER_NONE) return 0;  // pass message
+    if (proto_opt.family == AF_PACKET) {
         struct sockaddr_ll *sll = addr;
 
         if ((proto_opt.filter & FILTER_IP)
