@@ -11,7 +11,21 @@
 
 #define DEBUG(x) x /**/
 
-static char *message = "Hello, World!\n";
+#if 0
+static BYTE message[] = {
+    utf8, n_14,
+    'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', '\n',
+};
+#else
+static BYTE message[] = {
+//    array, n_6,
+//    0x04, 0x86,
+    octets, n_12,
+//    n_1, n_2, p_int_0, n_2, 0x81, 0x00,
+//    0x81, 0x82, 0x10, 0x82, 0x81, 0x00,
+    0xAB, 0xCD, 0xEF, 0x23, 0x81, 0x00, 0xFF, 0xEE, 0x45, 0x67, 0x81, 0x00
+};
+#endif
 
 static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -20,7 +34,6 @@ size_t
 create_message(void *buffer, size_t size)
 {
     size_t offset = 0;
-    size_t n;
 
     if ((proto_opt.family == AF_PACKET)
     &&  (proto_opt.sock_type == SOCK_RAW)) {
@@ -32,8 +45,8 @@ create_message(void *buffer, size_t size)
         hdr->h_proto = htons(proto_opt.eth_proto);
         offset += ETH_HLEN;
     }
-    n =  encode_cstr(buffer + offset, size - offset, message);
-    if (n <= 0) return 0;  // error
+    size_t n = sizeof(message);
+    memcpy(buffer + offset, message, n);
     offset += n;
     return offset;
 }

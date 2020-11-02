@@ -15,7 +15,7 @@
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
 #define DUMP_PACKETS 1  // hexdump raw packets send/received
-#define PACKET_LIMIT 5  // halt ping/pong after limited number of packets
+#define PACKET_LIMIT 0  // halt ping/pong after limited number of packets
 
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
@@ -264,7 +264,8 @@ server()
     live_msg_t msg_out = {
         .state = 0,
         .other = 0,
-        .count = 0,
+//        .count = 125,
+        .count = 129,
     };
     live_msg_t msg_in;
 

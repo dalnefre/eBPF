@@ -25,7 +25,7 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define ZERO_COPY  1  // apply in-place edits to packet buffer
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
-#define LOG_PROTO  0  // log all protocol messages exchanged
+#define LOG_PROTO  1  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
 
 #define ETH_P_DALE (0xDA1E)
@@ -97,22 +97,31 @@ update_seq_num(int seq_num)
     return seq_num;
 }
 
-#define MESSAGE_OFS   (ETH_HLEN + 0)
-#define MSG_LEN_OFS   (MESSAGE_OFS + 1)
-#define MSG_DATA_OFS  (MESSAGE_OFS + 2)
-#define STATE_OFS     (MSG_DATA_OFS + 0)
-#define OTHER_OFS     (MSG_DATA_OFS + 1)
-#define COUNT_OFS     (MSG_DATA_OFS + 2)
-#define COUNT_LEN_OFS (COUNT_OFS + 1)
-#define COUNT_LSB_OFS (COUNT_OFS + 2)
-#define COUNT_MSB_OFS (COUNT_OFS + 3)
-#define BLOB_OFS      (COUNT_OFS + 4)
-#define BLOB_LEN_OFS  (BLOB_OFS + 1)
-#define BLOB_AIT_OFS  (BLOB_OFS + 2)
-#define AIT_SIZE      (8)
-#define AIT_I_OFS     (BLOB_AIT_OFS + 0)
-#define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE)
-#define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)
+#define MESSAGE_OFS   (ETH_HLEN + 0)            // 14
+#define MSG_LEN_OFS   (MESSAGE_OFS + 1)         // 15
+#define MSG_DATA_OFS  (MESSAGE_OFS + 2)         // 16
+#define STATE_OFS     (MSG_DATA_OFS + 0)        // 16
+#define OTHER_OFS     (MSG_DATA_OFS + 1)        // 17
+#define COUNT_OFS     (MSG_DATA_OFS + 2)        // 18
+#define COUNT_LEN_OFS (COUNT_OFS + 1)           // 19
+#define COUNT_LSB_OFS (COUNT_OFS + 2)           // 20
+#define COUNT_MSB_OFS (COUNT_OFS + 3)           // 21
+#define BLOB_OFS      (COUNT_OFS + 4)           // 22
+#define BLOB_LEN_OFS  (BLOB_OFS + 1)            // 23
+#define BLOB_AIT_OFS  (BLOB_OFS + 2)            // 24
+#define AIT_SIZE      (8)                       // 8
+#define AIT_I_OFS     (BLOB_AIT_OFS + 0)        // 24
+#define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE) // 32
+#define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)    // 40
+
+static __inline void
+trace_msg_data(__u8 *data)
+{
+    __u64 x;
+
+    copy_ait(&x, data + MSG_DATA_OFS);
+    bpf_printk("msg = 0x%llx...\n", __builtin_bswap64(x));
+}
 
 static int
 handle_message(__u8 *data, __u8 *end)
@@ -200,13 +209,15 @@ handle_message(__u8 *data, __u8 *end)
         }
     }
     // common processing
-    data[STATE_OFS] = b;  // processing state
+    trace_msg_data(data);
     n = update_seq_num(n);
-    data[COUNT_LSB_OFS] = n;
-    data[COUNT_MSB_OFS] = n >> 8;
     swap_mac_addrs(data);
     copy_ait(data + AIT_I_OFS, &i);
     copy_ait(data + AIT_U_OFS, &u);
+    data[STATE_OFS] = b;  // processing state
+    data[COUNT_LSB_OFS] = n;
+    data[COUNT_MSB_OFS] = n >> 8;
+    trace_msg_data(data);
 #if LOG_PROTO
     bpf_printk("%d,%d #%d -->\n", SMOL2INT(b), SMOL2INT(data[OTHER_OFS]), n);
 #endif
@@ -415,7 +426,7 @@ handle_message(__u8 *data, __u8 *end)
 SEC("prog") int
 xdp_filter(struct xdp_md *ctx)
 {
-//    __u32 data_len = ctx->data_end - ctx->data;
+    __u32 data_len = ctx->data_end - ctx->data;
     void *end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
 
@@ -433,7 +444,8 @@ xdp_filter(struct xdp_md *ctx)
     }
 
     int rc = handle_message(data, end);
-//    bpf_printk("proto=0x%x len=%lu rc=%d\n", eth_proto, data_len, rc);
+    bpf_printk("proto=0x%x len=%lu rc=%d\n", eth_proto, data_len, rc);
+    trace_msg_data(data);
 
     return rc;
 }
