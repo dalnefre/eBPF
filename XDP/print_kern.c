@@ -22,7 +22,21 @@ static int BPF_FUNC(trace_printk, const char *fmt, int fmt_size, ...);
 SEC("prog")
 int xdp_filter(struct xdp_md *ctx)
 {
+#if 0
     bpf_printk("print_kern.o\n");
+#else
+    __u32 len = ctx->data_end - ctx->data;
+    void *end = (void *)(long)ctx->data_end;
+    void *data = (void *)(long)ctx->data;
+    __u64 *ptr = data;
+
+    bpf_printk("packet len=%lu\n", len);
+    if (data + (4 * sizeof(__u64)) > end) return XDP_DROP;  // frame too small
+    bpf_printk("[0] %llx\n", __builtin_bswap64(ptr[0]));
+    bpf_printk("[1] %llx\n", __builtin_bswap64(ptr[1]));
+    bpf_printk("[2] %llx\n", __builtin_bswap64(ptr[2]));
+    bpf_printk("[3] %llx\n", __builtin_bswap64(ptr[3]));
+#endif
     return XDP_PASS;  // pass frame on to networking stack
 }
 
