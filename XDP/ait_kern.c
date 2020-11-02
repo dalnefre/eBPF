@@ -25,8 +25,10 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define ZERO_COPY  1  // apply in-place edits to packet buffer
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
-#define LOG_PROTO  1  // log all protocol messages exchanged
+#define LOG_RESULT 0  // log result code for all protocol packets
+#define LOG_PROTO  0  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
+#define TRACE_MSG  0  // log raw message data (8 octets)
 
 #define ETH_P_DALE (0xDA1E)
 
@@ -34,19 +36,7 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define __inline  inline __attribute__((always_inline))
 #endif
 
-static __inline void
-swap_mac_addrs(void *ethhdr)
-{
-    __u16 tmp[3];
-    __u16 *eth = ethhdr;
-
-    tmp[0] = eth[0]; tmp[1] = eth[1]; tmp[2] = eth[2];
-    eth[0] = eth[3]; eth[1] = eth[4]; eth[2] = eth[5];
-    eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
-}
-
-#if ZERO_COPY
-
+#if (ZERO_COPY || TRACE_MSG)
 static __inline void
 copy_ait(void *dst, void *src)
 {
@@ -60,6 +50,33 @@ copy_ait(void *dst, void *src)
     *((__u64 *) dst) = *((__u64 *) src);
 #endif
 }
+#endif /* (ZERO_COPY || TRACE_MSG) */
+
+#if TRACE_MSG
+static __inline void
+trace_msg_data(__u8 *data)
+{
+    __u64 x;
+
+    copy_ait(&x, data + 16);  // MSG_DATA_OFS = 16
+    bpf_printk("msg = 0x%llx...\n", __builtin_bswap64(x));
+}
+#else
+#define trace_msg_data(x) /* removed */
+#endif /* TRACE_MSG */
+
+static __inline void
+swap_mac_addrs(void *ethhdr)
+{
+    __u16 tmp[3];
+    __u16 *eth = ethhdr;
+
+    tmp[0] = eth[0]; tmp[1] = eth[1]; tmp[2] = eth[2];
+    eth[0] = eth[3]; eth[1] = eth[4]; eth[2] = eth[5];
+    eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
+}
+
+#if ZERO_COPY
 
 static __inline __u64 *
 acquire_ait()
@@ -113,15 +130,6 @@ update_seq_num(int seq_num)
 #define AIT_I_OFS     (BLOB_AIT_OFS + 0)        // 24
 #define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE) // 32
 #define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)    // 40
-
-static __inline void
-trace_msg_data(__u8 *data)
-{
-    __u64 x;
-
-    copy_ait(&x, data + MSG_DATA_OFS);
-    bpf_printk("msg = 0x%llx...\n", __builtin_bswap64(x));
-}
 
 static int
 handle_message(__u8 *data, __u8 *end)
@@ -426,7 +434,9 @@ handle_message(__u8 *data, __u8 *end)
 SEC("prog") int
 xdp_filter(struct xdp_md *ctx)
 {
+#if LOG_RESULT
     __u32 data_len = ctx->data_end - ctx->data;
+#endif
     void *end = (void *)(long)ctx->data_end;
     void *data = (void *)(long)ctx->data;
 
@@ -444,8 +454,10 @@ xdp_filter(struct xdp_md *ctx)
     }
 
     int rc = handle_message(data, end);
+#if LOG_RESULT
     bpf_printk("proto=0x%x len=%lu rc=%d\n", eth_proto, data_len, rc);
     trace_msg_data(data);
+#endif
 
     return rc;
 }
