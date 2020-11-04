@@ -201,6 +201,9 @@ handle_message(__u8 *data, __u8 *end)
             case n_3: {  // got ait
                 if (b < data[STATE_OFS]) {  // reverse
                     data[OTHER_OFS] = n_2;
+                    data[MSG_LEN_OFS] = n_6;
+                    data[BLOB_OFS] = null;
+                    data[BLOB_LEN_OFS] = null;
                 } else {
                     data[OTHER_OFS] = n_4;
                 }
@@ -252,23 +255,31 @@ handle_message(__u8 *data, __u8 *end)
             }
             case n_1: {  // ping
                 data[OTHER_OFS] = n_2;
+                __u64 *p = acquire_ait();
+                if (p && (*p != -1)) {  // outbound ait?
+                    i = *p;
+                    data[OTHER_OFS] = n_3;
+                    data[MSG_LEN_OFS] = n_24;
+                    data[BLOB_OFS] = octets;
+                    data[BLOB_LEN_OFS] = n_16;
+                }
                 break;
             }
             case n_2: {  // pong
                 data[OTHER_OFS] = n_1;
+                if (b > data[STATE_OFS]) {  // forward transition
+                    __u64 *p = acquire_ait();
+                    if (p && (*p != -1)) {  // outbound ait?
+                        i = *p;
+                        data[OTHER_OFS] = n_3;
+                        data[MSG_LEN_OFS] = n_24;
+                        data[BLOB_OFS] = octets;
+                        data[BLOB_LEN_OFS] = n_16;
+                    }
+                }
                 break;
             }
             default: return XDP_DROP;  // bad state
-        }
-        if (b != n_0) {  // check for ait
-            __u64 *p = acquire_ait();
-            if (p && (*p != -1)) {
-                i = *p;
-                data[OTHER_OFS] = n_3;
-                data[MSG_LEN_OFS] = n_24;
-                data[BLOB_OFS] = octets;
-                data[BLOB_LEN_OFS] = n_16;
-            }
         }
     }
     // common processing
