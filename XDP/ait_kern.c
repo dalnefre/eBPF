@@ -26,7 +26,7 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define LOG_RESULT 0  // log result code for all protocol packets
-#define LOG_PROTO  1  // log all protocol messages exchanged
+#define LOG_PROTO  0  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
 #define TRACE_MSG  0  // log raw message data (8 octets)
 

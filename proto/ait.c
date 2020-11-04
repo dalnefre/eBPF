@@ -15,10 +15,10 @@
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
 #define ZERO_COPY    1  // apply in-place edits to packet buffer
-#define LOG_RESULT   1  // log result code for all protocol packets
+#define LOG_RESULT   0  // log result code for all protocol packets
 #define LOG_PROTO    1  // log each protocol messages exchange
 #define LOG_AIT      1  // log each AIT sent/recv
-#define DUMP_PACKETS 1  // hexdump raw packets send/received
+#define DUMP_PACKETS 0  // hexdump raw packets sent/received
 #define PACKET_LIMIT 13 // halt ping/pong after limited number of packets
 
 //static BYTE proto_buf[256];  // message-transfer buffer
