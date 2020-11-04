@@ -15,7 +15,7 @@
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
 #define ZERO_COPY    1  // apply in-place edits to packet buffer
-#define LOG_RESULT   0  // log result code for all protocol packets
+#define LOG_RESULT   1  // log result code for all protocol packets
 #define LOG_PROTO    1  // log each protocol messages exchange
 #define LOG_AIT      1  // log each AIT sent/recv
 #define DUMP_PACKETS 1  // hexdump raw packets send/received
@@ -119,12 +119,20 @@ copy_ait(void *dst, void *src)
 static __inline __u64 *
 acquire_ait()
 {
-    return NULL;  // no AIT available
+    return (__u64 *)proto_opt.ait;
 }
 
 static __inline int
 clear_outbound()
 {
+    if (proto_opt.ait) {
+        size_t z = sizeof(__u64);
+        if (strlen(proto_opt.ait) < z) {
+            proto_opt.ait = NULL;
+        } else {
+            proto_opt.ait += z;
+        }
+    }
     return 0;  // no-op (success)
 }
 
@@ -283,8 +291,7 @@ xdp_filter(void *data, void *end)
 
     int rc = handle_message(data, end);
 #if LOG_RESULT
-    bpf_printk("proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
-    trace_msg_data(data);
+    printf("proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
 #endif
 
     return rc;
