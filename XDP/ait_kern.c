@@ -26,7 +26,7 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define LOG_RESULT 0  // log result code for all protocol packets
-#define LOG_PROTO  0  // log all protocol messages exchanged
+#define LOG_PROTO  1  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
 #define TRACE_MSG  0  // log raw message data (8 octets)
 
@@ -97,7 +97,11 @@ static __inline int
 release_ait(__u64 ait)
 {
     __u32 key = 1;
-    return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
+    __u64 *value_ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (value_ptr && (*value_ptr == -1)) {
+        return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
+    }
+    return -1;  // output slot already full
 }
 
 static __inline int
@@ -155,20 +159,34 @@ handle_message(__u8 *data, __u8 *end)
         copy_ait(&u, data + AIT_I_OFS);
         switch (b) {
             case n_3: {  // got ait
-                data[OTHER_OFS] = n_4;
+                if (b < data[STATE_OFS]) {  // reverse
+                    data[OTHER_OFS] = n_2;
+                    data[MSG_LEN_OFS] = n_6;
+                    data[BLOB_OFS] = null;
+                    data[BLOB_LEN_OFS] = null;
+                } else {
+                    data[OTHER_OFS] = n_4;
+                }
                 break;
             }
             case n_4: {  // ack ait
-                data[OTHER_OFS] = n_5;
+                if (b < data[STATE_OFS]) {  // reverse
+                    data[OTHER_OFS] = n_3;
+                } else {
+                    data[OTHER_OFS] = n_5;
+                }
                 copy_ait(&i, data + AIT_U_OFS);
                 break;
             }
             case n_5: {  // ack ack
-                data[OTHER_OFS] = n_6;
-                if (release_ait(u) < 0) return XDP_DROP;  // release failed
+                if (release_ait(u) < 0) {  // release failed
+                    data[OTHER_OFS] = n_4;
+                } else {
+                    data[OTHER_OFS] = n_6;
 #if LOG_AIT
-                bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(u));
+                    bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(u));
 #endif
+                }
                 break;
             }
             case n_6: {  // complete
@@ -197,23 +215,31 @@ handle_message(__u8 *data, __u8 *end)
             }
             case n_1: {  // ping
                 data[OTHER_OFS] = n_2;
+                __u64 *p = acquire_ait();
+                if (p && (*p != -1)) {
+                    i = *p;
+                    data[OTHER_OFS] = n_3;
+                    data[MSG_LEN_OFS] = n_24;
+                    data[BLOB_OFS] = octets;
+                    data[BLOB_LEN_OFS] = n_16;
+                }
                 break;
             }
             case n_2: {  // pong
                 data[OTHER_OFS] = n_1;
+                if (b > data[STATE_OFS]) {  // forward transition
+                    __u64 *p = acquire_ait();
+                    if (p && (*p != -1)) {  // outbound ait?
+                        i = *p;
+                        data[OTHER_OFS] = n_3;
+                        data[MSG_LEN_OFS] = n_24;
+                        data[BLOB_OFS] = octets;
+                        data[BLOB_LEN_OFS] = n_16;
+                    }
+                }
                 break;
             }
             default: return XDP_DROP;  // bad state
-        }
-        if (b != n_0) {  // check for ait
-            __u64 *p = acquire_ait();
-            if (p && (*p != -1)) {
-                i = *p;
-                data[OTHER_OFS] = n_3;
-                data[MSG_LEN_OFS] = n_24;
-                data[BLOB_OFS] = octets;
-                data[BLOB_LEN_OFS] = n_16;
-            }
         }
     }
     // common processing
