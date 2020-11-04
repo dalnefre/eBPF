@@ -139,7 +139,11 @@ clear_outbound()
 static __inline int
 release_ait(__u64 ait)
 {
-    return 0;  // no-op (success)
+    static int once = -1;  // FIXME: fail, but only once...
+
+    int rv = once;
+    once = 0;
+    return rv;
 }
 
 static __inline int
@@ -195,20 +199,31 @@ handle_message(__u8 *data, __u8 *end)
         copy_ait(&u, data + AIT_I_OFS);
         switch (b) {
             case n_3: {  // got ait
-                data[OTHER_OFS] = n_4;
+                if (b < data[STATE_OFS]) {  // reverse
+                    data[OTHER_OFS] = n_2;
+                } else {
+                    data[OTHER_OFS] = n_4;
+                }
                 break;
             }
             case n_4: {  // ack ait
-                data[OTHER_OFS] = n_5;
+                if (b < data[STATE_OFS]) {  // reverse
+                    data[OTHER_OFS] = n_3;
+                } else {
+                    data[OTHER_OFS] = n_5;
+                }
                 copy_ait(&i, data + AIT_U_OFS);
                 break;
             }
             case n_5: {  // ack ack
-                data[OTHER_OFS] = n_6;
-                if (release_ait(u) < 0) return XDP_DROP;  // release failed
+                if (release_ait(u) < 0) {  // release failed
+                    data[OTHER_OFS] = n_4;  // reverse
+                } else {
+                    data[OTHER_OFS] = n_6;
 #if LOG_AIT
-                printf("RCVD: 0x%llx\n", __builtin_bswap64(u));
+                    printf("RCVD: 0x%llx\n", __builtin_bswap64(u));
 #endif
+                }
                 break;
             }
             case n_6: {  // complete
