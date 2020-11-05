@@ -17,6 +17,8 @@
 #include <netinet/udp.h>
 #include <linux/if_packet.h>
 //#include <linux/if_xdp.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
 
 //#define AF_XDP (44)
 
@@ -49,6 +51,7 @@ struct sockaddr *clr_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr
 struct sockaddr *set_sockaddr(struct sockaddr_storage *store, socklen_t *len_ptr);
 void dump_sockaddr(FILE *f, void *sockaddr, socklen_t len);
 int filter_message(void *addr, void *data, size_t limit);
+int get_link_status(int fd, int *status);
 int find_mac_addr(int fd, void *mac_addr);
 void print_mac_addr(FILE *f, char *label, void *mac_addr);
 void print_proto_opt(FILE *f);

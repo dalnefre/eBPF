@@ -415,6 +415,14 @@ main(int argc, char *argv[])
         return -1;  // failure
     }
 
+    int status = 0;  // 0=down, 1=up
+    rv = get_link_status(fd, &status);
+    if (rv < 0) {
+        perror("get_link_status() failed");
+        return -1;  // failure
+    }
+    printf("link status = %d\n", status);
+
     rv = server(fd);
 
     close(fd);

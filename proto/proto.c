@@ -150,6 +150,26 @@ filter_message(void *addr, void *data, size_t limit)
 }
 
 int
+get_link_status(int fd, int *status)
+{
+    struct ifreq ifr;
+    int rv;
+
+    ifr.ifr_addr.sa_family = proto_opt.family;
+    ifr.ifr_ifindex = proto_opt.if_index;
+    rv = ioctl(fd, SIOCGIFNAME, &ifr);
+    if (rv < 0) return rv;
+    struct ethtool_value value = {
+        .cmd = ETHTOOL_GLINK,
+    };
+    ifr.ifr_data = ((char *) &value);
+    rv = ioctl(fd, SIOCETHTOOL, &ifr);
+    if (rv < 0) return rv;
+    *status = value.data;
+    return 0;
+}
+
+int
 find_mac_addr(int fd, void *mac_addr)
 {
     struct ifreq ifr;
