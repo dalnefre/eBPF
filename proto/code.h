@@ -11,46 +11,6 @@
 #define BYTE uint8_t
 #endif
 
-typedef struct bstr {
-    BYTE        *head;
-    BYTE        *base;
-    BYTE        *start;
-    BYTE        *content;
-    BYTE        *cursor;
-    BYTE        *end;
-    BYTE        *limit;
-    BYTE        *tail;
-} bstr_t;
-
-typedef union bpage {
-    BYTE        page[4096];
-    struct {
-        struct {
-            uint16_t    memo_ofs[256];
-            BYTE        memo_idx;
-            BYTE        room[511];
-        }           head;
-        BYTE        data[2048];
-        BYTE        tail[1024 - sizeof(bstr_t)];
-        bstr_t      meta;
-    }           pt;
-} bpage_t;
-
-/**
-       memo .. data .. 06 10 81 04 83 7F 80 81 .. tail .. meta
-       ^       ^       ^           ^  ^        ^  ^       ^
-head --+       |       |           |  |        |  |       |
-base ----------+       |           |  |        |  |       |
-start -----------------+           |  |        |  |       |
-content ---------------------------+  |        |  |       |
-cursor -------------------------------+        |  |       |
-end -------------------------------------------+  |       |
-limit --------------------------------------------+       |
-tail -----------------------------------------------------+
-
-        Example: encoding array_n = [-1, 0, 1]
-**/
-
 typedef enum { /*2#_000*/ /*2#_001*/ /*2#_010*/ /*2#_011*/ /*2#_100*/ /*2#_101*/ /*2#_110*/ /*2#_111*/
 /*2#00000_*/   false,     true,      array_0,   object_0,  array,     object,    array_n,   object_n,
 /*2#00001_*/   octets,    mem_ref,   utf8,      utf8_mem,  utf16,     utf16_mem, s_encoded, string_0,
@@ -90,22 +50,6 @@ typedef enum { /*2#_000*/ /*2#_001*/ /*2#_010*/ /*2#_011*/ /*2#_100*/ /*2#_101*/
 #define SMOL_MAX (126)
 #define INT2SMOL(n) (BYTE)(n_0 + (n))
 #define SMOL2INT(b) (int)((b) - n_0)
-
-extern bstr_t *bpage_init(bpage_t *page);
-extern bstr_t *bstr_alloc();
-extern bstr_t *bstr_free(bstr_t *bstr);
-
-extern int bstr_put_raw(bstr_t *bstr, BYTE b);
-extern int bstr_put_int(bstr_t *bstr, int i);
-extern int bstr_put_int16(bstr_t *bstr, int16_t i);
-extern int bstr_put_int32(bstr_t *bstr, int32_t i);
-extern int bstr_put_int64(bstr_t *bstr, int64_t i);
-extern int bstr_put_blob(bstr_t *bstr, void *data, size_t size);
-extern int bstr_open_array(bstr_t *bstr);
-extern int bstr_open_array_n(bstr_t *bstr, size_t n);
-extern int bstr_close_array(bstr_t *bstr);
-
-extern int bstr_get_value(bstr_t *bstr);
 
 extern size_t encode_int(BYTE *buffer, size_t limit, int data);
 extern size_t encode_int_fixed(BYTE *buffer, size_t width, int data);

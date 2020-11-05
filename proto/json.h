@@ -5,6 +5,7 @@
 #define _JSON_H_
 
 #include "code.h"
+#include "bstr.h"
 
 typedef enum {
     JSON_Null,

@@ -8,6 +8,7 @@ CFLAGS = -O2 -Wall -g
 #CFLAGS = -g
 
 TEST =	code \
+	bstr \
 	json \
 	util
 
@@ -25,6 +26,7 @@ clean:
 
 test: $(TEST)
 	./code
+	./bstr
 	./json
 	./util
 
@@ -32,15 +34,18 @@ client: client.o proto.o code.o util.o
 
 server: server.c proto.o util.o
 
-live: live.o proto.o code.o json.o util.o
+live: live.o proto.o json.o bstr.o code.o util.o
 
-ait: ait.o proto.o code.o json.o util.o
+ait: ait.o proto.o code.o util.o
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o
 
-json: json.c code.o util.o
-	cc $(CFLAGS) -DTEST_MAIN -o json json.c code.o util.o
+bstr: bstr.c code.o util.o
+	cc $(CFLAGS) -DTEST_MAIN -o bstr bstr.c code.o util.o
+
+json: json.c code.o bstr.o util.o
+	cc $(CFLAGS) -DTEST_MAIN -o json json.c code.o bstr.o util.o
 
 util: util.c
 	cc $(CFLAGS) -DTEST_MAIN -o util util.c
