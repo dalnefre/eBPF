@@ -4,34 +4,38 @@
  * Implement atomic information transfer protocol in XDP
  */
 #include <stdio.h>
+#include <unistd.h>
 #include <bpf/bpf.h>
 
 static const char *ait_map_filename = "/sys/fs/bpf/xdp/globals/ait_map";
+static int ait_map_fd;
 
 int
-main(int argc, char *argv[])
+read_ait_map(__u32 key, __u64 *value_ptr)
 {
-    int rv, fd;
+    return bpf_map_lookup_elem(ait_map_fd, &key, value_ptr);
+}
+
+int
+write_ait_map(__u32 key, __u64 value)
+{
+    return bpf_map_update_elem(ait_map_fd, &key, &value, BPF_ANY);
+}
+
+int
+dump_ait_map()
+{
     __u32 key;
     __u64 value;
 
-    rv = bpf_obj_get(ait_map_filename);
-    if (rv < 0) {
-        perror("bpf_obj_get() failed");
-        return -1;
-    }
-    fd = rv;
+    for (key = 0; key < 4; ++key) {
 
-    for (int i = 0; i < 4; ++i) {
-
-        key = i;
-        rv = bpf_map_lookup_elem(fd, &key, &value);
-        if (rv < 0) {
-            perror("bpf_map_lookup_elem() failed");
+        if (read_ait_map(key, &value) < 0) {
+            perror("read_ait_map() failed");
             return -1;
         }
 
-        __u8 *bp = ((__u8 *) &value);
+        __u8 *bp = (__u8 *)&value;
         printf("ait_map[%d] = %02x %02x %02x %02x %02x %02x %02x %02x (%lld)\n",
             key,
             bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
@@ -42,78 +46,62 @@ main(int argc, char *argv[])
     return 0;
 }
 
-#if 0
-
-tc_l2_redirect_user.c
-// SPDX-License-Identifier: GPL-2.0-only
-/* Copyright (c) 2016 Facebook
- */
-#include <linux/unistd.h>
-#include <linux/bpf.h>
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
-
-#include <bpf/bpf.h>
-
-static void usage(void)
+void
+ait_rcvd(__u64 ait)
 {
-	printf("Usage: tc_l2_ipip_redirect [...]\n");
-	printf("       -U <file>   Update an already pinned BPF array\n");
-	printf("       -i <ifindex> Interface index\n");
-	printf("       -h          Display this help\n");
-}
-
-int main(int argc, char **argv)
-{
-	const char *pinned_file = NULL;
-	int ifindex = -1;
-	int array_key = 0;
-	int array_fd = -1;
-	int ret = -1;
-	int opt;
-
-	while ((opt = getopt(argc, argv, "F:U:i:")) != -1) {
-		switch (opt) {
-		/* General args */
-		case 'U':
-			pinned_file = optarg;
-			break;
-		case 'i':
-			ifindex = atoi(optarg);
-			break;
-		default:
-			usage();
-			goto out;
-		}
-	}
-
-	if (ifindex < 0 || !pinned_file) {
-		usage();
-		goto out;
-	}
-
-	array_fd = bpf_obj_get(pinned_file);
-	if (array_fd < 0) {
-		fprintf(stderr, "bpf_obj_get(%s): %s(%d)\n",
-			pinned_file, strerror(errno), errno);
-		goto out;
-	}
-
-	/* bpf_tunnel_key.remote_ipv4 expects host byte orders */
-	ret = bpf_map_update_elem(array_fd, &array_key, &ifindex, 0);
-	if (ret) {
-		perror("bpf_map_update_elem");
-		goto out;
-	}
-
-out:
-	if (array_fd != -1)
-		close(array_fd);
-	return ret;
-}
-
+#if 1
+    printf("%.8s", (char *)&ait);
+#else
+    __u8 *bp = (__u8 *)&ait;
+    printf("%02x %02x %02x %02x %02x %02x %02x %02x \"%.8s\"\n",
+        bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
+        (char *)&ait);
 #endif
+}
+
+int
+main(int argc, char *argv[])
+{
+    int rv;
+    __u64 value;
+
+    rv = bpf_obj_get(ait_map_filename);
+    if (rv < 0) {
+        perror("bpf_obj_get() failed");
+        return -1;  // failure
+    }
+    ait_map_fd = rv;
+
+    if (dump_ait_map() < 0) return -1;  // failure
+
+    for (;;) {
+        if (read_ait_map(1, &value) < 0) {
+            perror("read_ait_map() failed");
+            return -1;  // failure
+        }
+        if (value == -1) {  // no ait present
+            fflush(stdout);
+            if (read_ait_map(0, &value) < 0) {
+                perror("read_ait_map() failed");
+                return -1;  // failure
+            }
+            if (value != -1) continue;  // no space for outbound ait
+//            usleep(100000);  // 1/10th second = 100,000 microsecond
+            if (!fgets((char *)&value, sizeof(value), stdin)) {
+                return 1;  // EOF (or error)
+            }
+            if (write_ait_map(0, value) < 0) {
+                perror("write_ait_map() failed");
+                return -1;  // failure
+            }
+        } else {
+            if (write_ait_map(1, -1) < 0) {
+                perror("write_ait_map() failed");
+                return -1;  // failure
+            }
+            ait_rcvd(value);
+        }
+    }
+
+    return 0;  // success
+}
