@@ -3,7 +3,10 @@
  *
  * Implement atomic information transfer protocol in XDP
  */
+#include <stddef.h>
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <bpf/bpf.h>
 
@@ -32,7 +35,7 @@ dump_ait_map()
 
         if (read_ait_map(key, &value) < 0) {
             perror("read_ait_map() failed");
-            return -1;
+            return -1;  // failure
         }
 
         __u8 *bp = (__u8 *)&value;
@@ -43,7 +46,7 @@ dump_ait_map()
 
     }
 
-    return 0;
+    return 0;  // success
 }
 
 void
@@ -59,11 +62,73 @@ ait_rcvd(__u64 ait)
 #endif
 }
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <linux/if_packet.h>
+
+#define ETH_P_DALE (0xda1e)
+
+int
+send_init_msg(int if_index)
+{
+    static __u8 proto_init[] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
+        0xda, 0x1e,                          // protocol ethertype
+        0x04, 0x86,                          // array (size=6)
+        0x80,                                // state = 0
+        0x80,                                // other = 0
+        0x10, 0x82, 0x00, 0x00,              // count = 0 (+INT, pad=0)
+        0xff, 0xff,                          // neutral fill...
+    };
+    int fd, rv;
+
+    // create socket
+    fd = socket(AF_PACKET, SOCK_RAW, ETH_P_DALE);
+    if (fd < 0) {
+        perror("socket() failed");
+        return -1;  // failure
+    }
+
+    // send message
+    struct sockaddr_storage address;
+    memset(&address, 0, sizeof(address));
+
+    struct sockaddr_ll *sll = (struct sockaddr_ll *)&address;
+    sll->sll_family = AF_PACKET;
+    sll->sll_protocol = htons(ETH_P_DALE);
+    sll->sll_ifindex = if_index;
+
+    socklen_t addr_len = sizeof(*sll);
+    struct sockaddr *addr = (struct sockaddr *)sll;
+    rv = sendto(fd, proto_init, sizeof(proto_init), 0, addr, addr_len);
+    if (rv < 0) {
+        perror("sendto() failed");
+        return -1;  // failure
+    }
+
+    return 0;  // success
+}
+
 int
 main(int argc, char *argv[])
 {
     int rv;
     __u64 value;
+
+    int if_index = 0;
+    if (argc == 2) {
+        if_index = atoi(argv[1]);
+        if (!if_index) {
+            if_index = if_nametoindex(argv[1]);
+        }
+    }
+    if (!if_index) {
+        fprintf(stderr, "usage: %s <interface>\n", argv[0]);
+        return 1;  // exit
+    }
 
     rv = bpf_obj_get(ait_map_filename);
     if (rv < 0) {
@@ -74,6 +139,28 @@ main(int argc, char *argv[])
 
     if (dump_ait_map() < 0) return -1;  // failure
 
+    // wait for link liveness to be established
+    __u64 count;
+    if (read_ait_map(3, &count) < 0) {
+        perror("read_ait_map() failed");
+        return -1;  // failure
+    }
+    for (;;) {
+        usleep(1000000);  // 1 seconds = 1,000,000 microseconds
+        if (read_ait_map(3, &value) < 0) {
+            perror("read_ait_map() failed");
+            return -1;  // failure
+        }
+        if (count != value) {
+            printf("Ready... (%lld)\n", value);
+            break;  // exit loop
+        }
+        if (send_init_msg(if_index) < 0) {
+            return -1;  // failure
+        }
+    }
+
+    // ait read/write loop
     for (;;) {
         if (read_ait_map(1, &value) < 0) {
             perror("read_ait_map() failed");
@@ -86,7 +173,7 @@ main(int argc, char *argv[])
                 return -1;  // failure
             }
             if (value != -1) continue;  // no space for outbound ait
-//            usleep(100000);  // 1/10th second = 100,000 microsecond
+//            usleep(100000);  // 1/10th second = 100,000 microseconds
             if (!fgets((char *)&value, sizeof(value), stdin)) {
                 return 1;  // EOF (or error)
             }
