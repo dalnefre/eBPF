@@ -109,6 +109,11 @@ send_init_msg(int if_index)
         return -1;  // failure
     }
 
+    if (close(fd) < 0) {
+        perror("close() failed");
+        return -1;  // failure
+    }
+
     return 0;  // success
 }
 
