@@ -6,6 +6,9 @@ CLANG_FLAGS = -target bpf -O2 -fno-jump-tables -Wall -g
 #CFLAGS = -O2 -Wall -g
 CFLAGS = -O2 -Wall
 
+#LIBBPF = -lbpf
+LIBBPF = -lelf ~/dev/linux/tools/lib/bpf/libbpf.a
+
 OBJS =	pass_kern.o \
 	drop_kern.o \
 	print_kern.o \
@@ -18,6 +21,7 @@ OBJS =	pass_kern.o \
 TEST =	code
 
 PROGS =	$(TEST) \
+	ait_user \
 	nprocs
 
 ALL =	$(PROGS) $(OBJS)
@@ -52,6 +56,9 @@ live_kern.o: live_kern.c code.c
 
 ait_kern.o: ait_kern.c code.c
 	clang $(CLANG_FLAGS) -c -o ait_kern.o ait_kern.c
+
+ait_user: ait_user.c
+	cc $(CFLAGS) -o ait_user ait_user.c $(LIBBPF)
 
 multi_kern.o: multi_kern.c
 	clang $(CLANG_FLAGS) -c -o multi_kern.o multi_kern.c
