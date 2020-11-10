@@ -64,11 +64,34 @@ ait_rcvd(__u64 ait)
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <linux/if_packet.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
 
 #define ETH_P_DALE (0xda1e)
+
+int
+get_link_status(int if_index, int fd, int *status)
+{
+    struct ifreq ifr;
+    int rv;
+
+    ifr.ifr_addr.sa_family = AF_PACKET;
+    ifr.ifr_ifindex = if_index;
+    rv = ioctl(fd, SIOCGIFNAME, &ifr);
+    if (rv < 0) return rv;
+    struct ethtool_value value = {
+        .cmd = ETHTOOL_GLINK,
+    };
+    ifr.ifr_data = ((char *) &value);
+    rv = ioctl(fd, SIOCETHTOOL, &ifr);
+    if (rv < 0) return rv;
+    *status = value.data;
+    return 0;
+}
 
 int
 send_init_msg(int if_index)
@@ -92,21 +115,35 @@ send_init_msg(int if_index)
         return -1;  // failure
     }
 
-    // send message
-    struct sockaddr_storage address;
-    memset(&address, 0, sizeof(address));
-
-    struct sockaddr_ll *sll = (struct sockaddr_ll *)&address;
-    sll->sll_family = AF_PACKET;
-    sll->sll_protocol = htons(ETH_P_DALE);
-    sll->sll_ifindex = if_index;
-
-    socklen_t addr_len = sizeof(*sll);
-    struct sockaddr *addr = (struct sockaddr *)sll;
-    rv = sendto(fd, proto_init, sizeof(proto_init), 0, addr, addr_len);
+    // check link status
+    int status = 0;  // 0=down, 1=up
+    rv = get_link_status(if_index, fd, &status);
     if (rv < 0) {
-        perror("sendto() failed");
-        return -1;  // failure
+
+        perror("get_link_status() failed");
+
+    } else if (status == 0) {  // link down
+
+        rv = 1;  // try again later...
+
+    } else {  // link up
+
+        // send message
+        struct sockaddr_storage address;
+        memset(&address, 0, sizeof(address));
+
+        struct sockaddr_ll *sll = (struct sockaddr_ll *)&address;
+        sll->sll_family = AF_PACKET;
+        sll->sll_protocol = htons(ETH_P_DALE);
+        sll->sll_ifindex = if_index;
+
+        socklen_t addr_len = sizeof(*sll);
+        struct sockaddr *addr = (struct sockaddr *)sll;
+        rv = sendto(fd, proto_init, sizeof(proto_init), 0, addr, addr_len);
+        if (rv < 0) {
+            perror("sendto() failed");
+        }
+
     }
 
     if (close(fd) < 0) {
@@ -114,13 +151,42 @@ send_init_msg(int if_index)
         return -1;  // failure
     }
 
-    return 0;  // success
+    return rv;
+}
+
+int
+check_liveness(int if_index)
+{
+    __u64 count;
+    __u64 value;
+
+    // get initial count
+    if (read_ait_map(3, &count) < 0) {
+        perror("check_liveness: read_ait_map() failed");
+        return -1;  // failure
+    }
+
+    // wait for some activity
+    usleep(1000000);  // 1 second = 1,000,000 microseconds
+
+    // check updated value
+    if (read_ait_map(3, &value) < 0) {
+        perror("check_liveness: read_ait_map() failed");
+        return -1;  // failure
+    }
+    if (count != value) {
+        return 1;  // it's ALIIIIIVE!
+    }
+
+    // try to kick-start protocol
+    return send_init_msg(if_index);
 }
 
 int
 main(int argc, char *argv[])
 {
     int rv;
+    pid_t pid;
     __u64 value;
 
     int if_index = 0;
@@ -144,25 +210,16 @@ main(int argc, char *argv[])
 
     if (dump_ait_map() < 0) return -1;  // failure
 
-    // wait for link liveness to be established
-    __u64 count;
-    if (read_ait_map(3, &count) < 0) {
-        perror("read_ait_map() failed");
+    // create process to monitor/maintain liveness
+    pid = fork();
+    if (pid < 0) {
+        perror("fork() failed");
         return -1;  // failure
-    }
-    for (;;) {
-        usleep(1000000);  // 1 seconds = 1,000,000 microseconds
-        if (read_ait_map(3, &value) < 0) {
-            perror("read_ait_map() failed");
-            return -1;  // failure
-        }
-        if (count != value) {
-            printf("Ready... (%lld)\n", value);
-            break;  // exit loop
-        }
-        if (send_init_msg(if_index) < 0) {
-            return -1;  // failure
-        }
+    } else if (pid == 0) {  // child process
+        while (check_liveness(if_index) >= 0)
+            ;
+        fputs("CHILD EXIT!\n", stderr);
+        return -1;  // failure
     }
 
     // ait read/write loop
