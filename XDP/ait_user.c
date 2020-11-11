@@ -74,15 +74,18 @@ ait_rcvd(__u64 ait)
 #define ETH_P_DALE (0xda1e)
 
 int
-get_link_status(int if_index, int fd, int *status)
+get_link_status(int if_index, int fd, int *status, void *mac_addr)
 {
     struct ifreq ifr;
     int rv;
 
+    // convert if_index into interface name
     ifr.ifr_addr.sa_family = AF_PACKET;
     ifr.ifr_ifindex = if_index;
     rv = ioctl(fd, SIOCGIFNAME, &ifr);
     if (rv < 0) return rv;
+
+    // get link status from interface
     struct ethtool_value value = {
         .cmd = ETHTOOL_GLINK,
     };
@@ -90,6 +93,14 @@ get_link_status(int if_index, int fd, int *status)
     rv = ioctl(fd, SIOCETHTOOL, &ifr);
     if (rv < 0) return rv;
     *status = value.data;
+
+    // get mac address (optionally)
+    if (mac_addr) {
+        rv = ioctl(fd, SIOCGIFHWADDR, &ifr);
+        if (rv < 0) return rv;
+        memcpy(mac_addr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    }
+
     return 0;
 }
 
@@ -117,7 +128,7 @@ send_init_msg(int if_index)
 
     // check link status
     int status = 0;  // 0=down, 1=up
-    rv = get_link_status(if_index, fd, &status);
+    rv = get_link_status(if_index, fd, &status, &proto_init[ETH_ALEN]);
     if (rv < 0) {
 
         perror("get_link_status() failed");
