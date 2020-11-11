@@ -155,40 +155,118 @@ send_init_msg(int if_index)
 }
 
 int
-check_liveness(int if_index)
+monitor(int if_index)  // monitor and maintain liveness
 {
     __u64 count;
     __u64 value;
 
     // get initial count
     if (read_ait_map(3, &count) < 0) {
-        perror("check_liveness: read_ait_map() failed");
+        perror("read_ait_map(3) failed");
         return -1;  // failure
     }
 
-    // wait for some activity
-    usleep(1000000);  // 1 second = 1,000,000 microseconds
+    for (;;) {
 
-    // check updated value
-    if (read_ait_map(3, &value) < 0) {
-        perror("check_liveness: read_ait_map() failed");
-        return -1;  // failure
-    }
-    if (count != value) {
-        return 1;  // it's ALIIIIIVE!
-    }
+        // wait for some activity
+        usleep(1000000);  // 1 second = 1,000,000 microseconds
 
-    // try to kick-start protocol
-    return send_init_msg(if_index);
+        // check updated value
+        if (read_ait_map(3, &value) < 0) {
+            perror("read_ait_map(3) failed");
+            return -1;  // failure
+        }
+        if (count == value) {
+            // try to kick-start protocol
+            if (send_init_msg(if_index) < 0) {
+                return -1;  // failure
+            }
+        } else {
+            count = value;
+        }
+
+    }
 }
+
+int
+reader()  // read AIT data (and display it)
+{
+    __u64 value;
+
+    for (;;) {
+
+        // check for inbound AIT
+        if (read_ait_map(1, &value) < 0) {
+            perror("read_ait_map(1) failed");
+            return -1;  // failure
+        }
+
+        if (value != -1) {  // ait present
+
+            // clear inbound AIT
+            if (write_ait_map(1, -1) < 0) {
+                perror("write_ait_map(1) failed");
+                return -1;  // failure
+            }
+
+            // display AIT received
+#if 1
+            printf("%.8s", (char *)&value);
+#else
+            __u8 *bp = (__u8 *)&value;
+            printf("%02x %02x %02x %02x %02x %02x %02x %02x \"%.8s\"\n",
+                bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
+                (char *)&value);
+#endif
+
+        }
+    }
+
+}
+
+int
+writer()  // write AIT data (from console)
+{
+    __u64 value;
+
+    for (;;) {
+
+        // check for outbound AIT space
+        if (read_ait_map(0, &value) < 0) {
+            perror("read_ait_map(0) failed");
+            return -1;  // failure
+        }
+
+        if (value == -1) {  // space available
+
+            // get data from console
+            if (!fgets((char *)&value, sizeof(value), stdin)) {
+                return 1;  // EOF (or error)
+            }
+
+            // send AIT
+            if (write_ait_map(0, value) < 0) {
+                perror("write_ait_map(0) failed");
+                return -1;  // failure
+            }
+
+        }
+
+    }
+
+}
+
+#include <errno.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 int
 main(int argc, char *argv[])
 {
     int rv;
     pid_t pid;
-    __u64 value;
 
+    // determine interface index
     int if_index = 0;
     if (argc == 2) {
         if_index = atoi(argv[1]);
@@ -201,6 +279,7 @@ main(int argc, char *argv[])
         return 1;  // exit
     }
 
+    // get access to AIT map
     rv = bpf_obj_get(ait_map_filename);
     if (rv < 0) {
         perror("bpf_obj_get() failed");
@@ -216,41 +295,50 @@ main(int argc, char *argv[])
         perror("fork() failed");
         return -1;  // failure
     } else if (pid == 0) {  // child process
-        while (check_liveness(if_index) >= 0)
-            ;
-        fputs("CHILD EXIT!\n", stderr);
-        return -1;  // failure
+        rv = monitor(if_index);
+        exit(rv);
     }
+    printf("monitor pid=%d\n", pid);
 
-    // ait read/write loop
+    // create process to read AIT data
+    pid = fork();
+    if (pid < 0) {
+        perror("fork() failed");
+        return -1;  // failure
+    } else if (pid == 0) {  // child process
+        rv = reader();
+        exit(rv);
+    }
+    printf("reader pid=%d\n", pid);
+
+    // create process to write AIT data
+    pid = fork();
+    if (pid < 0) {
+        perror("fork() failed");
+        return -1;  // failure
+    } else if (pid == 0) {  // child process
+        rv = writer();
+        exit(rv);
+    }
+    printf("writer pid=%d\n", pid);
+
+    // ignore termination signals so we can clean up children
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+
+    // wait for child processes to exit
+    fflush(stdout);
     for (;;) {
-        if (read_ait_map(1, &value) < 0) {
-            perror("read_ait_map() failed");
-            return -1;  // failure
-        }
-        if (value == -1) {  // no ait present
-            fflush(stdout);
-            if (read_ait_map(0, &value) < 0) {
-                perror("read_ait_map() failed");
-                return -1;  // failure
+        rv = wait(NULL);
+        if (rv < 0) {
+            if (errno != ECHILD) {
+                perror("wait() failed");
             }
-            if (value != -1) continue;  // no space for outbound ait
-//            usleep(100000);  // 1/10th second = 100,000 microseconds
-            if (!fgets((char *)&value, sizeof(value), stdin)) {
-                return 1;  // EOF (or error)
-            }
-            if (write_ait_map(0, value) < 0) {
-                perror("write_ait_map() failed");
-                return -1;  // failure
-            }
-        } else {
-            if (write_ait_map(1, -1) < 0) {
-                perror("write_ait_map() failed");
-                return -1;  // failure
-            }
-            ait_rcvd(value);
+            break;
         }
     }
+    fputs("parent exit.\n", stdout);
 
     return 0;  // success
 }
