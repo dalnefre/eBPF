@@ -89,7 +89,7 @@ CONFIG_XDP_SOCKETS_DIAG=y
 #### For Raspberry Pi 4
 
 ```
-$ cd linux
+$ cd ~/dev/linux
 $ KERNEL=kernel7l
 $ make bcm2711_defconfig
 ```
@@ -157,3 +157,54 @@ Verify that you're running the new custom kernel
 $ uname -a
 Linux raspberrypi 5.4.65-v7l-xdp+ #1 SMP Wed Sep 23 13:24:39 MDT 2020 armv7l GNU/Linux
 ```
+
+## Build eBPF support tools
+
+```
+$ cd ~/dev/linux/tools/lib/bpf
+$ make
+$ sudo make install
+$ sudo make install_headers
+```
+
+```
+$ cd ~/dev/linux/tools/bpf/bpftool
+$ make
+$ sudo make install
+```
+
+```
+$ cd ~/dev/linux/samples/bpf
+$ make
+```
+
+It feels like the wrong thing to do, but this resolves many dependencies...
+
+```
+$ sudo ln -s /usr/include/asm-generic /usr/include/asm
+```
+
+## Build eBPF experiments
+
+```
+$ cd ~/dev
+$ git clone https://github.com/dalnefre/eBPF.git
+$ cd eBPF
+```
+
+### Build protocol lab
+
+```
+$ cd ~/dev/eBPF/proto
+$ make clean all test
+```
+
+
+### Build XDP experiments
+
+```
+$ cd ~/dev/eBPF/XDP
+$ make clean all test
+```
+
+**NOTE:** The `bpf_*.h` headers were originally copied from `~/dev/linux/tools/testing/selftest/bpf/` and modified to remove "unsupported" entry-points.
