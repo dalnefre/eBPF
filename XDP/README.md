@@ -174,3 +174,64 @@ $ sudo bpftool prog dump xlated id 14
    0: (b7) r0 = 1
    1: (95) exit
 ```
+
+## Instrumentation for Debugging
+
+Instrumentation is critical for debugging.
+This program ([`print_kern.c`](print_kern.c))
+demonstrates how to print to the kernel debug tracing log.
+
+```
+#include <linux/bpf.h>
+
+#define SEC(NAME) __attribute__((section(NAME), used))
+
+#define BPF_FUNC(NAME, ...) (*bpf_##NAME)(__VA_ARGS__) = (void *)BPF_FUNC_##NAME
+
+static int BPF_FUNC(trace_printk, const char *fmt, int fmt_size, ...);
+
+/* helper macro to print out debug messages */
+#define bpf_printk(fmt, ...)				\
+({							\
+	char ____fmt[] = fmt;				\
+	bpf_trace_printk(____fmt, sizeof(____fmt),	\
+			 ##__VA_ARGS__);		\
+})
+
+SEC("prog")
+int xdp_filter(struct xdp_md *ctx)
+{
+    __u32 len = ctx->data_end - ctx->data;
+    void *end = (void *)(long)ctx->data_end;
+    void *data = (void *)(long)ctx->data;
+    __u64 *ptr = data;
+
+    bpf_printk("packet len=%lu\n", len);
+    if (data + (4 * sizeof(__u64)) > end) return XDP_DROP;  // frame too small
+    bpf_printk("[0] %llx\n", __builtin_bswap64(ptr[0]));
+    bpf_printk("[1] %llx\n", __builtin_bswap64(ptr[1]));
+    bpf_printk("[2] %llx\n", __builtin_bswap64(ptr[2]));
+    bpf_printk("[3] %llx\n", __builtin_bswap64(ptr[3]));
+    return XDP_PASS;  // pass frame on to networking stack
+}
+
+char __license[] SEC("license") = "GPL";
+```
+
+This program includes several new features,
+and defines a few macros to make them more convenient to use.
+Notice, in particular, the "frame too small" check.
+Without this check, the verifier will reject the program
+because it can't prove the subsequent packet data access is safe.
+This program prints the packet length and first 32 octets of data
+to the kernel debug tracing log,
+then passes the packet on to the networking stack.
+Since `__u64` data is stored LSB-first,
+we use `__builtin_bswap64()` to show the octets in network order.
+
+Once the program is loaded,
+we can simply use `cat` to watch the tracing log.
+
+```
+$ sudo cat /sys/kernel/debug/tracing/trace_pipe
+```
