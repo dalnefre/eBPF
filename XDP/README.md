@@ -8,6 +8,8 @@ To compile these tools for your system and run unit tests:
 $ make clean all test
 ```
 
+**NOTE:** The `bpf_*.h` headers were originally copied from `~/dev/linux/tools/testing/selftest/bpf/` and modified to remove "unsupported" entry-points.
+
 ## Simple No-Op Filter
 
 Let's start with one of the simplest possible XDP filters ([`pass_kern.c`](pass_kern.c)),
