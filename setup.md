@@ -192,7 +192,7 @@ $ git clone https://github.com/dalnefre/eBPF.git
 $ cd eBPF
 ```
 
-### Build protocol lab
+### Build [protocol lab](proto/README.md)
 
 ```
 $ cd ~/dev/eBPF/proto
@@ -200,11 +200,9 @@ $ make clean all test
 ```
 
 
-### Build XDP experiments
+### Build [XDP experiments](XDP/README.md)
 
 ```
 $ cd ~/dev/eBPF/XDP
 $ make clean all test
 ```
-
-**NOTE:** The `bpf_*.h` headers were originally copied from `~/dev/linux/tools/testing/selftest/bpf/` and modified to remove "unsupported" entry-points.
