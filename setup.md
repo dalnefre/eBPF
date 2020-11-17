@@ -12,8 +12,18 @@ from https://www.raspberrypi.org/downloads/raspberry-pi-os/
 
 We do all of our work under the default user "pi", which has "sudo" permission.
 
-You may want to enable `ssh` or `vnc` for remote access (via Wi-Fi).
+You may want to enable
+[`ssh`](https://www.raspberrypi.org/documentation/remote-access/ssh/README.md)
+or 
+[`vnc`](https://www.raspberrypi.org/documentation/remote-access/vnc/README.md)
+for remote access (via Wi-Fi).
 We expect to use the wired Ethernet port for protocol experiments.
+
+The `ifconfig` command will display lots of information about the available interfaces and their associated addresses.
+
+```
+$ ifconfig -a
+```
 
 ### Choose a Hostname unique to your LAN (optional)
 
