@@ -35,11 +35,11 @@ The eBPF verifier ensures that the code will always terminate and never access i
 The main way that eBPF code interacts with userland is via so-called "maps".
 These are persistent data-structures with a key/value style interface to create/read/update/delete entries.
 There are often both global and per-thread variations of these data-structures.
-Information can be read/written in these "maps" from both userspace and the eBPF program.
+Information can be read/written in these "maps" from both userland and eBPF programs.
 
 In addition, some eBPF hooks allow the creation of various kernel events,
 and those that are in the network packet-processing pipeline
-can naturally pass packets through the network stack into userspace.
+can naturally pass packets through the network stack to userland.
 
 ## What is XDP?
 
