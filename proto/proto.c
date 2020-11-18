@@ -18,6 +18,7 @@ proto_opt_t proto_opt = {   // global options
     .ip_port = 8888,            // IP port number
     .filter = FILTER_NONE,      // filter flags
     .ait = NULL,                // atomic information transfer
+    .log = 1,                   // logging level
 };
 
 int
@@ -265,6 +266,9 @@ print_proto_opt(FILE *f)
         fprintf(f, " ait=\"%s\"", proto_opt.ait);
     }
 
+    // Log Output Level
+    fprintf(f, " log=%d", proto_opt.log);
+
     fputc('\n', f);
 }
 
@@ -415,6 +419,11 @@ parse_args(int *argc, char *argv[])
 
         if (strncmp(arg, "ait=", 4) == 0) {
             proto_opt.ait = arg + 4;
+            continue;  // next arg
+        }
+
+        if (strncmp(arg, "log=", 4) == 0) {
+            proto_opt.log = atoi(arg + 4);
             continue;  // next arg
         }
 

@@ -14,10 +14,8 @@
 #define DEBUG(x)   /**/
 
 #define SHARED_COUNT 0  // message counter is shared (or local)
+#define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
 #define LOG_RESULT   0  // log result code for all protocol packets
-#define LOG_PROTO    1  // log each protocol messages exchange
-#define LOG_AIT      1  // log each AIT sent/recv
-#define DUMP_PACKETS 0  // hexdump raw packets sent/received
 #define PACKET_LIMIT 13 // halt ping/pong after limited number of packets
 
 //static BYTE proto_buf[256];  // message-transfer buffer
@@ -56,11 +54,11 @@ send_message(int fd, void *data, size_t size, struct timespec *ts)
 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
-#if DUMP_PACKETS
-    fprintf(stdout, "%zu.%09ld Message[%d] --> \n",
-        (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
-    hexdump(stdout, data, size);
-#endif
+    if (proto_opt.log >= 3) {
+        fprintf(stdout, "%zu.%09ld Message[%d] --> \n",
+            (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
+        hexdump(stdout, data, size);
+    }
 
     return n;
 }
@@ -80,11 +78,11 @@ recv_message(int fd, void *data, size_t limit, struct timespec *ts)
 
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
-#if DUMP_PACKETS
-    fprintf(stdout, "%zu.%09ld Message[%d] <-- \n",
-        (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
-    hexdump(stdout, data, (n < 0 ? limit : n));
-#endif
+    if (proto_opt.log >= 3) {
+        fprintf(stdout, "%zu.%09ld Message[%d] <-- \n",
+            (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
+        hexdump(stdout, data, (n < 0 ? limit : n));
+    }
 
     return n;
 }
@@ -190,9 +188,9 @@ handle_message(__u8 *data, __u8 *end)
     if (data[COUNT_LEN_OFS] != n_2) return XDP_DROP;  // require size=2
     n = (data[COUNT_MSB_OFS] << 8) | data[COUNT_LSB_OFS];
     b = data[OTHER_OFS];
-#if LOG_PROTO
-    printf("  %d,%d #%d <--\n", SMOL2INT(data[STATE_OFS]), SMOL2INT(b), n);
-#endif
+    if (proto_opt.log >= 2) {
+        printf("  %d,%d #%d <--\n", SMOL2INT(data[STATE_OFS]), SMOL2INT(b), n);
+    }
     if (data[MSG_LEN_OFS] == n_24) {  // ait len = 6 + 18
         // message carries AIT
         if (data[BLOB_OFS] != octets) return XDP_DROP;  // require octets
@@ -224,9 +222,9 @@ handle_message(__u8 *data, __u8 *end)
                     data[OTHER_OFS] = n_4;  // reverse
                 } else {
                     data[OTHER_OFS] = n_6;
-#if LOG_AIT
-                    printf("RCVD: 0x%llx\n", __builtin_bswap64(u));
-#endif
+                    if (proto_opt.log >= 1) {
+                        printf("RCVD: 0x%llx\n", __builtin_bswap64(u));
+                    }
                 }
                 break;
             }
@@ -236,10 +234,10 @@ handle_message(__u8 *data, __u8 *end)
                 data[BLOB_OFS] = null;
                 data[BLOB_LEN_OFS] = null;
                 if (clear_outbound() < 0) return XDP_DROP;  // clear failed
-#if LOG_AIT
-                copy_ait(&i, data + AIT_U_OFS);
-                printf("SENT: 0x%llx\n", __builtin_bswap64(i));
-#endif
+                if (proto_opt.log >= 1) {
+                    copy_ait(&i, data + AIT_U_OFS);
+                    printf("SENT: 0x%llx\n", __builtin_bswap64(i));
+                }
                 i = u = -1;  // clear ait
                 break;
             }
@@ -294,9 +292,9 @@ handle_message(__u8 *data, __u8 *end)
     data[STATE_OFS] = b;  // processing state
     data[COUNT_LSB_OFS] = n;
     data[COUNT_MSB_OFS] = n >> 8;
-#if LOG_PROTO
-    printf("  %d,%d #%d -->\n", SMOL2INT(b), SMOL2INT(data[OTHER_OFS]), n);
-#endif
+    if (proto_opt.log >= 2) {
+        printf("  %d,%d #%d -->\n", SMOL2INT(b), SMOL2INT(data[OTHER_OFS]), n);
+    }
     return XDP_TX;  // send updated frame out on same interface
 }
 
@@ -318,7 +316,9 @@ xdp_filter(void *data, void *end)
 
     int rc = handle_message(data, end);
 #if LOG_RESULT
-    printf("proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
+    if (proto_opt.log >= 2) {
+        printf("proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
+    }
 #endif
 
     return rc;
@@ -338,9 +338,9 @@ server(int fd)
         perror("send_message() failed");
         return -1;  // failure
     }
-#if LOG_PROTO
-    printf("  %d,%d #%d -->\n", 0, 0, 0);  // init message
-#endif
+    if (proto_opt.log >= 2) {
+        printf("  %d,%d #%d -->\n", 0, 0, 0);  // init message
+    }
 
     for (;;) {
 
@@ -374,6 +374,7 @@ main(int argc, char *argv[])
     proto_opt.family = AF_PACKET;
     proto_opt.sock_type = SOCK_RAW;
     proto_opt.eth_proto = ETH_P_DALE;
+    proto_opt.log = LOG_LEVEL;
 
     rv = parse_args(&argc, argv);
     if (rv != 0) return rv;
