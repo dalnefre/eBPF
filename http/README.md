@@ -26,3 +26,27 @@ $ sudo chmod -R g+w www
 We're using [FastCGI](https://fastcgi-archives.github.io/)
 to communicate between the webserver and our eBPF map server.
 For NGINX, we use the [ngx_http_fastcgi_module](http://nginx.org/en/docs/http/ngx_http_fastcgi_module.html).
+
+### NGINX FastCGI Configuration
+
+NGINX configuration files are in the `/etc/nginx/` directory.
+Copy the `default` configuration to `ebpfdemo` and make it the _enabled_ site.
+
+```
+$ cd /etc/nginx
+$ sudo cp sites-available/default sites-available/ebpfdemo
+$ sudo ln -s /etc/nginx/sites-available/ebpfdemo sites-enabled/ebpfdemo
+$ sudo rm sites-enabled/default
+```
+
+Configuration parameters:
+
+```
+fastcgi_param REQUEST_URI     $request_uri
+fastcgi_param REQUEST_METHOD  $request_method;
+fastcgi_param CONTENT_TYPE    $content_type;
+fastcgi_param CONTENT_LENGTH  $content_length;
+#fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+fastcgi_param SCRIPT_FILENAME $request_filename;
+fastcgi_param QUERY_STRING    $query_string;
+```
