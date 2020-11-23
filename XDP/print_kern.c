@@ -30,7 +30,7 @@ int xdp_filter(struct xdp_md *ctx)
     void *data = (void *)(long)ctx->data;
     __u64 *ptr = data;
 
-    bpf_printk("packet len=%lu\n", len);
+    bpf_printk("if=%ld packet len=%lu\n", ctx->ingress_ifindex, len);
     if (data + (4 * sizeof(__u64)) > end) return XDP_DROP;  // frame too small
     bpf_printk("[0] %llx\n", __builtin_bswap64(ptr[0]));
     bpf_printk("[1] %llx\n", __builtin_bswap64(ptr[1]));
