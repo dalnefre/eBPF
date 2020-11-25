@@ -14,7 +14,50 @@
 
 static char sock_pathname[] = "/run/ebpf_map.sock";
 
-static char proto_buf[2048];  // message-transfer buffer
+static char proto_buf[512];  // message-transfer buffer
+
+static void
+hexdump(FILE *f, void *data, size_t size)
+{
+    unsigned char *buffer = data;
+    const int span = 16;
+    size_t offset = 0;
+    int i, j;
+
+    while (offset < size) {
+        fprintf(f, "%04zx:  ", offset);
+        for (i = 0; i < span; ++i) {
+            if (i == 8) {
+                fputc(' ', f);  // gutter between 64-bit words
+            }
+            j = offset + i;
+            if (j < size) {
+                fprintf(f, "%02x ", buffer[j]);
+            } else {
+                fputs("   ", f);
+            }
+        }
+        fputc(' ', f);
+        fputc('|', f);
+        for (i = 0; i < span; ++i) {
+            j = offset + i;
+            if (j < size) {
+                unsigned char b = buffer[j];
+                if ((0x20 <= b) && (b < 0x7F)) {
+                    fprintf(f, "%c", (int)b);
+                } else {
+                    fputc('.', f);
+                }
+            } else {
+                fputc(' ', f);
+            }
+        }
+        fputc('|', f);
+        fputc('\n', f);
+        offset += span;
+    }
+    fflush(f);
+}
 
 int
 server()
@@ -61,6 +104,8 @@ server()
             perror("read() failed");
             return -1;  // failure
         }
+        printf("read() got %d octets:\n", n);
+        hexdump(stdout, proto_buf, sizeof(proto_buf));
 
         rv = close(fd);  // close client stream
     }
@@ -74,6 +119,12 @@ int
 main(int argc, char *argv[])
 {
     int rv;
+
+    rv = close(FCGI_LISTENSOCK_FILENO);  // close stdin for listener to use
+    if (rv < 0) {
+        perror("close() failed");
+        return -1;  // failure
+    }
 
     rv = server();
 
