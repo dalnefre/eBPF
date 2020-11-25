@@ -6,15 +6,18 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <pwd.h>  // for getpwnam()
 #include <sys/socket.h>
 #include <sys/un.h>
 #include "fcgi.h"
 
 #define DEBUG(x) x /**/
 
-static char sock_pathname[] = "/run/ebpf_map.sock";
+#define SOCK_PATHNAME        "/run/ebpf_map.sock"
+#define WEB_SERVER_USERNAME  "www-data"
 
-static char proto_buf[512];  // message-transfer buffer
+//static char proto_buf[512];  // message-transfer buffer
+static char proto_buf[4096];  // message-transfer buffer
 
 static void
 hexdump(FILE *f, void *data, size_t size)
@@ -64,7 +67,7 @@ server()
 {
     int fd, rv, n;
 
-    unlink(sock_pathname);  // remove stale UNIX domain socket, if any
+    unlink(SOCK_PATHNAME);  // remove stale UNIX domain socket, if any
 
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -79,10 +82,21 @@ server()
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, sock_pathname, sizeof(addr.sun_path) - 1);
+    strncpy(addr.sun_path, SOCK_PATHNAME, sizeof(addr.sun_path) - 1);
     rv = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
     if (rv < 0) {
         perror("bind() failed");
+        return -1;  // failure
+    }
+
+    struct passwd *pwd = getpwnam(WEB_SERVER_USERNAME);
+    if (!pwd) {
+        perror("getpwnam() failed");
+        return -1;  // failure
+    }
+    rv = chown(SOCK_PATHNAME, pwd->pw_uid, -1);
+    if (rv < 0) {
+        perror("chown() failed");
         return -1;  // failure
     }
 
@@ -111,7 +125,7 @@ server()
     }
 
     rv = close(FCGI_LISTENSOCK_FILENO);  // close listener
-    unlink(sock_pathname);  // remove UNIX domain socket
+    unlink(SOCK_PATHNAME);  // remove UNIX domain socket
     return rv;
 }
 
