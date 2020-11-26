@@ -63,7 +63,7 @@ hexdump(FILE *f, void *data, size_t size)
 }
 
 #if 0
-read() got 640 octets:
+read() got 640 octets: /*
 0000:  01 01 00 01 00 08 00 00  00 01 00 00 00 00 00 00  |................|
 0010:  01 04 00 01 02 55 03 00  0b 09 52 45 51 55 45 53  |.....U....REQUES|
 0020:  54 5f 55 52 49 2f 65 62  70 66 5f 6d 61 70 0e 03  |T_URI/ebpf_map..|
@@ -84,7 +84,7 @@ read() got 640 octets:
 01c0:  70 70 6c 69 63 61 74 69  6f 6e 2f 78 6d 6c 3b 71  |pplication/xml;q|
 01d0:  3d 30 2e 39 2c 69 6d 61  67 65 2f 61 76 69 66 2c  |=0.9,image/avif,|
 01e0:  69 6d 61 67 65 2f 77 65  62 70 2c 69 6d 61 67 65  |image/webp,image|
-01f0:  2f 61 70 6e 67 2c 2a 2f  2a 3b 71 3d 30 2e 38 2c  |/apng,*/*;q=0.8,| */
+01f0:  2f 61 70 6e 67 2c 2a 2f  2a 3b 71 3d 30 2e 38 2c  |/apng,*/*;q=0.8,|
 0200:  61 70 70 6c 69 63 61 74  69 6f 6e 2f 73 69 67 6e  |application/sign|
 0210:  65 64 2d 65 78 63 68 61  6e 67 65 3b 76 3d 62 33  |ed-exchange;v=b3|
 0220:  3b 71 3d 30 2e 39 14 0d  48 54 54 50 5f 41 43 43  |;q=0.9..HTTP_ACC|
@@ -93,6 +93,7 @@ read() got 640 octets:
 0250:  41 43 43 45 50 54 5f 4c  41 4e 47 55 41 47 45 65  |ACCEPT_LANGUAGEe|
 0260:  6e 2d 55 53 2c 65 6e 3b  71 3d 30 2e 39 00 00 00  |n-US,en;q=0.9...|
 0270:  01 04 00 01 00 00 00 00  01 05 00 01 00 00 00 00  |................|
+---
 0280:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 0290:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 02a0:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
@@ -170,14 +171,27 @@ get_value(FCGI_Header *req, int offset, FCGI_Header *rsp)
 }
 
 int
+reply(void *response, int len)
+{
+    printf("write() %d octets:\n", len);
+    hexdump(stdout, response, len);
+    if (write(FCGI_LISTENSOCK_FILENO, &response, len) < 0) {
+        perror("write() failed");
+        return -1;  // failure
+    }
+    return 0;  // success
+}
+
+static int fcgi_keep_conn = 0;  // default = close between requests
+
+int
 record(void **data, void *end)
 {
-    int n;
-    int rv = 0;  // success
     static int active_request_id = FCGI_NULL_REQUEST_ID;
+    int n;
 
     void *content = *data + FCGI_HEADER_LEN;
-    if (content + FCGI_HEADER_LEN > end) return -1;  // too small
+    if (content + FCGI_HEADER_LEN > end) return 0;  // not enough data
     FCGI_Header *hdr = (FCGI_Header *)*data;
 
 /**
@@ -190,12 +204,21 @@ record(void **data, void *end)
     int content_len = hdr->contentLengthB1 << 8 | hdr->contentLengthB0;
     int padding_len = hdr->paddingLength;
 
-    *data += content_len + padding_len;  // advance to end of record
+    printf("record: vsn=%d type=%d id=%d len=%d pad=%d\n",
+        hdr->version, hdr->type, request_id, content_len, padding_len);
+
+    n = content_len + padding_len;
+    if (content + n > end) return 0;  // not enough data
+    *data = content + n;  // advance to end of record
 
     switch (hdr->type) {
 
         case FCGI_BEGIN_REQUEST: {
             active_request_id = request_id;  // begin handling request
+            FCGI_BeginRequestBody *body = content;
+            int role = body->roleB1 << 8 | body->roleB0;
+            if (role != FCGI_RESPONDER) return -1;  // bad role
+            fcgi_keep_conn = body->flags & FCGI_KEEP_CONN;
             break;
         }
 
@@ -210,10 +233,12 @@ record(void **data, void *end)
         }
 
         case FCGI_PARAMS: {
+            if (request_id != active_request_id) return -1;  // bad id
             break;
         }
 
         case FCGI_STDIN: {
+            if (request_id != active_request_id) return -1;  // bad id
             break;
         }
 
@@ -230,6 +255,7 @@ record(void **data, void *end)
         }
 
         case FCGI_GET_VALUES: {
+            if (request_id != FCGI_NULL_REQUEST_ID) return -1;  // bad id
             struct {
                 FCGI_Header header;
                 unsigned char body[64];
@@ -252,11 +278,7 @@ record(void **data, void *end)
                 if (n <= 0) break;
                 offset += n;
             }
-            rv = write(FCGI_LISTENSOCK_FILENO, &response, sizeof(response));
-            if (rv < 0) {
-                perror("write() failed");
-                return -1;  // failure
-            }
+            if (reply(&response, sizeof(response)) < 0) return -1;  // failure
             break;
         }
 
@@ -279,34 +301,47 @@ record(void **data, void *end)
                     .reserved = { 0, 0, 0, 0, 0, 0, 0 },
                 },
             };
-            rv = write(FCGI_LISTENSOCK_FILENO, &response, sizeof(response));
-            if (rv < 0) {
-                perror("write() failed");
-                return -1;  // failure
-            }
+            if (reply(&response, sizeof(response)) < 0) return -1;  // failure
             break;
         }
 
     }
 
-    return rv;
+    return 1;  // success
 }
 
 int
 connection(int fd)
 {
     int n;
-    int rv = 0;  // success
+    int rv;
 
     n = read(fd, proto_buf, sizeof(proto_buf));
     if (n < 0) {
         perror("read() failed");
         return -1;  // failure
     }
-    printf("read() got %d octets:\n", n);
-    hexdump(stdout, proto_buf, sizeof(proto_buf));
+    printf("read() got %d octets @%p:\n", n, proto_buf);
+    hexdump(stdout, proto_buf, n);
 
-    return rv;
+    void *data = proto_buf;
+    void *end = data + n;
+    do {
+
+        rv = record(&data, end);
+        printf("record()=%d data=%p end=%p offset=%d len=%d\n",
+            rv, data, end,
+            (int)(data - (void *)proto_buf), (int)(end - data));
+        if (rv < 0) return rv;  // failure
+
+        if (rv == 0) {  // need more data
+            fprintf(stderr, "FATAL: BUFFER REFILL NOT IMPLEMENTED!\n");
+            return -1;
+        }
+
+    } while (rv < 2);
+
+    return 0;  // success
 }
 
 int
