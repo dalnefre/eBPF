@@ -191,7 +191,11 @@ record(void **data, void *end)
     int n;
 
     void *content = *data + FCGI_HEADER_LEN;
-    if (content + FCGI_HEADER_LEN > end) return 0;  // not enough data
+    if (content > end) {
+        printf("record: *data=%p content=%p end=%p (header too short)\n",
+            *data, content, end);
+        return 0;  // not enough data
+    }
     FCGI_Header *hdr = (FCGI_Header *)*data;
 
 /**
@@ -208,7 +212,11 @@ record(void **data, void *end)
         hdr->version, hdr->type, request_id, content_len, padding_len);
 
     n = content_len + padding_len;
-    if (content + n > end) return 0;  // not enough data
+    if (content + n > end) {
+        printf("record: content=%p n=%d end=%p (payload too short)\n",
+            content, n, end);
+        return 0;  // not enough data
+    }
     *data = content + n;  // advance to end of record
 
     switch (hdr->type) {
