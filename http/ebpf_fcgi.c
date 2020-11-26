@@ -16,10 +16,68 @@
 #define SOCK_PATHNAME        "/run/ebpf_map.sock"
 #define WEB_SERVER_USERNAME  "www-data"
 
-//static char proto_buf[512];  // message-transfer buffer
-static char proto_buf[4096];  // message-transfer buffer
+FCGI_Header req_hdr;                // inbound request header
+int         request_id;             // current request id
+int         content_len;            // request content length
+int         padding_len;            // request padding length
+void        *req_buf = NULL;        // inbound request body
+int         active_request_id = FCGI_NULL_REQUEST_ID;
+int         fcgi_keep_conn = 0;     // default = close between requests
 
-static void
+int
+init()
+{
+    int fd, rv;
+
+    // close stdin for listener to re-use
+    if (close(FCGI_LISTENSOCK_FILENO) < 0) {
+        perror("close() failed");
+        return -1;  // failure
+    }
+
+    unlink(SOCK_PATHNAME);  // remove stale UNIX domain socket, if any
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        perror("socket() failed");
+        return -1;  // failure
+    }
+    if (fd != FCGI_LISTENSOCK_FILENO) {
+        perror("fd != FCGI_LISTENSOCK_FILENO");
+        return -1;  // failure
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SOCK_PATHNAME, sizeof(addr.sun_path) - 1);
+    rv = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (rv < 0) {
+        perror("bind() failed");
+        return -1;  // failure
+    }
+
+    struct passwd *pwd = getpwnam(WEB_SERVER_USERNAME);
+    if (!pwd) {
+        perror("getpwnam() failed");
+        return -1;  // failure
+    }
+    rv = chown(SOCK_PATHNAME, pwd->pw_uid, -1);
+    if (rv < 0) {
+        perror("chown() failed");
+        return -1;  // failure
+    }
+
+    rv = listen(FCGI_LISTENSOCK_FILENO, 4);
+    if (rv < 0) {
+        perror("listen() failed");
+        return -1;  // failure
+    }
+
+    return 0;  // success
+}
+
+void
 hexdump(FILE *f, void *data, size_t size)
 {
     unsigned char *buffer = data;
@@ -102,6 +160,18 @@ read() got 640 octets: /*
 0ff0:  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 #endif
 
+int
+reply(void *response, int len)
+{
+    printf("write() %d octets of reponse:\n", len);
+    hexdump(stdout, response, len);
+    if (write(FCGI_LISTENSOCK_FILENO, &response, len) < 0) {
+        perror("write() failed");
+        return -1;  // failure
+    }
+    return 0;  // success
+}
+
 typedef struct {
     char *name;
     char *value;
@@ -123,18 +193,16 @@ name_value_t config[] = {
 };
 
 int
-get_value(FCGI_Header *req, int offset, FCGI_Header *rsp)
+get_value(int offset, FCGI_Header *rsp)
 {
-    int req_content_len = req->contentLengthB1 << 8 | req->contentLengthB0;
-    //int req_padding_len = req->paddingLength;
-    if (offset > req_content_len) return 0;  // end of content
+    if (offset > content_len) return 0;  // end of content
+    char *content = req_buf;
 
-    unsigned char *req_content = (void *)(req + 1);  // content follows header
-    int name_len = req_content[offset++];
+    int name_len = content[offset++];
     if (name_len > 0x7F) return -1;  // name_len too large
-    int value_len = req_content[offset++];
+    int value_len = content[offset++];
     if (value_len != 0) return -1;  // value_len must be zero for query
-    char *req_name = (char *)req_content + offset;
+    char *req_name = content + offset;
     offset += name_len;
     //offset += value_len; -- value_len must be 0, so no increment needed.
 
@@ -171,23 +239,39 @@ get_value(FCGI_Header *req, int offset, FCGI_Header *rsp)
 }
 
 int
-reply(void *response, int len)
+handle_get_values()
 {
-    printf("write() %d octets:\n", len);
-    hexdump(stdout, response, len);
-    if (write(FCGI_LISTENSOCK_FILENO, &response, len) < 0) {
-        perror("write() failed");
-        return -1;  // failure
-    }
-    return 0;  // success
-}
+    struct {
+        FCGI_Header header;
+        unsigned char body[64];
+    } response = {
+        .header = {
+            .version = FCGI_VERSION_1,
+            .type = FCGI_GET_VALUES_RESULT,
+            .requestIdB1 = 0,
+            .requestIdB0 = 0,
+            .contentLengthB1 = 0,
+            .contentLengthB0 = 0,
+            .paddingLength = 64,
+            .reserved = 0,
+        },
+    };
+    memset(response.body, 0, sizeof(response.body));
 
-static int fcgi_keep_conn = 0;  // default = close between requests
+    int offset = 0;
+    for (;;) {
+        int n = get_value(offset, &response.header);
+        if (n <= 0) break;
+        offset += n;
+    }
+    if (reply(&response, sizeof(response)) < 0) return -1;  // failure
+
+    return 1;  // success
+}
 
 int
 record(void **data, void *end)
 {
-    static int active_request_id = FCGI_NULL_REQUEST_ID;
     int n;
 
     void *content = *data + FCGI_HEADER_LEN;
@@ -282,7 +366,7 @@ record(void **data, void *end)
             memset(response.body, 0, sizeof(response.body));
             int offset = 0;
             for (;;) {
-                n = get_value(hdr, offset, &response.header);
+                n = get_value(offset, &response.header);
                 if (n <= 0) break;
                 offset += n;
             }
@@ -319,99 +403,98 @@ record(void **data, void *end)
 }
 
 int
-connection(int fd)
+read_record(int fd)
 {
     int n;
-    int rv;
 
-    n = read(fd, proto_buf, sizeof(proto_buf));
-    if (n < 0) {
+    if (req_buf) {  // release old buffer, if any
+        free(req_buf);
+        req_buf = NULL;
+    }
+
+    n = read(fd, &req_hdr, sizeof(req_hdr));
+    if (n == 0) return 0;  // EOF
+    if (n != sizeof(req_hdr)) {
         perror("read() failed");
         return -1;  // failure
     }
-    printf("read() got %d octets @%p:\n", n, proto_buf);
-    hexdump(stdout, proto_buf, n);
+    printf("read() got %d octets of header:\n", n);
+    hexdump(stdout, &req_hdr, n);
 
-    void *data = proto_buf;
-    void *end = data + n;
-    do {
+/**
+0000:  01 01 00 01 00 08 00 00  00 01 00 00 00 00 00 00  |................|
+0010:  01 04 00 01 02 55 03 00  0b 09 52 45 51 55 45 53  |.....U....REQUES|
+**/
+    if (req_hdr.version != FCGI_VERSION_1) return -1;  // bad version
 
-        rv = record(&data, end);
-        printf("record()=%d data=%p end=%p offset=%d len=%d\n",
-            rv, data, end,
-            (int)(data - (void *)proto_buf), (int)(end - data));
-        if (rv < 0) return rv;  // failure
+    request_id = req_hdr.requestIdB1 << 8 | req_hdr.requestIdB0;
+    content_len = req_hdr.contentLengthB1 << 8 | req_hdr.contentLengthB0;
+    padding_len = req_hdr.paddingLength;
 
-        if (rv == 0) {  // need more data
-            fprintf(stderr, "FATAL: BUFFER REFILL NOT IMPLEMENTED!\n");
-            return -1;
+    printf("request: vsn=%d type=%d id=%d len=%d pad=%d\n",
+        req_hdr.version, req_hdr.type, request_id, content_len, padding_len);
+
+    size_t size = content_len + padding_len;
+    if (size > 0) {
+        req_buf = calloc(size, sizeof(unsigned char));
+        n = read(fd, req_buf, size);
+        if (n != size) {
+            perror("read() wrong size");
+            return -1;  // failure
         }
+        printf("read() got %d octets of body:\n", n);
+        hexdump(stdout, req_buf, n);
+    }
 
-    } while (rv < 2);
-
-    return 0;  // success
+    return 1;  // success
 }
 
 int
-server()
+next_record(int fd)
 {
-    int fd, rv;
+    int rv;
 
-    unlink(SOCK_PATHNAME);  // remove stale UNIX domain socket, if any
-
-    fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) {
-        perror("socket() failed");
-        return -1;  // failure
+    rv = read_record(fd);
+    if (rv < 1) return rv;
+    while (req_hdr.type == FCGI_GET_VALUES) {  // GET_VALUES can occur anytime
+        rv = handle_get_values();
+        if (rv < 1) return rv;
+        rv = read_record(fd);
+        if (rv < 1) return rv;
     }
-    if (fd != FCGI_LISTENSOCK_FILENO) {
-        perror("fd != FCGI_LISTENSOCK_FILENO");
-        return -1;  // failure
-    }
-
-    struct sockaddr_un addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, SOCK_PATHNAME, sizeof(addr.sun_path) - 1);
-    rv = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (rv < 0) {
-        perror("bind() failed");
-        return -1;  // failure
-    }
-
-    struct passwd *pwd = getpwnam(WEB_SERVER_USERNAME);
-    if (!pwd) {
-        perror("getpwnam() failed");
-        return -1;  // failure
-    }
-    rv = chown(SOCK_PATHNAME, pwd->pw_uid, -1);
-    if (rv < 0) {
-        perror("chown() failed");
-        return -1;  // failure
-    }
-
-    rv = listen(FCGI_LISTENSOCK_FILENO, 4);
-    if (rv < 0) {
-        perror("listen() failed");
-        return -1;  // failure
-    }
-
-    for (;;) {
-        fd = accept(FCGI_LISTENSOCK_FILENO, NULL, NULL);
-        if (fd < 0) {
-            perror("accept() failed");
-            continue;
-        }
-
-        rv = connection(fd);
-        if (rv < 0) return rv;  // failure
-
-        rv = close(fd);  // close client stream
-    }
-
-    rv = close(FCGI_LISTENSOCK_FILENO);  // close listener
-    unlink(SOCK_PATHNAME);  // remove UNIX domain socket
     return rv;
+}
+
+int
+handle_request(int fd)
+{
+    int rv;
+
+    // BEGIN REQUEST
+    rv = next_record(fd);
+    if (rv < 1) return rv;
+    if (req_hdr.type != FCGI_BEGIN_REQUEST) {
+        perror("expected FCGI_BEGIN_REQUEST");
+        return -1;  // failure
+    }
+    active_request_id = request_id;  // begin handling request
+    FCGI_BeginRequestBody *body = req_buf;
+    int role = body->roleB1 << 8 | body->roleB0;
+    if (role != FCGI_RESPONDER) return -1;  // bad role
+    fcgi_keep_conn = body->flags & FCGI_KEEP_CONN;
+
+    // REQUEST LOOP
+    for (;;) {
+        rv = next_record(fd);
+        if (rv < 1) return rv;
+        if (req_hdr.type == FCGI_END_REQUEST) break;  // exit loop...
+    }
+
+    // END REQUEST
+    if (request_id != active_request_id) return -1;  // bad id
+    active_request_id = FCGI_NULL_REQUEST_ID;  // no active request
+
+    return 1;  // success
 }
 
 int
@@ -419,13 +502,29 @@ main(int argc, char *argv[])
 {
     int rv;
 
-    rv = close(FCGI_LISTENSOCK_FILENO);  // close stdin for listener to re-use
-    if (rv < 0) {
-        perror("close() failed");
-        return -1;  // failure
+    rv = init();
+    if (rv < 0) exit(EXIT_FAILURE);
+
+    for (;;) {
+        int fd = accept(FCGI_LISTENSOCK_FILENO, NULL, NULL);
+        if (fd < 0) {
+            perror("accept() failed");
+            break;
+        }
+
+        do {
+            rv = handle_request(fd);
+            if (rv <= 0) {
+                break;  // exit loop on error or EOF
+            }
+        } while (fcgi_keep_conn);
+
+        close(fd);  // close client stream
     }
 
-    rv = server();
+    close(FCGI_LISTENSOCK_FILENO);  // close listener
+    unlink(SOCK_PATHNAME);  // remove UNIX domain socket
 
-    return rv;
+    exit(rv < 0 ? EXIT_FAILURE : EXIT_SUCCESS);
+    return 0;
 }
