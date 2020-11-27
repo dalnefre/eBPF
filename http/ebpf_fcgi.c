@@ -121,6 +121,129 @@ hexdump(FILE *f, void *data, size_t size)
     fflush(f);
 }
 
+static char *
+rectype(int type)
+{
+    switch (type) {
+        case FCGI_BEGIN_REQUEST:        return "BEGIN_REQUEST";
+        case FCGI_ABORT_REQUEST:        return "ABORT_REQUEST";
+        case FCGI_END_REQUEST:          return "END_REQUEST";
+        case FCGI_PARAMS:               return "PARAMS";
+        case FCGI_STDIN:                return "STDIN";
+        case FCGI_STDOUT:               return "STDOUT";
+        case FCGI_STDERR:               return "STDERR";
+        case FCGI_DATA:                 return "DATA";
+        case FCGI_GET_VALUES:           return "GET_VALUES";
+        case FCGI_GET_VALUES_RESULT:    return "GET_VALUES_RESULT";
+        case FCGI_UNKNOWN_TYPE:         return "UNKNOWN_TYPE";
+        default:                        return "*INVALID*";
+    }
+};
+
+static char *
+recrole(int role)
+{
+    switch (role) {
+        case FCGI_RESPONDER:            return "RESPONDER";
+        case FCGI_AUTHORIZER:           return "AUTHORIZER";
+        case FCGI_FILTER:               return "FILTER";
+        default:                        return "*INVALID*";
+    }
+};
+
+static char *
+recstatus(int status)
+{
+    switch (status) {
+        case FCGI_REQUEST_COMPLETE:     return "REQUEST_COMPLETE";
+        case FCGI_CANT_MPX_CONN:        return "CANT_MPX_CONN";
+        case FCGI_OVERLOADED:           return "OVERLOADED";
+        case FCGI_UNKNOWN_ROLE:         return "UNKNOWN_ROLE";
+        default:                        return "*INVALID*";
+    }
+};
+
+static void
+strdump(FILE *f, char *str, int len)
+{
+    int c;
+    int n = 0;
+
+    fputc('"', f);
+    while (len-- > 0) {
+        c = *str++;
+        if (n > 48) {
+            fputs("...", f);
+            break;  // truncate output
+        }
+        if ((c < ' ') || (c >= 0x7F)) {
+            n += fprintf(f, "\\%03d", c);
+        } else if (c == '\\') {
+            fputc('\\', f);
+            fputc(c, f);
+            n += 2;
+        } else {
+            fputc(c, f);
+            ++n;
+        }
+    }
+    fputc('"', f);
+};
+
+void
+recdump(FILE *f, FCGI_Header *hdr, void *content)
+{
+    int type = hdr->type;
+    int id = hdr->requestIdB1 << 8 | hdr->requestIdB0;
+    int len = hdr->contentLengthB1 << 8 | hdr->contentLengthB0;
+
+    fprintf(f, "{%s, %d, ", rectype(type), id);
+    switch (type) {
+        case FCGI_BEGIN_REQUEST: {
+            FCGI_BeginRequestBody *body = content;
+            if (len != sizeof(*body)) { fputs("???", f); break; }
+            int role = body->roleB1 << 8 | body->roleB0;
+            fprintf(f, "{%s, 0x%x}", recrole(role), body->flags);
+            break;
+        }
+        case FCGI_END_REQUEST: {
+            FCGI_EndRequestBody *body = content;
+            if (len != sizeof(*body)) { fputs("???", f); break; }
+            int exitcode = body->appStatusB3 << 24 | body->appStatusB2 << 16
+                         | body->appStatusB1 << 8  | body->appStatusB0;
+            fprintf(f, "{%d, %s}", exitcode, recstatus(body->protocolStatus));
+            break;
+        }
+        case FCGI_GET_VALUES:
+        case FCGI_GET_VALUES_RESULT:
+        case FCGI_PARAMS:
+        case FCGI_STDIN:
+        case FCGI_STDOUT:
+        case FCGI_STDERR:
+        case FCGI_DATA: {
+            strdump(f, content, len);
+            break;
+        }
+        case FCGI_UNKNOWN_TYPE: {
+            FCGI_UnknownTypeBody *body = content;
+            if (len != sizeof(*body)) { fputs("???", f); break; }
+            char *label = rectype(body->type);
+            if (*label == '*') {
+                fprintf(f, "{%d}", body->type);
+            } else {
+                fprintf(f, "{%s}", label);
+            }
+            break;
+        }
+        case FCGI_ABORT_REQUEST:
+        default: {
+            fputs(len ? "???" : "{}", f);
+            break;
+        };
+    }
+    fputs("}\n", f);
+}
+
 #if 0
 read() got 640 octets: /*
 0000:  01 01 00 01 00 08 00 00  00 01 00 00 00 00 00 00  |................|
@@ -164,6 +287,8 @@ read() got 640 octets: /*
 int
 reply(int fd, void *response, int len)
 {
+    fputs("-> ", stdout);
+    recdump(stdout, response, response + FCGI_HEADER_LEN);
     printf("write() %d octets of reponse:\n", len);
     hexdump(stdout, response, len);
     if (write(fd, &response, len) != len) {
@@ -289,7 +414,11 @@ read_record(int fd)
     printf("read() got %d octets of header:\n", n);
     hexdump(stdout, &req_hdr, n);
 
-    if (req_hdr.version != FCGI_VERSION_1) return -1;  // bad version
+    if (req_hdr.version != FCGI_VERSION_1) {
+        fprintf(stderr, "FCGI vsn: expected %d, got %d\n",
+            FCGI_VERSION_1, req_hdr.version);
+        return -1;  // bad version
+    }
 
     request_id = req_hdr.requestIdB1 << 8 | req_hdr.requestIdB0;
     content_len = req_hdr.contentLengthB1 << 8 | req_hdr.contentLengthB0;
@@ -309,6 +438,9 @@ read_record(int fd)
         printf("read() got %d octets of body:\n", n);
         hexdump(stdout, req_buf, n);
     }
+
+    fputs("<- ", stdout);
+    recdump(stdout, &req_hdr, req_buf);
 
     return 1;  // success
 }
@@ -391,9 +523,7 @@ stream_reply(int fd, int type, char *data)
 </head>\r\n\
 <body>\r\n\
 <h1>eBPF Map</h1>\r\n\
-<p>\r\n\
-...map data goes here...\r\n\
-</p>\r\n\
+<p>[TBD]</p>\r\n\
 </body>\r\n\
 </html>\r\n"
 
@@ -483,6 +613,8 @@ handle_request(int fd)
     rv = stream_reply(fd, FCGI_STDOUT, buf_stdout);
     if (rv < 0) return rv;
     rv = stream_reply(fd, FCGI_STDOUT, "");  // EOF
+    if (rv < 0) return rv;
+    rv = stream_reply(fd, FCGI_STDERR, "");  // EOF
     if (rv < 0) return rv;
 
     // END REQUEST
