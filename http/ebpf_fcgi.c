@@ -13,7 +13,7 @@
 
 #define DEBUG(x) x /**/
 
-#define RESERVED_IS_NOT_PADDING     0  // reserved included in content_len
+#define RESERVED_IS_NOT_PADDING     1  // reserved included in content_len
 
 #define SOCK_PATHNAME        "/run/ebpf_map.sock"
 #define WEB_SERVER_USERNAME  "www-data"
@@ -290,7 +290,7 @@ read() got 640 octets: /*
 int
 reply(int fd, void *response, int len)
 {
-    fputs("-> ", stdout);
+    fputs("->   ", stdout);
     recdump(stdout, response, response + FCGI_HEADER_LEN);
     DEBUG(printf("write() %d octets of reponse:\n", len));
     DEBUG(hexdump(stdout, response, len));
@@ -579,6 +579,7 @@ reply_end_req(int fd, long exitcode, int status)
 0010:  01 04 00 01 02 55 03 00  0b 09 52 45 51 55 45 53  |.....U....REQUES|
 **/
 
+#if 0
 #define HTML_BODY "\
 <!DOCTYPE html>\r\n\
 <html>\r\n\
@@ -590,6 +591,41 @@ reply_end_req(int fd, long exitcode, int status)
 <p>[TBD]</p>\r\n\
 </body>\r\n\
 </html>\r\n"
+#endif
+
+#if 1
+#define HTML_BODY "\
+<html>\n\
+<head>\n\
+<title>eBPF Map</title>\r\n\
+</head>\n\
+<body>\n\
+<h1>eBPF Map</h1>\n\
+<p>[TBD]</p>\n\
+</body>\n\
+</html>\n"
+#endif
+
+#if 1
+#define JSON_BODY "[-1, -1, 0, 12345]"
+#endif
+
+#if 0
+#define HTTP_FORMAT "\
+HTTP/1.1 200 OK\r\n\
+Content-Type: %s\r\n\
+Content-Length: %d\r\n\
+\r\n\
+%s"
+#endif
+
+#if 1
+#define HTTP_FORMAT "\
+Content-Type: %s\r\n\
+Content-Length: %d\r\n\
+\r\n\
+%s"
+#endif
 
 char buf_stdout[4096];
 
@@ -597,12 +633,7 @@ int
 format_stdout(char *content_type, char *body)
 {
     int len = strlen(body);
-    int n = snprintf(buf_stdout, sizeof(buf_stdout), "\
-HTTP/1.1 200 OK\r\n\
-Content-Type: %s\r\n\
-Content-Length: %d\r\n\
-\r\n\
-%s",
+    int n = snprintf(buf_stdout, sizeof(buf_stdout), HTTP_FORMAT,
         content_type, len, body);
     return n;
 }
@@ -662,13 +693,39 @@ handle_request(int fd)
     }
 
     // STDOUT / STDERR
+#if 0
+#if 1
     rv = format_stdout("text/html", HTML_BODY);
+#else
+    rv = format_stdout("application/json", JSON_BODY);
+#endif
+#else
+#if 0
+#define HTTP_BODY "\
+Content-type: application/json\r\n\
+\r\n\
+[-1,-1,0,12345]"
+#else
+#define HTTP_BODY "\
+Content-type: text/html\r\n\
+\r\n\
+<html>\n\
+<head>\n\
+<title>eBPF Map</title>\r\n\
+</head>\n\
+<body>\n\
+<p>eBPF Map Reader</p>\n\
+</body>\n\
+</html>\n"
+#endif
+    strncpy(buf_stdout, HTTP_BODY, sizeof(buf_stdout));
+#endif
     if (rv < 0) return rv;
     rv = reply_stream(fd, FCGI_STDOUT, buf_stdout);
     if (rv < 0) return rv;
     rv = reply_stream(fd, FCGI_STDOUT, "");  // EOF
     if (rv < 0) return rv;
-#if 1
+#if 0
     rv = reply_stream(fd, FCGI_STDERR, "");  // EOF
     if (rv < 0) return rv;
 #endif
