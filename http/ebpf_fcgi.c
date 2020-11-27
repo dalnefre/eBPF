@@ -23,6 +23,7 @@ int         padding_len;            // request padding length
 void        *req_buf = NULL;        // inbound request body
 int         active_request_id = FCGI_NULL_REQUEST_ID;
 int         fcgi_keep_conn = 0;     // default = close between requests
+int         fcgi_params_done = 0;   // non-zero when all params rcvd
 
 int
 init()
@@ -161,11 +162,11 @@ read() got 640 octets: /*
 #endif
 
 int
-reply(void *response, int len)
+reply(int fd, void *response, int len)
 {
     printf("write() %d octets of reponse:\n", len);
     hexdump(stdout, response, len);
-    if (write(FCGI_LISTENSOCK_FILENO, &response, len) < 0) {
+    if (write(fd, &response, len) != len) {
         perror("write() failed");
         return -1;  // failure
     }
@@ -239,7 +240,7 @@ get_value(int offset, FCGI_Header *rsp)
 }
 
 int
-handle_get_values()
+handle_get_values(int fd)
 {
     struct {
         FCGI_Header header;
@@ -264,140 +265,7 @@ handle_get_values()
         if (n <= 0) break;
         offset += n;
     }
-    if (reply(&response, sizeof(response)) < 0) return -1;  // failure
-
-    return 1;  // success
-}
-
-int
-record(void **data, void *end)
-{
-    int n;
-
-    void *content = *data + FCGI_HEADER_LEN;
-    if (content > end) {
-        printf("record: *data=%p content=%p end=%p (header too short)\n",
-            *data, content, end);
-        return 0;  // not enough data
-    }
-    FCGI_Header *hdr = (FCGI_Header *)*data;
-
-/**
-0000:  01 01 00 01 00 08 00 00  00 01 00 00 00 00 00 00  |................|
-0010:  01 04 00 01 02 55 03 00  0b 09 52 45 51 55 45 53  |.....U....REQUES|
-**/
-    if (hdr->version != FCGI_VERSION_1) return -1;  // bad version
-
-    int request_id = hdr->requestIdB1 << 8 | hdr->requestIdB0;
-    int content_len = hdr->contentLengthB1 << 8 | hdr->contentLengthB0;
-    int padding_len = hdr->paddingLength;
-
-    printf("record: vsn=%d type=%d id=%d len=%d pad=%d\n",
-        hdr->version, hdr->type, request_id, content_len, padding_len);
-
-    n = content_len + padding_len;
-    if (content + n > end) {
-        printf("record: content=%p n=%d end=%p (payload too short)\n",
-            content, n, end);
-        return 0;  // not enough data
-    }
-    *data = content + n;  // advance to end of record
-
-    switch (hdr->type) {
-
-        case FCGI_BEGIN_REQUEST: {
-            active_request_id = request_id;  // begin handling request
-            FCGI_BeginRequestBody *body = content;
-            int role = body->roleB1 << 8 | body->roleB0;
-            if (role != FCGI_RESPONDER) return -1;  // bad role
-            fcgi_keep_conn = body->flags & FCGI_KEEP_CONN;
-            break;
-        }
-
-        case FCGI_ABORT_REQUEST: {
-            break;
-        }
-
-        case FCGI_END_REQUEST: {
-            if (request_id != active_request_id) return -1;  // bad id
-            active_request_id = FCGI_NULL_REQUEST_ID;  // no active request
-            break;
-        }
-
-        case FCGI_PARAMS: {
-            if (request_id != active_request_id) return -1;  // bad id
-            break;
-        }
-
-        case FCGI_STDIN: {
-            if (request_id != active_request_id) return -1;  // bad id
-            break;
-        }
-
-        case FCGI_STDOUT: {
-            break;
-        }
-
-        case FCGI_STDERR: {
-            break;
-        }
-
-        case FCGI_DATA: {
-            break;
-        }
-
-        case FCGI_GET_VALUES: {
-            if (request_id != FCGI_NULL_REQUEST_ID) return -1;  // bad id
-            struct {
-                FCGI_Header header;
-                unsigned char body[64];
-            } response = {
-                .header = {
-                    .version = FCGI_VERSION_1,
-                    .type = FCGI_GET_VALUES_RESULT,
-                    .requestIdB1 = 0,
-                    .requestIdB0 = 0,
-                    .contentLengthB1 = 0,
-                    .contentLengthB0 = 0,
-                    .paddingLength = 64,
-                    .reserved = 0,
-                },
-            };
-            memset(response.body, 0, sizeof(response.body));
-            int offset = 0;
-            for (;;) {
-                n = get_value(offset, &response.header);
-                if (n <= 0) break;
-                offset += n;
-            }
-            if (reply(&response, sizeof(response)) < 0) return -1;  // failure
-            break;
-        }
-
-        case FCGI_GET_VALUES_RESULT:  // invalid request (response type)
-        case FCGI_UNKNOWN_TYPE:  // invalid request (response type)
-        default: {  // unknown or invalid request type
-            FCGI_UnknownTypeRecord response = {
-                .header = {
-                    .version = FCGI_VERSION_1,
-                    .type = FCGI_UNKNOWN_TYPE,
-                    .requestIdB1 = 0,
-                    .requestIdB0 = 0,
-                    .contentLengthB1 = 0,
-                    .contentLengthB0 = 1,
-                    .paddingLength = 7,
-                    .reserved = 0,
-                },
-                .body = {
-                    .type = hdr->type,
-                    .reserved = { 0, 0, 0, 0, 0, 0, 0 },
-                },
-            };
-            if (reply(&response, sizeof(response)) < 0) return -1;  // failure
-            break;
-        }
-
-    }
+    if (reply(fd, &response, sizeof(response)) < 0) return -1;  // failure
 
     return 1;  // success
 }
@@ -412,7 +280,7 @@ read_record(int fd)
         req_buf = NULL;
     }
 
-    n = read(fd, &req_hdr, sizeof(req_hdr));
+    n = read(fd, &req_hdr, FCGI_HEADER_LEN);
     if (n == 0) return 0;  // EOF
     if (n != sizeof(req_hdr)) {
         perror("read() failed");
@@ -421,10 +289,6 @@ read_record(int fd)
     printf("read() got %d octets of header:\n", n);
     hexdump(stdout, &req_hdr, n);
 
-/**
-0000:  01 01 00 01 00 08 00 00  00 01 00 00 00 00 00 00  |................|
-0010:  01 04 00 01 02 55 03 00  0b 09 52 45 51 55 45 53  |.....U....REQUES|
-**/
     if (req_hdr.version != FCGI_VERSION_1) return -1;  // bad version
 
     request_id = req_hdr.requestIdB1 << 8 | req_hdr.requestIdB0;
@@ -454,15 +318,99 @@ next_record(int fd)
 {
     int rv;
 
-    rv = read_record(fd);
-    if (rv < 1) return rv;
-    while (req_hdr.type == FCGI_GET_VALUES) {  // GET_VALUES can occur anytime
-        rv = handle_get_values();
-        if (rv < 1) return rv;
+    for (;;) {
         rv = read_record(fd);
+        if (rv < 1) return rv;
+        if (req_hdr.type != FCGI_GET_VALUES) break;  // exit loop...
+        // GET_VALUES can occur anytime, respond immediately
+        rv = handle_get_values(fd);
         if (rv < 1) return rv;
     }
     return rv;
+}
+
+int
+stream_params(int fd)
+{
+    printf("params: streaming %d octets\n", content_len);
+    if (content_len == 0) return 0;  // end of stream
+    // FIXME: params ignored
+    return 1;  // success
+}
+
+int
+stream_stdin(int fd)
+{
+    printf("stdin: streaming %d octets\n", content_len);
+    if (content_len == 0) return 0;  // end of stream
+    // FIXME: stdin ignored
+    return 1;  // success
+}
+
+int
+stream_data(int fd)
+{
+    printf("data: streaming %d octets\n", content_len);
+    if (content_len == 0) return 0;  // end of stream
+    // FIXME: data ignored
+    return 1;  // success
+}
+
+int
+stream_reply(int fd, int type, char *data)
+{
+    int len = strlen(data);
+    int siz = (len + 0x7) & ~0x7;  // round up to multiple of 8
+    int pad = siz - len; 
+    void *buf = calloc(FCGI_HEADER_LEN + siz, sizeof(unsigned char));
+    FCGI_Header *hdr = buf;
+    hdr->version = FCGI_VERSION_1;
+    hdr->type = type;
+    hdr->requestIdB1 = active_request_id >> 8;
+    hdr->requestIdB0 = active_request_id;
+    hdr->contentLengthB1 = len >> 8;
+    hdr->contentLengthB0 = len;
+    hdr->paddingLength = pad;
+    hdr->reserved = 0;
+    memcpy(buf + FCGI_HEADER_LEN, data, len);
+    int rv = reply(fd, buf, FCGI_HEADER_LEN + siz);
+    free(buf);
+    return rv;
+}
+
+/**
+0000:  01 01 00 01 00 08 00 00  00 01 00 00 00 00 00 00  |................|
+0010:  01 04 00 01 02 55 03 00  0b 09 52 45 51 55 45 53  |.....U....REQUES|
+**/
+
+#define HTML_BODY "\
+<!DOCTYPE html>\r\n\
+<html>\r\n\
+<head>\r\n\
+<title>eBPF Map</title>\r\n\
+</head>\r\n\
+<body>\r\n\
+<h1>eBPF Map</h1>\r\n\
+<p>\r\n\
+...map data goes here...\r\n\
+</p>\r\n\
+</body>\r\n\
+</html>\r\n"
+
+char buf_stdout[4096];
+
+int
+format_stdout(char *content_type, char *body)
+{
+    int len = strlen(body);
+    int n = snprintf(buf_stdout, sizeof(buf_stdout), "\
+HTTP/1.1 200 OK\r\n\
+Content-Type: %s\r\n\
+Content-Length: %d\r\n\
+\r\n\
+%s",
+        content_type, len, body);
+    return n;
 }
 
 int
@@ -471,6 +419,7 @@ handle_request(int fd)
     int rv;
 
     // BEGIN REQUEST
+    fcgi_params_done = 0;
     rv = next_record(fd);
     if (rv < 1) return rv;
     if (req_hdr.type != FCGI_BEGIN_REQUEST) {
@@ -487,13 +436,80 @@ handle_request(int fd)
     for (;;) {
         rv = next_record(fd);
         if (rv < 1) return rv;
-        if (req_hdr.type == FCGI_END_REQUEST) break;  // exit loop...
+
+        if (req_hdr.type == FCGI_ABORT_REQUEST) {
+            return -2;  // abort!
+        } else if (req_hdr.type == FCGI_PARAMS) {
+            if (request_id != active_request_id) return -1;  // bad id
+            rv = stream_params(fd);
+            if (rv < 0) return rv;
+            if (rv == 0) {
+                fcgi_params_done = 1;
+            }
+        } else if (req_hdr.type == FCGI_STDIN) {
+            if (request_id != active_request_id) return -1;  // bad id
+            rv = stream_stdin(fd);
+            if (rv < 0) return rv;
+            if (rv == 0) break;  // exit loop...
+        } else if (req_hdr.type == FCGI_DATA) {
+            if (request_id != active_request_id) return -1;  // bad id
+            rv = stream_data(fd);
+            if (rv < 0) return rv;
+        } else {  // unknown request
+            FCGI_UnknownTypeRecord unk_typ = {
+                .header = {
+                    .version = FCGI_VERSION_1,
+                    .type = FCGI_UNKNOWN_TYPE,
+                    .requestIdB1 = 0,
+                    .requestIdB0 = 0,
+                    .contentLengthB1 = 0,
+                    .contentLengthB0 = 1,
+                    .paddingLength = 7,
+                    .reserved = 0,
+                },
+                .body = {
+                    .type = req_hdr.type,
+                    .reserved = { 0, 0, 0, 0, 0, 0, 0 },
+                },
+            };
+            if (reply(fd, &unk_typ, sizeof(unk_typ)) < 0) return -1;  // failure
+        }
+
     }
 
-    // END REQUEST
-    if (request_id != active_request_id) return -1;  // bad id
-    active_request_id = FCGI_NULL_REQUEST_ID;  // no active request
+    // STDOUT / STDERR
+    rv = format_stdout("text/html", HTML_BODY);
+    if (rv < 0) return rv;
+    rv = stream_reply(fd, FCGI_STDOUT, buf_stdout);
+    if (rv < 0) return rv;
+    rv = stream_reply(fd, FCGI_STDOUT, "");  // EOF
+    if (rv < 0) return rv;
 
+    // END REQUEST
+    FCGI_EndRequestRecord end_req = {
+        .header = {
+            .version = FCGI_VERSION_1,
+            .type = FCGI_END_REQUEST,
+            .requestIdB1 = active_request_id >> 8,
+            .requestIdB0 = active_request_id,
+            .contentLengthB1 = 0,
+            .contentLengthB0 = 5,
+            .paddingLength = 3,
+            .reserved = 0,
+        },
+        .body = {
+            .appStatusB3 = 0,
+            .appStatusB2 = 0,
+            .appStatusB1 = 0,
+            .appStatusB0 = 0,
+            .protocolStatus = FCGI_REQUEST_COMPLETE,
+            .reserved = { 0, 0, 0 },
+        },
+    };
+    rv = reply(fd, &end_req, sizeof(end_req));
+    if (rv < 0) return rv;
+
+    fflush(stdout);
     return 1;  // success
 }
 
@@ -515,13 +531,16 @@ main(int argc, char *argv[])
         do {
             rv = handle_request(fd);
             if (rv <= 0) {
+                printf("handle_request() = %d\n", rv);
                 break;  // exit loop on error or EOF
             }
         } while (fcgi_keep_conn);
 
+        printf("closing client stream (fd=%d)\n", fd);
         close(fd);  // close client stream
     }
 
+    printf("closing listener socket\n");
     close(FCGI_LISTENSOCK_FILENO);  // close listener
     unlink(SOCK_PATHNAME);  // remove UNIX domain socket
 
