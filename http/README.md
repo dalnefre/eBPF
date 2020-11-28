@@ -148,7 +148,8 @@ $ sudo nginx -s reload
 
 Now you should be able to visit [`http://localhost/ebpf_map`](http://localhost/ebpf_map)
 in a browser running on the same machine.
-If this doesn't work, check the NGINX error log:
+
+If the page does not display properly, check the NGINX error log:
 ```
 $ tail /var/log/nginx/error.log
 ```
