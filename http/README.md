@@ -124,12 +124,12 @@ $ cc -O2 -Wall -lfcgi -o tiny-fcgi tiny-fcgi.c
 There is a similar sample program called `hello_fcgi`
 that should be automatically built by `make`.
 If it built successfully,
-you can use `cgi-fcgi` to start the server:
+you can use `cgi-fcgi` to start the application server:
 ```
 $ sudo cgi-fcgi -start -connect /run/hello_fcgi.sock ./hello_fcgi
 ```
 
-Make the UNIX Domain socket available to the web server:
+Make the UNIX Domain socket available to the web server (repeat after each application server restart):
 ```
 $ sudo chown www-data /run/hello_fcgi.sock
 ```
