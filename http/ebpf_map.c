@@ -1,5 +1,5 @@
 /*
- * ebpf_fcgi.c -- eBPF "map" FastCGI server
+ * ebpf_map.c -- eBPF "map" FastCGI server
  */
 #include <stddef.h>
 #include <stdlib.h>
@@ -13,6 +13,7 @@
 
 #define DEBUG(x) x /**/
 
+#define REUSE_STDIN_FOR_LISTENER    0  // FCGI_LISTENSOCK_FILENO == STDIN
 #define RESERVED_IS_NOT_PADDING     1  // reserved included in content_len
 
 #define SOCK_PATHNAME        "/run/ebpf_map.sock"
@@ -32,11 +33,13 @@ init()
 {
     int fd, rv;
 
+#if REUSE_STDIN_FOR_LISTENER
     // close stdin for listener to re-use
     if (close(FCGI_LISTENSOCK_FILENO) < 0) {
         perror("close() failed");
         return -1;  // failure
     }
+#endif
 
     unlink(SOCK_PATHNAME);  // remove stale UNIX domain socket, if any
 
@@ -45,10 +48,12 @@ init()
         perror("socket() failed");
         return -1;  // failure
     }
+#if REUSE_STDIN_FOR_LISTENER
     if (fd != FCGI_LISTENSOCK_FILENO) {
-        perror("fd != FCGI_LISTENSOCK_FILENO");
+        perror("not listening on FCGI_LISTENSOCK_FILENO");
         return -1;  // failure
     }
+#endif
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -71,13 +76,13 @@ init()
         return -1;  // failure
     }
 
-    rv = listen(FCGI_LISTENSOCK_FILENO, 4);
+    rv = listen(fd, 4);
     if (rv < 0) {
         perror("listen() failed");
         return -1;  // failure
     }
 
-    return 0;  // success
+    return fd;  // success
 }
 
 void
@@ -298,7 +303,7 @@ reply(int fd, void *response, int len)
         perror("write() failed");
         return -1;  // failure
     }
-    return 0;  // success
+    return len;  // success
 }
 
 typedef struct {
@@ -497,6 +502,7 @@ reply_stream(int fd, int type, char *data)
     int len = strlen(data);
     int siz = (len + 0x7) & ~0x7;  // round up to multiple of 8
     int pad = siz - len; 
+    DEBUG(printf("reply_stream: len=%d siz=%d pad=%d\n", len, siz, pad));
     void *buf = calloc(FCGI_HEADER_LEN + siz, sizeof(unsigned char));
     FCGI_Header *hdr = buf;
     hdr->version = FCGI_VERSION_1;
@@ -612,7 +618,7 @@ reply_end_req(int fd, long exitcode, int status)
 
 #if 0
 #define HTTP_FORMAT "\
-HTTP/1.1 200 OK\r\n\
+HTTP/1.0 200 OK\r\n\
 Content-Type: %s\r\n\
 Content-Length: %d\r\n\
 \r\n\
@@ -663,6 +669,11 @@ handle_request(int fd)
     fcgi_keep_conn = body->flags & FCGI_KEEP_CONN;
     DEBUG(printf("FCGI_KEEP_CONN = %s\n", fcgi_keep_conn ? "true" : "false"));
 
+#if 0
+    printf("FORCE FAILURE! (connection should close)\n");
+    return 0;  // FIXME: FORCE FAILURE!
+#else
+
     // REQUEST LOOP
     for (;;) {
         rv = next_record(fd);
@@ -700,12 +711,14 @@ handle_request(int fd)
     rv = format_stdout("application/json", JSON_BODY);
 #endif
 #else
-#if 0
+#if 1
 #define HTTP_BODY "\
+HTTP/1.1 200 OK\r\n\
 Content-type: application/json\r\n\
 \r\n\
 [-1,-1,0,12345]"
-#else
+#endif
+#if 0
 #define HTTP_BODY "\
 Content-type: text/html\r\n\
 \r\n\
@@ -714,9 +727,14 @@ Content-type: text/html\r\n\
 <title>eBPF Map</title>\r\n\
 </head>\n\
 <body>\n\
-<p>eBPF Map Reader</p>\n\
+<p>\n\
+eBPF Map Reader\n\
+</p>\n\
 </body>\n\
 </html>\n"
+#endif
+#if 0
+#define HTTP_BODY "HTTP/1.0 404 Not Found\r\n\r\n"
 #endif
     strncpy(buf_stdout, HTTP_BODY, sizeof(buf_stdout));
 #endif
@@ -736,19 +754,21 @@ Content-type: text/html\r\n\
 
     fflush(stdout);
     return 1;  // success
+#endif  // FORCE FAILURE
 }
 
 int
 main(int argc, char *argv[])
 {
-    int rv;
+    int listen;
+    int rv = 0;
 
-    rv = init();
-    if (rv < 0) exit(EXIT_FAILURE);
+    listen = init();  // initialize socket listener
+    if (listen < 0) exit(EXIT_FAILURE);
 
     for (;;) {
         DEBUG(fputs("waiting for connection...\n", stdout));
-        int fd = accept(FCGI_LISTENSOCK_FILENO, NULL, NULL);
+        int fd = accept(listen, NULL, NULL);
         if (fd < 0) {
             perror("accept() failed");
             break;
@@ -768,7 +788,7 @@ main(int argc, char *argv[])
     }
 
     DEBUG(fputs("closing listener socket\n", stdout));
-    close(FCGI_LISTENSOCK_FILENO);  // close listener
+    close(listen);  // close listener
     unlink(SOCK_PATHNAME);  // remove UNIX domain socket
 
     exit(rv < 0 ? EXIT_FAILURE : EXIT_SUCCESS);

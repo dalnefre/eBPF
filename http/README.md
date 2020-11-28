@@ -118,7 +118,7 @@ void main(void)
 ```
 
 There is a similar sample program called `hello_fcgi`
-that should be automatically built be `make`.
+that should be automatically built by `make`.
 If it built successfully,
 you can use `cgi-fcgi` to start the server:
 ```
