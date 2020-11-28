@@ -59,3 +59,88 @@ server {
         ...
 }
 ```
+
+After making configuration changes,
+tell NGINX to reload its configuration files.
+```
+$ sudo nginx -s reload
+```
+
+## FastCGI Developer's Kit
+
+Most of the examples for building a FastCGI server
+use the [FastCGI Developer's Kit](https://github.com/FastCGI-Archives/fcgi2),
+which provides `libfcgi`,
+a shim that intercepts most of `stdio.h`
+and implements the FastCGI protocol for us.
+
+```
+$ sudo apt install gcc make m4 autoconf automake libtool
+$ cd ~/dev
+$ git clone https://github.com/FastCGI-Archives/fcgi2.git
+$ cd fcgi2
+$ ./autogen.sh
+$ ./configure
+$ make
+$ sudo make install
+```
+
+Confirm that `libfcgi` is available as a shared library.
+```
+$ ldconfig -p | grep fcgi
+```
+If nothing is shown,
+add `/usr/local/lib` to the paths searched for shared libraries.
+```
+$ sudo ldconfig /usr/local/lib
+```
+
+Once installed,
+we should be able to build
+[`examples/tiny-fcgi.c`](https://fastcgi-archives.github.io/FastCGI_Developers_Kit_FastCGI.html),
+shown here:
+```
+#include "fcgi_stdio.h"
+#include <stdlib.h>
+
+void main(void)
+{
+    int count = 0;
+    while(FCGI_Accept() >= 0)
+        printf("Content-type: text/html\r\n"
+               "\r\n"
+
+               "<title>FastCGI Hello!</title>"
+               "<h1>FastCGI Hello!</h1>"
+               "Request number %d running on host <i>%s</i>\n",
+                ++count, getenv("SERVER_NAME"));
+}
+```
+
+There is a similar sample program called `hello_fcgi`
+that should be automatically built be `make`.
+If it built successfully,
+you can use `cgi-fcgi` to start the server:
+```
+$ sudo cgi-fcgi -start -connect /run/hello_fcgi.sock ./hello_fcgi
+```
+
+Make the UNIX Domain socket available to the web server:
+```
+$ sudo chown www-data /run/hello_fcgi.sock
+```
+
+Of course, you'll also have to modify the NGINX configuration
+to connect to `/run/hello_fgci.sock`:
+```
+                fastcgi_pass unix:/run/hello_fcgi.sock;
+```
+And, tell NGINX to reload this configuration:
+```
+$ sudo nginx -s reload
+```
+
+If this doesn't work, check the NGINX error log:
+```
+$ tail /var/log/nginx/error.log
+```
