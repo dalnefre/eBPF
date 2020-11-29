@@ -6,8 +6,8 @@ CLANG_FLAGS = -target bpf -O2 -fno-jump-tables -Wall -g
 #CFLAGS = -O2 -Wall -g
 CFLAGS = -O2 -Wall
 
-#LIBBPF = -lbpf
-LIBBPF = -lelf ~/dev/linux/tools/lib/bpf/libbpf.a
+LIBBPF = -lbpf
+#LIBBPF = -lelf ~/dev/linux/tools/lib/bpf/libbpf.a
 
 OBJS =	pass_kern.o \
 	drop_kern.o \

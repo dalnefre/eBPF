@@ -177,6 +177,16 @@ $ sudo make install
 $ sudo make install_headers
 ```
 
+Confirm that `libbpf` is available as a shared library.
+```
+$ ldconfig -p | grep bpf
+```
+If nothing is shown,
+add `/usr/local/lib` to the paths searched for shared libraries.
+```
+$ sudo ldconfig /usr/local/lib
+```
+
 ```
 $ cd ~/dev/linux/tools/bpf/bpftool
 $ make

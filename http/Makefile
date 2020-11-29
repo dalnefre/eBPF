@@ -24,5 +24,5 @@ hello_fcgi: hello_fcgi.c
 #	cc $(CFLAGS) -o hello_fcgi hello_fcgi.c /usr/local/lib/libfcgi.a
 
 ebpf_fcgi: ebpf_fcgi.c
-	cc $(CFLAGS) -lfcgi -o ebpf_fcgi ebpf_fcgi.c
+	cc $(CFLAGS) -lfcgi -lbpf -o ebpf_fcgi ebpf_fcgi.c
 
