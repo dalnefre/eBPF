@@ -7,6 +7,7 @@ CFLAGS = -O2 -Wall -g
 #CFLAGS = -g
 
 ALL =	ebpf_map \
+	ebpf_fcgi \
 	hello_fcgi
 
 all: $(ALL)
@@ -21,4 +22,7 @@ hello_fcgi: hello_fcgi.c
 	cc $(CFLAGS) -lfcgi -o hello_fcgi hello_fcgi.c
 #	cc $(CFLAGS) -Wl,-rpath /usr/local/lib -lfcgi -o hello_fcgi hello_fcgi.c
 #	cc $(CFLAGS) -o hello_fcgi hello_fcgi.c /usr/local/lib/libfcgi.a
+
+ebpf_fcgi: ebpf_fcgi.c
+	cc $(CFLAGS) -lfcgi -o ebpf_fcgi ebpf_fcgi.c
 
