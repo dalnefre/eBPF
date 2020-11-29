@@ -103,7 +103,7 @@ shown here:
 #include "fcgi_stdio.h"
 #include <stdlib.h>
 
-void main(void)
+int main(void)
 {
     int count = 0;
     while(FCGI_Accept() >= 0)
@@ -116,16 +116,20 @@ void main(void)
                 ++count, getenv("SERVER_NAME"));
 }
 ```
+This program must be compiled and linked with `libfcgi`:
+```
+$ cc -O2 -Wall -lfcgi -o tiny-fcgi tiny-fcgi.c
+```
 
 There is a similar sample program called `hello_fcgi`
 that should be automatically built by `make`.
 If it built successfully,
-you can use `cgi-fcgi` to start the server:
+you can use `cgi-fcgi` to start the application server:
 ```
 $ sudo cgi-fcgi -start -connect /run/hello_fcgi.sock ./hello_fcgi
 ```
 
-Make the UNIX Domain socket available to the web server:
+Make the UNIX Domain socket available to the web server (repeat after each application server restart):
 ```
 $ sudo chown www-data /run/hello_fcgi.sock
 ```
@@ -133,14 +137,28 @@ $ sudo chown www-data /run/hello_fcgi.sock
 Of course, you'll also have to modify the NGINX configuration
 to connect to `/run/hello_fgci.sock`:
 ```
+        ...
                 fastcgi_pass unix:/run/hello_fcgi.sock;
+        ...
 ```
 And, tell NGINX to reload this configuration:
 ```
 $ sudo nginx -s reload
 ```
 
-If this doesn't work, check the NGINX error log:
+Now you should be able to visit [`http://localhost/ebpf_map`](http://localhost/ebpf_map)
+in a browser running on the same machine.
+
+If the page does not display properly, check the NGINX error log:
 ```
 $ tail /var/log/nginx/error.log
+```
+
+In order to install a new version of the application server,
+you'll first have to `kill` the current one:
+```
+$ ps -ef | grep fcgi
+root     16056     1  0 12:14 pts/0    00:00:00 ./hello_fcgi
+pi       16132 10015  0 12:39 pts/0    00:00:00 grep --color=auto fcgi
+$ sudo kill 16056
 ```
