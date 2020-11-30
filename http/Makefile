@@ -26,3 +26,6 @@ hello_fcgi: hello_fcgi.c
 ebpf_fcgi: ebpf_fcgi.c
 	cc $(CFLAGS) -lfcgi -lbpf -o ebpf_fcgi ebpf_fcgi.c
 
+install:
+	cp html/* /var/www/html/
+

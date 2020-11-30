@@ -1,0 +1,16 @@
+/* site-wide CSS style sheet */
+body {
+    background-color: #FFD;
+}
+table {
+    background-color: #FFF;
+}
+th {
+    padding: 3px 6px;
+    color: #FFF;
+    background-color: #555;
+}
+td {
+    padding: 3px 6px;
+    background-color: #DDD;
+}
