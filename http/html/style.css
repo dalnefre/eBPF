@@ -1,6 +1,10 @@
 /* site-wide CSS style sheet */
 body {
+    font-family: Arial,Helvetica,sans-serif;
     background-color: #FFD;
+}
+h1, h2, h3, h4, h5, h6, h7, h8, h9 {
+    font-family: Copperplate,Arial,Helvetica,sans-serif;
 }
 table {
     background-color: #FFF;

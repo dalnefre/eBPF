@@ -93,6 +93,45 @@ html_ait_map()
     return rv;
 }
 
+char *
+fcgi_param(char *name)
+{
+    char *value = getenv(name);
+    if (!value) {
+        return "*NULL*";
+    }
+    return value;
+};
+
+int
+html_params()
+{
+    static char *name[] = {
+        "REQUEST_URI",
+        "REQUEST_METHOD",
+        "CONTENT_TYPE",
+        "CONTENT_LENGTH",
+        "SCRIPT_FILENAME",
+        "QUERY_STRING",
+        NULL
+    };
+    int rv = 0;  // success
+
+    printf("<table>\n");
+    printf("<tr><th>Name</th><th>Value</th></tr>\n");
+    for (int i = 0; name[i]; ++i) {
+
+        printf("<tr>");
+        printf("<td>%s</td>", name[i]);
+        printf("<td>%s</td>", fcgi_param(name[i]));
+        printf("</tr>\n");
+
+    }
+    printf("</table>\n");
+
+    return rv;
+}
+
 void
 http_header(char *content_type)
 {
@@ -108,6 +147,7 @@ html_content(int req_count)
 {
     printf("<!DOCTYPE html>\n");
     printf("<html>\n");
+
     printf("<head>\n");
     printf("<title>eBPF Map</title>\n");
     printf("<link "
@@ -116,13 +156,22 @@ html_content(int req_count)
            "href=\"/style.css\" "
            "/>\n");
     printf("</head>\n");
+
     printf("<body>\n");
     printf("<h1>eBPF Map</h1>\n");
+
     printf("<p>Request #%d</p>\n", req_count);
+
     printf("<h2>AIT Map Dump</h2>\n");
     if (html_ait_map() < 0) {
         printf("<i>Map Unavailable</i>\n");
     }
+
+    printf("<h2>FastCGI Params</h2>\n");
+    if (html_params() < 0) {
+        printf("<i>Params Unavailable</i>\n");
+    }
+
     printf("</body>\n");
     printf("</html>\n");
 };
