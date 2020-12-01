@@ -111,8 +111,12 @@ html_params()
         "REQUEST_METHOD",
         "CONTENT_TYPE",
         "CONTENT_LENGTH",
+        "DOCUMENT_URI",
+        "SCRIPT_NAME",
         "SCRIPT_FILENAME",
         "QUERY_STRING",
+        "QUERY_PARAMS",
+        "SERVER_NAME",
         NULL
     };
     int rv = 0;  // success
@@ -120,10 +124,16 @@ html_params()
     printf("<table>\n");
     printf("<tr><th>Name</th><th>Value</th></tr>\n");
     for (int i = 0; name[i]; ++i) {
+        char *key = name[i];
+        char *value = getenv(key);
 
         printf("<tr>");
-        printf("<td>%s</td>", name[i]);
-        printf("<td>%s</td>", fcgi_param(name[i]));
+        printf("<td>%s</td>", key);
+        if (value) {
+            printf("<td><tt>%s</tt></td>", value);
+        } else {
+            printf("<td><i>null</i></td>");
+        }
         printf("</tr>\n");
 
     }
