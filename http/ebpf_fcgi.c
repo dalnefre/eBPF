@@ -1,12 +1,16 @@
 /*
  * ebpf_fcgi.c -- eBPF "map" FastCGI server
  */
+#if TEST_MAIN
+#include <stdio.h>
+#else
 #include <fcgi_stdio.h>
+#endif
 #include <stddef.h>
 #include <stdlib.h>
-//#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <unistd.h>
 #include <bpf/bpf.h>
@@ -104,19 +108,97 @@ fcgi_param(char *name)
 };
 
 int
+uri_unreserved(int c)
+{
+    // Per RFC 3986, '~' is "unreserved" in query strings,
+    // but not in "application/x-www-form-urlencoded" content.
+    return ((c >= '0') && (c <= '9'))
+        || ((c >= 'a') && (c <= 'z'))
+        || ((c >= 'A') && (c <= 'Z'))
+        || (c == '-') || (c == '_') || (c == '.');
+}
+
+static const char hex[] = "0123456789ABCDEF";
+
+int
+uri_to_utf8(char *dbuf, int dlen, char *sbuf, int slen)
+{
+    int i = 0, j = 0;
+    char *s;
+
+    while (i < slen) {
+        if (j >= dlen) {
+            return -1;  // fail: dbuf overflow
+        }
+        int c = sbuf[i++];
+        if (c == '%') {
+            if (i + 2 > slen) {
+                return -1;  // fail: sbuf underflow
+            }
+
+            s = strchr(hex, toupper(sbuf[i++]));
+            if (!(s && *s)) {
+                return -1;  // fail: non-hex digit
+            }
+            c = (s - hex);
+
+            s = strchr(hex, toupper(sbuf[i++]));
+            if (!(s && *s)) {
+                return -1;  // fail: non-hex digit
+            }
+            c = (c << 4) | (s - hex);
+        } else if (c == '+') {
+            c = ' ';  // backward compatibility
+        }
+        dbuf[j++] = c;
+    }
+    return j;  // success: # of characters written to dbuf
+};
+
+int
+utf8_to_uri(char *dbuf, int dlen, char *sbuf, int slen)
+{
+    int i, j = 0;
+
+    for (i = 0; i < slen; ++i) {
+        int c = sbuf[i];
+        if (uri_unreserved(c)) {
+            if (j >= dlen) {
+                return -1;  // fail: dbuf overflow
+            }
+            dbuf[j++] = c;
+        } else {
+            if (j + 2 >= dlen) {
+                return -1;  // fail: dbuf overflow
+            }
+            dbuf[j++] = '%';
+            dbuf[j++] = hex[(c >> 4) & 0xF];
+            dbuf[j++] = hex[c & 0xF];
+        }
+    }
+    return j;  // success: # of characters written to dbuf
+};
+
+int
 html_params()
 {
     static char *name[] = {
+        "REQUEST_SCHEME",
         "REQUEST_URI",
         "REQUEST_METHOD",
         "CONTENT_TYPE",
         "CONTENT_LENGTH",
-        "DOCUMENT_URI",
-        "SCRIPT_NAME",
-        "SCRIPT_FILENAME",
+        "PATH_INFO",
         "QUERY_STRING",
-        "QUERY_PARAMS",
         "SERVER_NAME",
+        "SCRIPT_FILENAME",
+        "HTTP_ACCEPT",
+        "HTTP_ACCEPT_CHARSET",
+        "HTTP_ACCEPT_ENCODING",
+        "HTTP_ACCEPT_LANGUAGE",
+        "HTTP_CONNECTION",
+        "HTTP_USER_AGENT",
+        "HTTP_HOST",
         NULL
     };
     int rv = 0;  // success
@@ -186,6 +268,7 @@ html_content(int req_count)
     printf("</html>\n");
 };
 
+#ifndef TEST_MAIN
 int
 main(void)
 {
@@ -200,3 +283,34 @@ main(void)
 
     return 0;
 }
+#else /* TEST_MAIN */
+#include <assert.h>
+
+int
+main(void)
+{
+    char buf[64];
+    char *s;
+    int n;
+    char *expect = "~Bad = clear (already)?";
+
+    s = "%7eBad+%3d+clear+%28already%29%3F";
+    n = uri_to_utf8(buf, sizeof(buf), s, strlen(s));
+    printf("n = %d\n", n);
+    assert(n == strlen(expect));
+    printf("uri_to_utf8: \"%.*s\"\n", n, buf);
+    assert(strncmp(buf, expect, n) == 0);
+
+    s = expect;
+    n = utf8_to_uri(buf, sizeof(buf), s, strlen(s));
+    printf("n = %d\n", n);
+    assert(n > strlen(s));
+    printf("utf8_to_uri: \"%.*s\"\n", n, buf);
+    n = uri_to_utf8(buf, sizeof(buf), buf, n);
+    printf("n = %d\n", n);
+    assert(n == strlen(expect));
+    assert(strncmp(buf, expect, n) == 0);
+
+    return 0;
+}
+#endif /* TEST_MAIN */

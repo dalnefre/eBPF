@@ -48,14 +48,14 @@ server {
         # pass requests to eBPF "map" FastCGI server
         location /ebpf_map {
                 fastcgi_pass  unix:/run/ebpf_map.sock;
+                fastcgi_param REQUEST_SCHEME  $scheme;
                 fastcgi_param REQUEST_URI     $request_uri;
                 fastcgi_param REQUEST_METHOD  $request_method;
                 fastcgi_param CONTENT_TYPE    $content_type;
                 fastcgi_param CONTENT_LENGTH  $content_length;
-                fastcgi_param DOCUMENT_URI    $document_uri;
-                fastcgi_param SCRIPT_NAME     $fastcgi_script_name;
-                fastcgi_param SCRIPT_FILENAME $request_filename;
+                fastcgi_param PATH_INFO       $document_uri;
                 fastcgi_param QUERY_STRING    $query_string;
+                fastcgi_param SCRIPT_FILENAME $request_filename;
         }
 
         ...
