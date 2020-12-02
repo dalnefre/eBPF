@@ -99,7 +99,7 @@ $ sudo ldconfig /usr/local/lib
 
 Once installed,
 we should be able to build
-[`examples/tiny-fcgi.c`](https://fastcgi-archives.github.io/FastCGI_Developers_Kit_FastCGI.html),
+[`examples/tiny_fcgi.c`](https://fastcgi-archives.github.io/FastCGI_Developers_Kit_FastCGI.html),
 shown here:
 ```
 #include "fcgi_stdio.h"
@@ -114,13 +114,13 @@ int main(void)
 
                "<title>FastCGI Hello!</title>"
                "<h1>FastCGI Hello!</h1>"
-               "Request number %d running on host <i>%s</i>\n",
-                ++count, getenv("SERVER_NAME"));
+               "Request number %d for URI <tt>%s</tt>\n",
+                ++count, getenv("REQUEST_URI"));
 }
 ```
 This program must be compiled and linked with `libfcgi`:
 ```
-$ cc -O2 -Wall -lfcgi -o tiny-fcgi tiny-fcgi.c
+$ cc -O2 -Wall -lfcgi -o tiny_fcgi tiny_fcgi.c
 ```
 
 There is a similar sample program called `hello_fcgi`
@@ -128,24 +128,12 @@ that should be automatically built by `make`.
 If it built successfully,
 you can use `cgi-fcgi` to start the application server:
 ```
-$ sudo cgi-fcgi -start -connect /run/hello_fcgi.sock ./hello_fcgi
+$ sudo cgi-fcgi -start -connect /run/ebpf_map.sock ./hello_fcgi
 ```
 
 Make the UNIX Domain socket available to the web server (repeat after each application server restart):
 ```
-$ sudo chown www-data /run/hello_fcgi.sock
-```
-
-Of course, you'll also have to modify the NGINX configuration
-to connect to `/run/hello_fgci.sock`:
-```
-        ...
-                fastcgi_pass unix:/run/hello_fcgi.sock;
-        ...
-```
-And, tell NGINX to reload this configuration:
-```
-$ sudo nginx -s reload
+$ sudo chown www-data /run/ebpf_map.sock
 ```
 
 Now you should be able to visit [`http://localhost/ebpf_map`](http://localhost/ebpf_map)
