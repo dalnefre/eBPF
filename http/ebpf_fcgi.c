@@ -97,16 +97,6 @@ html_ait_map()
     return rv;
 }
 
-char *
-fcgi_param(char *name)
-{
-    char *value = getenv(name);
-    if (!value) {
-        return "*NULL*";
-    }
-    return value;
-};
-
 int
 uri_unreserved(int c)
 {
@@ -178,6 +168,78 @@ utf8_to_uri(char *dbuf, int dlen, char *sbuf, int slen)
     }
     return j;  // success: # of characters written to dbuf
 };
+
+int
+get_uri_param(char *buf, int len, char **query_string, char *key)
+{
+    // NOTE: key must consist of only "unreserved" characters!
+    while (query_string && *query_string) {
+        char *p = *query_string;
+        char *q = key;
+
+        // try to match key
+        while (*p && (*p != '=')) {
+            q = (q && (*q == *p)) ? q + 1 : NULL;
+            if (!uri_unreserved(*p++)) {
+                return -1;  // reserved character in query key
+            }
+        }
+        // iff key matched, *q == '\0'.
+
+        if (!*p++) return -1;  // no value!
+        char *r = p;
+        // parse value
+        while (*p && (*p != '&') && (*p != ';')) {
+            ++p;
+        }
+
+        // update query_string
+        *query_string = (*p ? p + 1 : NULL);
+
+        // if key matched, return translated value
+        if (q && (*q == '\0')) {
+            return uri_to_utf8(buf, len, r, (p - r));  // translate!
+        }
+    }
+    return -1;  // key not found
+}
+
+int
+html_query(char *query_string)
+{
+    static char *name[] = {
+        "fmt",
+        "ait",
+        "id",
+        NULL
+    };
+    int rv = 0;  // success
+    char value[256];
+
+    printf("<table>\n");
+    printf("<tr><th>Name</th><th>Value</th></tr>\n");
+    for (int i = 0; name[i]; ++i) {
+        char *key = name[i];
+
+        printf("<tr>");
+        printf("<td>%s</td>", key);
+
+        char *q = query_string;
+        int n = get_uri_param(value, sizeof(value), &q, key);
+        if (n < 0) {
+            printf("<td><i>null</i></td>");
+        } else {
+            // FIXME: should sanitize value for HTML output
+            printf("<td>\"%.*s\"</td>", n, value);
+        }
+
+        printf("</tr>\n");
+
+    }
+    printf("</table>\n");
+
+    return rv;
+}
 
 int
 html_params()
@@ -259,6 +321,11 @@ html_content(int req_count)
         printf("<i>Map Unavailable</i>\n");
     }
 
+    printf("<h2>Query Params</h2>\n");
+    if (html_query(getenv("QUERY_STRING")) < 0) {
+        printf("<i>Params Unavailable</i>\n");
+    }
+
     printf("<h2>FastCGI Params</h2>\n");
     if (html_params() < 0) {
         printf("<i>Params Unavailable</i>\n");
@@ -310,6 +377,9 @@ main(void)
     printf("n = %d\n", n);
     assert(n == strlen(expect));
     assert(strncmp(buf, expect, n) == 0);
+
+    n = html_query("fmt=json&ait=Hello%2C+World!");
+    assert(n >= 0);
 
     return 0;
 }
