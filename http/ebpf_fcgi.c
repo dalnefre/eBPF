@@ -98,6 +98,36 @@ html_ait_map()
 }
 
 int
+json_ait_map()
+{
+    int rv = 0;  // success
+    __u32 key;
+    __u64 value;
+
+    if (ait_map_fd < 0) return -1;  // failure
+
+    printf("[");
+    for (key = 0; key < 4; ++key) {
+
+        if (read_ait_map(key, &value) < 0) {
+            perror("read_ait_map() failed");
+            rv = -1;  // failure
+            break;
+        }
+
+        if (key > 0) {
+            printf(",");
+        }
+        //printf(PRId64, value);
+        printf("%lld", value);
+
+    }
+    printf("]");
+
+    return rv;
+}
+
+int
 uri_unreserved(int c)
 {
     // Per RFC 3986, '~' is "unreserved" in query strings,
@@ -297,7 +327,7 @@ http_header(char *content_type)
 };
 
 void
-html_content(int req_count)
+html_content(int req_num)
 {
     printf("<!DOCTYPE html>\n");
     printf("<html>\n");
@@ -314,7 +344,7 @@ html_content(int req_count)
     printf("<body>\n");
     printf("<h1>eBPF Map</h1>\n");
 
-    printf("<p>Request #%d</p>\n", req_count);
+    printf("<p>Request #%d</p>\n", req_num);
 
     printf("<h2>AIT Map Dump</h2>\n");
     if (html_ait_map() < 0) {
@@ -335,17 +365,54 @@ html_content(int req_count)
     printf("</html>\n");
 };
 
+void
+json_content(int req_num)
+{
+    printf("{");
+
+    printf("\"req_num\":%d", req_num);
+    printf(",");
+
+    printf("\"ait_map\":");
+    if (json_ait_map() < 0) {
+        printf(",");
+        printf("\"error\":\"%s\"", "Map Unavailable");
+    }
+
+    printf("}\n");
+};
+
 #ifndef TEST_MAIN
 int
 main(void)
 {
+    char buf[256];
     int count = 0;
 
     init_ait_map();
 
     while(FCGI_Accept() >= 0) {
-        http_header("text/html");
-        html_content(++count);
+        ++count;
+        char *path_info = getenv("PATH_INFO");
+        if (path_info) {
+            int n = uri_to_utf8(buf, sizeof(buf), path_info, strlen(path_info));
+
+            if ((n == 18) && (strncmp(buf, "/ebpf_map/ait.html", n) == 0)) {
+                http_header("text/html");
+                html_content(count);
+                continue;  // next request...
+            }
+
+            if ((n == 18) && (strncmp(buf, "/ebpf_map/ait.json", n) == 0)) {
+                http_header("application/json");
+                json_content(count);
+                continue;  // next request...
+            }
+
+        }
+
+        http_header("text/plain");
+        printf("Bad Request.\r\n");
     }
 
     return 0;
