@@ -98,6 +98,15 @@ html_ait_map()
 }
 
 int
+json_unescaped(int c)
+{
+    // Per RFC 8259, non-ASCII characters >= 0x7F need not be escaped,
+    // however "Any character may be escaped.", so we choose to.
+    return (c >= 0x20) && (c <= 0x7E)  // printable ASCII
+        && (c != '"') && (c != '\\');  // exceptions
+}
+
+int
 json_ait_map()
 {
     int rv = 0;  // success
@@ -114,14 +123,48 @@ json_ait_map()
             rv = -1;  // failure
             break;
         }
+        __u8 *bp = (__u8 *)&value;
 
         if (key > 0) {
             printf(",");
         }
+        printf("\n");
+        printf("{");
+
+        printf("\"n\":");
         //printf(PRId64, value);
         printf("%lld", value);
 
+        printf(",");
+
+        printf("\"s\":");
+        printf("\"");
+        for (int i = 0; i < sizeof(value); ++i) {
+            int c = bp[i];
+            if (json_unescaped(c)) {
+                printf("%c", c);
+            } else if (c == '\t') {
+                printf("\\t");
+            } else if (c == '\r') {
+                printf("\\r");
+            } else if (c == '\n') {
+                printf("\\n");
+            } else {
+                printf("\\u%04X", c);
+            }
+        }
+        printf("\"");
+
+        printf(",");
+
+        printf("\"b\":");
+        printf("[%d,%d,%d,%d,%d,%d,%d,%d]",
+            bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
+
+        printf("}");
+
     }
+    printf("\n");
     printf("]");
 
     return rv;

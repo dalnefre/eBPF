@@ -36,5 +36,5 @@ ebpf_test: ebpf_fcgi.c
 	cc $(CFLAGS) -DTEST_MAIN -lfcgi -lbpf -o ebpf_test ebpf_fcgi.c
 
 install:
-	cp html/* /var/www/html/
+	cp -r html/* /var/www/html/
 
