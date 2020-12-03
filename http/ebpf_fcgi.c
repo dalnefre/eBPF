@@ -102,7 +102,7 @@ json_unescaped(int c)
 {
     // Per RFC 8259, non-ASCII characters >= 0x7F need not be escaped,
     // however "Any character may be escaped.", so we choose to.
-    return (c >= 0x20) && (c <= 0x7E)  // printable ASCII
+    return (c >= 0x20) && (c < 0x7F)  // printable ASCII
         && (c != '"') && (c != '\\');  // exceptions
 }
 
