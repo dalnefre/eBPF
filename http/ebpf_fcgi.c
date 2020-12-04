@@ -167,6 +167,11 @@ json_ait_map()
     printf("\n");
     printf("]");
 
+    // clear inbound AIT, if any
+    if (write_ait_map(1, -1) < 0) {
+        rv = -1;
+    }
+
     return rv;
 }
 
