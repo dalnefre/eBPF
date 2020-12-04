@@ -4,6 +4,7 @@ $(function () {
     let $outbound = $('#outbound');
     let $raw_data = $('#raw_data');
 
+    var ait = null;  // outbound AIT
     let get_ait = function (s) {
         let i = s.indexOf('\u0000');
         if (i < 0) {
@@ -20,7 +21,11 @@ $(function () {
         }
         waiting = true;
         $raw_data.removeClass('error');
-        $.getJSON('/ebpf_map/ait.json')
+        var params = {};
+        if (typeof ait === 'string') {
+            params.ait = ait;  // FIXME: only send 64 bits at a time?
+        }
+        $.getJSON('/ebpf_map/ait.json', params)
             .done(update);
     };
     let update = function (data) {
@@ -30,6 +35,14 @@ $(function () {
             s += get_ait(data.ait_map[1].s);
             $inbound.text(s);
             //$inbound.append(document.createTextNode(s));
+        }
+        if (typeof data.sent === 'string') {
+            if (ait.startsWith(data.sent)) {
+                ait = ait.slice(data.sent.length);
+            }
+            if (ait.length == 0) {
+                ait = null;
+            }
         }
         $pkt_count.val(data.ait_map[3].n);
         $raw_data.text(JSON.stringify(data, null, 2));
@@ -60,7 +73,8 @@ $(function () {
     });
 
     $('#send').click(function (e) {
-        $raw_data.toggleClass('hidden');
+        ait = $outbound.val();
+        $outbound.val('');
     });
 
     startRefresh();

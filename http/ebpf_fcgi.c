@@ -107,6 +107,31 @@ json_unescaped(int c)
 }
 
 int
+json_string(char *s, int n)
+{
+    int rv = 0;
+
+    rv += printf("\"");
+    for (int i = 0; i < n; ++i) {
+        int c = s[i];
+        if (json_unescaped(c)) {
+            rv += printf("%c", c);
+        } else if (c == '\t') {
+            rv += printf("\\t");
+        } else if (c == '\r') {
+            rv += printf("\\r");
+        } else if (c == '\n') {
+            rv += printf("\\n");
+        } else {
+            rv += printf("\\u%04X", c);
+        }
+    }
+    rv += printf("\"");
+
+    return rv;
+}
+
+int
 json_ait_map()
 {
     int rv = 0;  // success
@@ -134,33 +159,15 @@ json_ait_map()
         printf("\"n\":");
         //printf(PRId64, value);
         printf("%lld", value);
-
         printf(",");
 
         printf("\"s\":");
-        printf("\"");
-        for (int i = 0; i < sizeof(value); ++i) {
-            int c = bp[i];
-            if (json_unescaped(c)) {
-                printf("%c", c);
-            } else if (c == '\t') {
-                printf("\\t");
-            } else if (c == '\r') {
-                printf("\\r");
-            } else if (c == '\n') {
-                printf("\\n");
-            } else {
-                printf("\\u%04X", c);
-            }
-        }
-        printf("\"");
-
+        json_string((char *)&value, sizeof(value));
         printf(",");
 
         printf("\"b\":");
         printf("[%d,%d,%d,%d,%d,%d,%d,%d]",
             bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
-
         printf("}");
 
     }
@@ -320,6 +327,45 @@ html_query(char *query_string)
 }
 
 int
+json_query(char *query_string)
+{
+    int rv = 0;  // success
+    __u64 ait;
+    char value[256];
+
+    // check for outbound AIT in query string
+    char *q = query_string;
+    int n = get_uri_param(value, sizeof(value) - 1, &q, "ait");
+    if (n < 0) {
+        return 0;  // success (no outbound AIT)
+    }
+
+    // check for space in outbound AIT register
+    if (read_ait_map(0, &ait) < 0) return -1;  // failure
+    if (ait != -1) {
+        return 0;  // success (outbound not empty)
+    }
+
+    // we have outbound AIT to write
+    if (n > 8) {
+        n = 8;  // truncate to 64 bits
+    }
+    value[n] = '\0';  // add NUL termination
+    ait = 0;
+    memcpy(&ait, value, n);
+
+    // write outbound AIT
+    rv = write_ait_map(0, ait);
+    if (rv >= 0) {
+        printf("\"sent\":");
+        json_string(value, n);
+        printf(",");
+    }
+
+    return rv;
+}
+
+int
 html_params()
 {
     static char *name[] = {
@@ -420,6 +466,8 @@ json_content(int req_num)
 
     printf("\"req_num\":%d", req_num);
     printf(",");
+
+    json_query(getenv("QUERY_STRING"));
 
     printf("\"ait_map\":");
     if (json_ait_map() < 0) {
