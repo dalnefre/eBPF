@@ -11,22 +11,21 @@
 <h1>AIT Link Demo</h1>
 
 <div id="output">
-  <label>
-    <h2>Inbound</h2>
-    <pre id="inbound"><i>none</i></pre>
-  </label>
+  <h2>Inbound</h2>
+  <pre id="inbound"><i>none</i></pre>
 </div>
 
 <div id="input">
-  <label>
-    <h2>Outbound</h2>
-    <textarea id="outbound" rows="20" cols="80"></textarea>
-  </label>
-  <label>
-    <div>
-      <input type="button" id="send" value="Send">
-    </div>
-  </label>
+  <h2>Outbound</h2>
+  <input type="text" id="outbound" size="64" placeholder="Message to send...">
+  <span>
+    &nbsp;
+    <input type="button" id="send" value="Send">
+  </span>
+</div>
+
+<div id="debug">
+  <pre id="raw_data"></pre>
 </div>
 
 </body>
