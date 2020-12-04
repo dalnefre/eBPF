@@ -18,3 +18,7 @@ td {
     padding: 3px 6px;
     background-color: #DDD;
 }
+.error {
+    font-weight: bolder;
+    color: #F00;
+}

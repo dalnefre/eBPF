@@ -6,18 +6,34 @@
 <link rel="stylesheet" href="style.css">
 <script src="jquery-3.5.1.js"></script>
 <script src="link_demo.js"></script>
+<style>
+#pkt_count { color: #66F; }
+#inbound { color: #006; }
+#outbound { font-family: monospace; }
+#debug { color: #999; }
+</style>
 </head>
 <body>
 <h1>AIT Link Demo</h1>
 
 <div id="output">
-  <h2>Inbound</h2>
-  <pre id="inbound"><i>none</i></pre>
+  <p>
+    <label>
+      Packet Count:
+      <input type="type" id="pkt_count" size="12" readonly>
+    </label>
+  </p>
+  <label>
+    <h2>Inbound</h2>
+    <pre id="inbound"><i>none</i></pre>
+  </label>
 </div>
 
 <div id="input">
-  <h2>Outbound</h2>
-  <input type="text" id="outbound" size="64" placeholder="Message to send...">
+  <label>
+    <h2>Outbound</h2>
+    <input type="text" id="outbound" size="64" placeholder="Message to send...">
+  </label>
   <span>
     &nbsp;
     <input type="button" id="send" value="Send">
