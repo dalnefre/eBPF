@@ -15,11 +15,11 @@ $(function () {
     var waiting = false;  // waiting for server response
     let refresh = function () {
         if (waiting) {
-            $raw_data.addClass("error");
+            $raw_data.addClass('error');
             return;  // prevent overlapping requests
         }
         waiting = true;
-        $raw_data.removeClass("error");
+        $raw_data.removeClass('error');
         $.getJSON('/ebpf_map/ait.json')
             .done(update);
     };
@@ -53,9 +53,14 @@ $(function () {
             startRefresh();
         }
     };
+    // FIXME: rAF = requestAnimationFrame(draw);
+
+    $('#pause').click(function (e) {
+        toggleRefresh();
+    });
 
     $('#send').click(function (e) {
-        toggleRefresh();
+        $raw_data.toggleClass('hidden');
     });
 
     startRefresh();
