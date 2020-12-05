@@ -10,7 +10,7 @@
 #pkt_count { color: #66F; }
 #inbound { color: #006; }
 #outbound { font-family: monospace; }
-#debug { color: #999; }
+#raw_data { color: #999; }
 </style>
 </head>
 <body>
@@ -44,8 +44,11 @@
   </span>
 </div>
 
-<div id="debug">
-  <pre id="raw_data"></pre>
+<div id="info">
+  <p>
+    <input type="button" id="debug" value="Debug">
+  </p>
+  <pre id="raw_data" class="hidden"></pre>
 </div>
 
 </body>

@@ -31,14 +31,17 @@ $(function () {
     let update = function (data) {
         if (data.ait_map[1].n !== -1) {
             // inbound AIT
-            var s = $inbound.text();
-            s += get_ait(data.ait_map[1].s);
-            $inbound.text(s);
-            //$inbound.append(document.createTextNode(s));
+            var s = get_ait(data.ait_map[1].s);
+            //$inbound.text($inbound.text() + s);
+            $inbound.append(document.createTextNode(s));
         }
         if (typeof data.sent === 'string') {
             if (ait.startsWith(data.sent)) {
                 ait = ait.slice(data.sent.length);
+            } else {
+                console.log('WARNING! '
+                    + 'expected "' + data.sent + '"'
+                    + 'as prefix of "' + ait + '"');
             }
             if (ait.length == 0) {
                 ait = null;
@@ -73,8 +76,12 @@ $(function () {
     });
 
     $('#send').click(function (e) {
-        ait = $outbound.val();
+        ait = $outbound.val() + '\n';
         $outbound.val('');
+    });
+
+    $('#debug').click(function (e) {
+        $raw_data.toggleClass('hidden');
     });
 
     startRefresh();

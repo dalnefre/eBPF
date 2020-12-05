@@ -229,6 +229,7 @@ reader()  // read AIT data (and display it)
                 bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
                 (char *)&value);
 #endif
+            fflush(stdout);
 
         }
     }
