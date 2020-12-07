@@ -7,23 +7,42 @@
 <script src="jquery-3.5.1.js"></script>
 <script src="link_demo.js"></script>
 <style>
-#pkt_count { color: #66F; }
+body {
+  background-color: #EEF;
+}
+#link_stat {
+  display: inline-block;
+  width: 4em;
+  padding: 4px;
+  margin-right: 2em;
+  color: #666;
+  background-color: #CCC;
+  font-weight: bold;
+  text-align: center;
+}
+#pkt_count {
+  margin-right: 2em;
+  color: #66F;
+}
 #inbound { color: #006; }
 #outbound { font-family: monospace; }
 #raw_data { color: #999; }
 </style>
 </head>
 <body>
-<h1>AIT Link Demo</h1>
+<h1>AIT Link Demo<span id="host"></span></h1>
 
 <div id="output">
   <p>
+    <label>
+      Link:
+      <span id="link_stat">????</span>
+    </label>
     <label>
       Packet Count:
       <input type="type" id="pkt_count" size="12" readonly>
     </label>
     <span>
-      &nbsp;
       <input type="button" id="pause" value="Pause">
     </span>
   </p>

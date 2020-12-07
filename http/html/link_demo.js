@@ -1,6 +1,8 @@
 $(function () {
-    let $inbound = $('#inbound');
+    let $host = $('#host');
+    let $link_stat = $('#link_stat');
     let $pkt_count = $('#pkt_count');
+    let $inbound = $('#inbound');
     let $outbound = $('#outbound');
     let $raw_data = $('#raw_data');
 
@@ -46,6 +48,29 @@ $(function () {
             if (ait.length == 0) {
                 ait = null;
             }
+        }
+/*
+.link-dflt { color: #666; background-color: #CCC; }
+.link-init { color: #666; background-color: #FF0; }
+.link-down { color: #000; background-color: #F00; }
+.link-up   { color: #FFF; background-color: #0C0; }
+.link-dead { color: #999; background-color: #000; }
+*/
+        if (typeof data.link === 'string') {
+            if (data.link == 'UP') {
+                $link_stat.css({ "color": "#FFF",
+                      "background-color": "#0C0" });
+            } else if (data.link == 'DOWN') {
+                $link_stat.css({ "color": "#000",
+                      "background-color": "#F00" });
+            } else {
+                $link_stat.css({ "color": "#666",
+                      "background-color": "#CCC" });
+            }
+            $link_stat.text(data.link);
+        }
+        if (typeof data.host === 'string') {
+            $host.text(' ('+data.host+')');
         }
         $pkt_count.val(data.ait_map[3].n);
         $raw_data.text(JSON.stringify(data, null, 2));

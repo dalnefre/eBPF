@@ -356,11 +356,10 @@ json_query(char *query_string)
 
     // write outbound AIT
     rv = write_ait_map(0, ait);
-    if (rv >= 0) {
-        printf("\"sent\":");
-        json_string(value, n);
-        printf(",");
-    }
+    if (rv < 0) return rv;  // failure
+    printf("\"sent\":");
+    json_string(value, n);
+    printf(",");
 
     return rv;
 }
@@ -459,6 +458,53 @@ html_content(int req_num)
     printf("</html>\n");
 };
 
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+
+int
+json_info()
+{
+    int rv = 0;  // success
+    char value[256];
+
+    // write hostname
+    rv = gethostname(value, sizeof(value));
+    if (rv < 0) return rv;  // failure
+    value[sizeof(value) - 1] = '\0';  // ensure NUL termination
+    printf("\"host\":");
+    json_string(value, strlen(value));
+    printf(",");
+
+    // write link status
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) return -1;  // failure creating socket
+    struct ifreq ifr;
+    strncpy(ifr.ifr_name, "eth0", sizeof(ifr.ifr_name) - 1);
+#if 0
+    rv = ioctl(sock, SIOCGIFFLAGS, &if_req);
+    close(sock);  // close temporary socket
+    if (rv < 0) return rv;  // failure getting link status
+    int up = (ifr.ifr_flags & IFF_UP) && (ifr.ifr_flags & IFF_RUNNING);
+#else
+    struct ethtool_value ethval = {
+        .cmd = ETHTOOL_GLINK,
+    };
+    ifr.ifr_data = ((char *)&ethval);
+    rv = ioctl(sock, SIOCETHTOOL, &ifr);
+    close(sock);  // close temporary socket
+    if (rv < 0) return rv;  // failure getting link status
+    int up = !!ethval.data;
+#endif
+    char *s = up ? "UP" : "DOWN";
+    printf("\"link\":");
+    json_string(s, strlen(s));
+    printf(",");
+
+    return rv;
+}
+
 void
 json_content(int req_num)
 {
@@ -468,6 +514,8 @@ json_content(int req_num)
     printf(",");
 
     json_query(getenv("QUERY_STRING"));
+
+    json_info();
 
     printf("\"ait_map\":");
     if (json_ait_map() < 0) {
