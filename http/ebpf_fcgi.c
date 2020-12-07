@@ -13,10 +13,100 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <unistd.h>
+
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <arpa/inet.h>
+#include <linux/if_packet.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+
+#define ETH_P_DALE (0xda1e)
+
+static char hostname[32];
+static char if_name[] = "eth0";
+static int if_index = -1;
+static int if_sock = -1;
+
+int
+init_host_if()
+{
+    int rv;
+
+    rv = gethostname(hostname, sizeof(hostname));
+    if (rv < 0) return rv;  // failure
+    hostname[sizeof(hostname) - 1] = '\0';  // ensure NUL termination
+
+    rv = if_nametoindex(if_name);
+    if (rv < 0) return rv;  // failure
+    if_index = rv;
+
+    rv = socket(AF_PACKET, SOCK_RAW, ETH_P_DALE);
+    if (rv < 0) return rv;  // failure
+    if_sock = rv;
+
+    return 0;  // success
+}
+
+int
+get_link_status()
+{
+    int rv;
+
+    struct ifreq ifr;
+    strncpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name) - 1);
+#if 0
+    rv = ioctl(if_sock, SIOCGIFFLAGS, &if_req);
+    if (rv < 0) return rv;  // failure getting link status
+    return (ifr.ifr_flags & IFF_UP) && (ifr.ifr_flags & IFF_RUNNING);
+#else
+    struct ethtool_value ethval = {
+        .cmd = ETHTOOL_GLINK,
+    };
+    ifr.ifr_data = ((char *)&ethval);
+    rv = ioctl(if_sock, SIOCETHTOOL, &ifr);
+    if (rv < 0) return rv;  // failure getting link status
+    return !!ethval.data;
+#endif
+}
+
+int
+send_init_msg()
+{
+    static __u8 proto_init[] = {
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
+        0xda, 0x1e,                          // protocol ethertype
+        0x04, 0x86,                          // array (size=6)
+        0x80,                                // state = 0
+        0x80,                                // other = 0
+        0x10, 0x82, 0x00, 0x00,              // count = 0 (+INT, pad=0)
+        0xff, 0xff,                          // neutral fill...
+    };
+    int rv;
+
+    struct sockaddr_storage address;
+    memset(&address, 0, sizeof(address));
+
+    struct sockaddr_ll *sll = (struct sockaddr_ll *)&address;
+    sll->sll_family = AF_PACKET;
+    sll->sll_protocol = htons(ETH_P_DALE);
+    sll->sll_ifindex = if_index;
+
+    socklen_t addr_len = sizeof(*sll);
+    struct sockaddr *addr = (struct sockaddr *)sll;
+    rv = sendto(if_sock, proto_init, sizeof(proto_init), 0, addr, addr_len);
+    if (rv < 0) return rv;  // failure sending message
+
+    return 0;  // success
+}
+
 #include <bpf/bpf.h>
 
 static const char *ait_map_filename = "/sys/fs/bpf/xdp/globals/ait_map";
 static int ait_map_fd = -1;  // default: map unavailable
+static __u64 pkt_count = -1;  // packet counter value
 
 int
 init_ait_map()
@@ -170,6 +260,9 @@ json_ait_map()
             bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
         printf("}");
 
+        if (key == 3) {
+            pkt_count = value;  // update packet count
+        }
     }
     printf("\n");
     printf("]");
@@ -458,51 +551,41 @@ html_content(int req_num)
     printf("</html>\n");
 };
 
-#include <sys/ioctl.h>
-#include <net/if.h>
-#include <linux/ethtool.h>
-#include <linux/sockios.h>
-
 int
-json_info()
+json_info(int old, int new)
 {
-    int rv = 0;  // success
-    char value[256];
+    int rv;
+    char *status;
 
-    // write hostname
-    rv = gethostname(value, sizeof(value));
-    if (rv < 0) return rv;  // failure
-    value[sizeof(value) - 1] = '\0';  // ensure NUL termination
-    printf("\"host\":");
-    json_string(value, strlen(value));
     printf(",");
+    printf("\"old\":%d", old);
 
-    // write link status
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) return -1;  // failure creating socket
-    struct ifreq ifr;
-    strncpy(ifr.ifr_name, "eth0", sizeof(ifr.ifr_name) - 1);
-#if 0
-    rv = ioctl(sock, SIOCGIFFLAGS, &if_req);
-    close(sock);  // close temporary socket
-    if (rv < 0) return rv;  // failure getting link status
-    int up = (ifr.ifr_flags & IFF_UP) && (ifr.ifr_flags & IFF_RUNNING);
-#else
-    struct ethtool_value ethval = {
-        .cmd = ETHTOOL_GLINK,
-    };
-    ifr.ifr_data = ((char *)&ethval);
-    rv = ioctl(sock, SIOCETHTOOL, &ifr);
-    close(sock);  // close temporary socket
-    if (rv < 0) return rv;  // failure getting link status
-    int up = !!ethval.data;
-#endif
-    char *s = up ? "UP" : "DOWN";
+    printf(",");
+    printf("\"new\":%d", new);
+
+    if (old != new) {  // packet count advancing
+        status = "UP";
+    } else {
+        rv = get_link_status();
+        if (rv < 0) {  // failure getting link status
+            status = "ERROR";
+        } else if (rv == 0) {  // link is down
+            status = "DOWN";
+        } else {
+            // link is up, try to kick-start it...
+            rv = send_init_msg();
+            if (rv < 0) {  // failure sending init message
+                status = "DEAD";
+            } else {
+                status = "INIT";
+            }
+        }
+    }
+    printf(",");
     printf("\"link\":");
-    json_string(s, strlen(s));
-    printf(",");
+    json_string(status, strlen(status));
 
-    return rv;
+    return 0;  // success
 }
 
 void
@@ -510,18 +593,28 @@ json_content(int req_num)
 {
     printf("{");
 
+    // write hostname
+    printf("\"host\":");
+    json_string(hostname, strlen(hostname));
+    printf(",");
+
+    // write request number
     printf("\"req_num\":%d", req_num);
     printf(",");
 
     json_query(getenv("QUERY_STRING"));
 
-    json_info();
+    int old = (int32_t)pkt_count;  // save old packet count
 
     printf("\"ait_map\":");
     if (json_ait_map() < 0) {
         printf(",");
         printf("\"error\":\"%s\"", "Map Unavailable");
     }
+
+    int new = (int32_t)pkt_count;  // get new packet count
+
+    json_info(old, new);
 
     printf("}\n");
 };
@@ -534,6 +627,7 @@ main(void)
     int count = 0;
 
     init_ait_map();
+    init_host_if();
 
     while(FCGI_Accept() >= 0) {
         ++count;

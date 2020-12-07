@@ -51,13 +51,16 @@ $(function () {
         }
 /*
 .link-dflt { color: #666; background-color: #CCC; }
-.link-init { color: #666; background-color: #FF0; }
+.link-init { color: #333; background-color: #FF0; }
 .link-down { color: #000; background-color: #F00; }
 .link-up   { color: #FFF; background-color: #0C0; }
 .link-dead { color: #999; background-color: #000; }
 */
         if (typeof data.link === 'string') {
-            if (data.link == 'UP') {
+            if (data.link == 'INIT') {
+                $link_stat.css({ "color": "#333",
+                      "background-color": "#FF0" });
+            } else if (data.link == 'UP') {
                 $link_stat.css({ "color": "#FFF",
                       "background-color": "#0C0" });
             } else if (data.link == 'DOWN') {
