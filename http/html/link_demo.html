@@ -12,14 +12,12 @@ body {
 }
 #spinner {
   margin-left: 20px;
-  width: 100px;
-  height: 100px;
-  background-color: transparent;
 }
 #link_stat {
   display: inline-block;
   width: 4em;
-  padding: 4px;
+  padding: 6px 4px 4px;
+  border-radius: 3px;
   margin-right: 2em;
   color: #666;
   background-color: #CCC;
@@ -45,13 +43,15 @@ body {
       <span id="link_stat">????</span>
     </label>
   </p>
-  <svg id="spinner">
-    <radialGradient id="clk_face">
-      <stop offset="0.00" stop-color="#FFF" />
-      <stop offset="0.85" stop-color="#FFF" />
-      <stop offset="1.00" stop-color="#DDD" />
-    </radialGradient>
-    <g transform="translate(50,50)">
+  <svg id="spinner" width="100" height="100" viewBox="-50 -50 100 100">
+    <defs>
+      <radialGradient id="clk_face">
+        <stop offset="0%" stop-color="#FFF" />
+        <stop offset="85%" stop-color="#FFF" />
+        <stop offset="100%" stop-color="#DDD" />
+      </radialGradient>
+    </defs>
+    <g>
       <circle cx="0" cy="0" r="48" fill="url(#clk_face)" stroke="#BBB" />
       <line id="slow_hand" x1="0" y1="0" x2="0" y2="-32"
         stroke="#33F" stroke-width="3" stroke-linecap="round" />
