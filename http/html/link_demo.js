@@ -84,24 +84,19 @@ $(function () {
         waiting = false;
     };
 
-    var interval = false;
-    let startRefresh = function (delay) {
-        delay = delay || 1000;  // default update rate = 1 per second
+    var animation;
+    let animate = function (timestamp) {
         refresh();
-        interval = setInterval(refresh, delay);
-    };
-    let stopRefresh = function () {
-        clearInterval(interval);
-        interval = false;
+        animation = requestAnimationFrame(animate);
     };
     let toggleRefresh = function () {
-        if (interval) {
-            stopRefresh();
+        if (animation) {
+            cancelAnimationFrame(animation);
+            animation = undefined;
         } else {
-            startRefresh();
+            animate();
         }
     };
-    // FIXME: rAF = requestAnimationFrame(draw);
 
     $('#pause').click(function (e) {
         toggleRefresh();
@@ -116,5 +111,5 @@ $(function () {
         $raw_data.toggleClass('hidden');
     });
 
-    startRefresh();
+    animate();
 });
