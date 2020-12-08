@@ -1,5 +1,8 @@
 $(function () {
     let $host = $('#host');
+    let $spinner = $('#spinner');
+    let $fast_hand = $('#fast_hand');
+    let $slow_hand = $('#slow_hand');
     let $link_stat = $('#link_stat');
     let $pkt_count = $('#pkt_count');
     let $inbound = $('#inbound');
@@ -49,13 +52,6 @@ $(function () {
                 ait = null;
             }
         }
-/*
-.link-dflt { color: #666; background-color: #CCC; }
-.link-init { color: #333; background-color: #FF0; }
-.link-down { color: #000; background-color: #F00; }
-.link-up   { color: #FFF; background-color: #0C0; }
-.link-dead { color: #999; background-color: #000; }
-*/
         if (typeof data.link === 'string') {
             if (data.link == 'INIT') {
                 $link_stat.css({ "color": "#333",
@@ -66,6 +62,9 @@ $(function () {
             } else if (data.link == 'DOWN') {
                 $link_stat.css({ "color": "#000",
                       "background-color": "#F00" });
+            } else if (data.link == 'DEAD') {
+                $link_stat.css({ "color": "#999",
+                      "background-color": "#000" });
             } else {
                 $link_stat.css({ "color": "#666",
                       "background-color": "#CCC" });
@@ -75,7 +74,12 @@ $(function () {
         if (typeof data.host === 'string') {
             $host.text(' ('+data.host+')');
         }
-        $pkt_count.val(data.ait_map[3].n);
+        var cnt = data.ait_map[3];
+        $pkt_count.val(cnt.n);
+        var fast_rot = (((cnt.b[1] << 8) | cnt.b[0]) * 360) >> 16;
+        $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
+        var slow_rot = (cnt.b[2] * 360) >> 8;
+        $slow_hand.attr('transform', 'rotate(' + slow_rot + ')');
         $raw_data.text(JSON.stringify(data, null, 2));
         waiting = false;
     };
