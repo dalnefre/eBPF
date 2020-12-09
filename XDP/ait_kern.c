@@ -100,6 +100,17 @@ release_ait(__u64 ait)
 }
 
 static __inline int
+set_seq_num(int seq_num)
+{
+    __u32 key = 3;
+    __u64 value = seq_num;
+    if (bpf_map_update_elem(&ait_map, &key, &value, BPF_ANY) < 0) {
+        seq_num = 0;  // default to zero
+    }
+    return seq_num;
+}
+
+static __inline int
 update_seq_num(int seq_num)
 {
     __u32 key = 3;
@@ -210,13 +221,17 @@ handle_message(__u8 *data, __u8 *end)
             }
             case n_1: {  // ping
                 data[OTHER_OFS] = n_2;
-                __u64 *p = acquire_ait();
-                if (p && (*p != -1)) {
-                    i = *p;
-                    data[OTHER_OFS] = n_3;
-                    data[MSG_LEN_OFS] = n_24;
-                    data[BLOB_OFS] = octets;
-                    data[BLOB_LEN_OFS] = n_16;
+                if (b < data[STATE_OFS]) {  // reverse transition
+                    __u64 *p = acquire_ait();
+                    if (p && (*p != -1)) {  // outbound ait?
+                        i = *p;
+                        data[OTHER_OFS] = n_3;
+                        data[MSG_LEN_OFS] = n_24;
+                        data[BLOB_OFS] = octets;
+                        data[BLOB_LEN_OFS] = n_16;
+                    }
+                } else {  // forward transition (init)
+                    set_seq_num(n);
                 }
                 break;
             }
