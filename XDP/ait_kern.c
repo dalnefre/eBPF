@@ -141,6 +141,32 @@ update_seq_num(int seq_num)
 #define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE) // 32
 #define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)    // 40
 
+#define INIT_STATE    (n_0)
+#define PING_STATE    (n_1)
+#define PONG_STATE    (n_2)
+#define GOT_AIT_STATE (n_3)
+#define ACK_AIT_STATE (n_4)
+#define ACK_ACK_STATE (n_5)
+#define PROCEED_STATE (n_6)
+
+static void
+live_msg_fmt(__u8 *data, __u8 state)
+{
+    data[OTHER_OFS] = state;
+    data[MSG_LEN_OFS] = n_6;
+    data[BLOB_OFS] = null;
+    data[BLOB_LEN_OFS] = null;
+}
+
+static void
+ait_msg_fmt(__u8 *data, __u8 state)
+{
+    data[OTHER_OFS] = state;
+    data[MSG_LEN_OFS] = n_24;
+    data[BLOB_OFS] = octets;
+    data[BLOB_LEN_OFS] = n_16;
+}
+
 static int
 handle_message(__u8 *data, __u8 *end)
 {
@@ -158,99 +184,90 @@ handle_message(__u8 *data, __u8 *end)
 #if LOG_PROTO
     bpf_printk("%d,%d #%d <--\n", SMOL2INT(data[STATE_OFS]), SMOL2INT(b), n);
 #endif
-    if (data[MSG_LEN_OFS] == n_24) {  // ait len = 6 + 18
+    if (data[MSG_LEN_OFS] == n_6) {  // live len = 6
+        // liveness message
+        switch (b) {
+            case INIT_STATE: {  // init
+                live_msg_fmt(data, PING_STATE);
+                break;
+            }
+            case PING_STATE: {  // ping
+                data[OTHER_OFS] = PONG_STATE;
+                if (b < data[STATE_OFS]) {  // reverse transition
+                    __u64 *p = acquire_ait();
+                    if (p && (*p != -1)) {  // outbound ait?
+                        i = *p;
+                        ait_msg_fmt(data, GOT_AIT_STATE);
+                    }
+                } else {  // forward transition (init)
+                    set_seq_num(n);
+#if LOG_AIT
+                    bpf_printk("INIT: pkt #%d\n", n);
+#endif
+                }
+                break;
+            }
+            case PONG_STATE: {  // pong
+                data[OTHER_OFS] = PING_STATE;
+                if (b > data[STATE_OFS]) {  // forward transition
+                    __u64 *p = acquire_ait();
+                    if (p && (*p != -1)) {  // outbound ait?
+                        i = *p;
+                        ait_msg_fmt(data, GOT_AIT_STATE);
+                    }
+                }
+                break;
+            }
+            default: return XDP_DROP;  // bad state
+        }
+    } else if (data[MSG_LEN_OFS] == n_24) {  // ait len = 6 + 18
         // message carries AIT
         if (data[BLOB_OFS] != octets) return XDP_DROP;  // require octets
         if (data[BLOB_LEN_OFS] != n_16) return XDP_DROP;  // require size=16
         copy_ait(&u, data + AIT_I_OFS);
         switch (b) {
-            case n_3: {  // got ait
+            case GOT_AIT_STATE: {
                 if (b < data[STATE_OFS]) {  // reverse
-                    data[OTHER_OFS] = n_2;
-                    data[MSG_LEN_OFS] = n_6;
-                    data[BLOB_OFS] = null;
-                    data[BLOB_LEN_OFS] = null;
+                    live_msg_fmt(data, PONG_STATE);
                 } else {
-                    data[OTHER_OFS] = n_4;
+                    ait_msg_fmt(data, ACK_AIT_STATE);
                 }
                 break;
             }
-            case n_4: {  // ack ait
+            case ACK_AIT_STATE: {
                 if (b < data[STATE_OFS]) {  // reverse
-                    data[OTHER_OFS] = n_3;
+                    ait_msg_fmt(data, GOT_AIT_STATE);
                 } else {
-                    data[OTHER_OFS] = n_5;
+                    ait_msg_fmt(data, ACK_ACK_STATE);
                 }
                 copy_ait(&i, data + AIT_U_OFS);
                 break;
             }
-            case n_5: {  // ack ack
+            case ACK_ACK_STATE: {
                 if (release_ait(u) < 0) {  // release failed
-                    data[OTHER_OFS] = n_4;  // reverse
+                    ait_msg_fmt(data, ACK_AIT_STATE);  // reverse
                 } else {
-                    data[OTHER_OFS] = n_6;
 #if LOG_AIT
                     bpf_printk("RCVD: 0x%llx\n", __builtin_bswap64(u));
 #endif
+                    ait_msg_fmt(data, PROCEED_STATE);
                 }
                 break;
             }
-            case n_6: {  // complete
-                data[OTHER_OFS] = n_1;
-                data[MSG_LEN_OFS] = n_6;
-                data[BLOB_OFS] = null;
-                data[BLOB_LEN_OFS] = null;
+            case PROCEED_STATE: {
                 if (clear_outbound() < 0) return XDP_DROP;  // clear failed
 #if LOG_AIT
                 copy_ait(&i, data + AIT_U_OFS);
                 bpf_printk("SENT: 0x%llx\n", __builtin_bswap64(i));
 #endif
+                live_msg_fmt(data, PING_STATE);
                 i = u = -1;  // clear ait
                 break;
             }
             default: return XDP_DROP;  // bad state
         }
-    } else if (data[MSG_LEN_OFS] != n_6) {  // liveness len = 6
-        return XDP_DROP;  // bad message length
     } else {
-        // liveness message
-        switch (b) {
-            case n_0: {  // init
-                data[OTHER_OFS] = n_1;
-                break;
-            }
-            case n_1: {  // ping
-                data[OTHER_OFS] = n_2;
-                if (b < data[STATE_OFS]) {  // reverse transition
-                    __u64 *p = acquire_ait();
-                    if (p && (*p != -1)) {  // outbound ait?
-                        i = *p;
-                        data[OTHER_OFS] = n_3;
-                        data[MSG_LEN_OFS] = n_24;
-                        data[BLOB_OFS] = octets;
-                        data[BLOB_LEN_OFS] = n_16;
-                    }
-                } else {  // forward transition (init)
-                    set_seq_num(n);
-                }
-                break;
-            }
-            case n_2: {  // pong
-                data[OTHER_OFS] = n_1;
-                if (b > data[STATE_OFS]) {  // forward transition
-                    __u64 *p = acquire_ait();
-                    if (p && (*p != -1)) {  // outbound ait?
-                        i = *p;
-                        data[OTHER_OFS] = n_3;
-                        data[MSG_LEN_OFS] = n_24;
-                        data[BLOB_OFS] = octets;
-                        data[BLOB_LEN_OFS] = n_16;
-                    }
-                }
-                break;
-            }
-            default: return XDP_DROP;  // bad state
-        }
+        return XDP_DROP;  // bad message length
     }
     // common processing
     trace_msg_data(data);
