@@ -79,7 +79,8 @@ $(function () {
         $pkt_num.val(cnt.n);
         var fast_rot = (((cnt.b[1] << 8) | cnt.b[0]) * 360) >> 16;
         $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
-        var slow_rot = (cnt.b[2] * 360) >> 8;
+//        var slow_rot = (cnt.b[2] * 360) >> 8;
+        var slow_rot = (((cnt.b[2] << 8) | cnt.b[1]) * 360) >> 12;
         $slow_hand.attr('transform', 'rotate(' + slow_rot + ')');
         $raw_data.text(JSON.stringify(data, null, 2));
         waiting = false;
