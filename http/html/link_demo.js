@@ -4,10 +4,11 @@ $(function () {
     let $fast_hand = $('#fast_hand');
     let $slow_hand = $('#slow_hand');
     let $link_stat = $('#link_stat');
-    let $pkt_count = $('#pkt_count');
+    let $pkt_num = $('#pkt_num');
     let $inbound = $('#inbound');
     let $outbound = $('#outbound');
     let $raw_data = $('#raw_data');
+    let $play_pause = $('#play_pause');
 
     var ait = null;  // outbound AIT
     let get_ait = function (s) {
@@ -75,7 +76,7 @@ $(function () {
             $host.text(' ('+data.host+')');
         }
         var cnt = data.ait_map[3];
-        $pkt_count.val(cnt.n);
+        $pkt_num.val(cnt.n);
         var fast_rot = (((cnt.b[1] << 8) | cnt.b[0]) * 360) >> 16;
         $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
         var slow_rot = (cnt.b[2] * 360) >> 8;
@@ -93,12 +94,16 @@ $(function () {
         if (animation) {
             cancelAnimationFrame(animation);
             animation = undefined;
+            $('#pause').hide();
+            $('#play').show();
         } else {
+            $('#play').hide();
+            $('#pause').show();
             animate();
         }
     };
 
-    $('#pause').click(function (e) {
+    $play_pause.click(function (e) {
         toggleRefresh();
     });
 
