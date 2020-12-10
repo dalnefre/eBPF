@@ -24,10 +24,13 @@
 
 #define ETH_P_DALE (0xda1e)
 
+#define AIT_EMPTY  (-1)
+
 static char hostname[32];
 static char if_name[] = "eth0";
 static int if_index = -1;
 static int if_sock = -1;
+static __u64 src_mac = -1;
 
 int
 init_host_if()
@@ -71,19 +74,20 @@ get_link_status()
 #endif
 }
 
+static __u8 proto_init[] = {
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
+    0xda, 0x1e,                          // protocol ethertype
+    0x04, 0x86,                          // array (size=6)
+    0x80,                                // state = 0
+    0x80,                                // other = 0
+    0x10, 0x82, 0x00, 0x00,              // count = 0 (+INT, pad=0)
+    0xff, 0xff,                          // neutral fill...
+};
+
 int
 send_init_msg()
 {
-    static __u8 proto_init[] = {
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
-        0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
-        0xda, 0x1e,                          // protocol ethertype
-        0x04, 0x86,                          // array (size=6)
-        0x80,                                // state = 0
-        0x80,                                // other = 0
-        0x10, 0x82, 0x00, 0x00,              // count = 0 (+INT, pad=0)
-        0xff, 0xff,                          // neutral fill...
-    };
     int rv;
 
     struct sockaddr_storage address;
@@ -106,7 +110,7 @@ send_init_msg()
 
 static const char *ait_map_filename = "/sys/fs/bpf/xdp/globals/ait_map";
 static int ait_map_fd = -1;  // default: map unavailable
-static __u64 pkt_count = -1;  // packet counter value
+static __u32 pkt_count = -1;  // packet counter value
 
 int
 init_ait_map()
@@ -140,7 +144,7 @@ ait_map_label(int key)
     switch (key) {
         case 0: return "outbound";
         case 1: return "inbound";
-        case 2: return "reserved";
+        case 2: return "src_mac";
         case 3: return "counter";
         default: return "???";
     }
@@ -246,6 +250,11 @@ json_ait_map()
         printf("\n");
         printf("{");
 
+        printf("\"id\":");
+        char *id = ait_map_label(key);
+        json_string(id, strlen(id));
+        printf(",");
+
         printf("\"n\":");
         //printf(PRId64, value);
         printf("%lld", value);
@@ -268,7 +277,7 @@ json_ait_map()
     printf("]");
 
     // clear inbound AIT, if any
-    if (write_ait_map(1, -1) < 0) {
+    if (write_ait_map(1, AIT_EMPTY) < 0) {
         rv = -1;
     }
 
@@ -321,7 +330,7 @@ uri_to_utf8(char *dbuf, int dlen, char *sbuf, int slen)
         dbuf[j++] = c;
     }
     return j;  // success: # of characters written to dbuf
-};
+}
 
 int
 utf8_to_uri(char *dbuf, int dlen, char *sbuf, int slen)
@@ -345,7 +354,7 @@ utf8_to_uri(char *dbuf, int dlen, char *sbuf, int slen)
         }
     }
     return j;  // success: # of characters written to dbuf
-};
+}
 
 int
 get_uri_param(char *buf, int len, char **query_string, char *key)
@@ -435,7 +444,7 @@ json_query(char *query_string)
 
     // check for space in outbound AIT register
     if (read_ait_map(0, &ait) < 0) return -1;  // failure
-    if (ait != -1) {
+    if (ait != AIT_EMPTY) {
         return 0;  // success (outbound not empty)
     }
 
@@ -510,7 +519,7 @@ http_header(char *content_type)
     }
     // HTTP header ends with a blank line
     printf("\r\n");
-};
+}
 
 void
 html_content(int req_num)
@@ -549,7 +558,7 @@ html_content(int req_num)
 
     printf("</body>\n");
     printf("</html>\n");
-};
+}
 
 int
 json_info(int old, int new)
@@ -617,7 +626,26 @@ json_content(int req_num)
     json_info(old, new);
 
     printf("}\n");
-};
+}
+
+int
+init_src_mac()
+{
+    int rv;
+
+    struct ifreq ifr;
+    strncpy(ifr.ifr_name, if_name, sizeof(ifr.ifr_name) - 1);
+    rv = ioctl(if_sock, SIOCGIFHWADDR, &ifr);
+    if (rv < 0) return rv;  // failure
+
+    memcpy(&src_mac, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    memcpy(proto_init + ETH_ALEN, &src_mac, ETH_ALEN);
+
+    rv = write_ait_map(2, src_mac);
+    if (rv < 0) return rv;  // failure
+
+    return 0;  // success
+}
 
 #ifndef TEST_MAIN
 int
@@ -628,6 +656,7 @@ main(void)
 
     init_ait_map();
     init_host_if();
+    init_src_mac();
 
     while(FCGI_Accept() >= 0) {
         ++count;

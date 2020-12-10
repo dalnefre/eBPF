@@ -65,14 +65,30 @@ trace_msg_data(__u8 *data)
 #endif /* TRACE_MSG */
 
 static __inline void
+copy_mac_addr(void *dst, void *src)
+{
+    __u16 *d = dst;
+    __u16 *s = src;
+
+    d[0] = s[0]; d[1] = s[1]; d[2] = s[2];
+}
+
+static __inline void
 swap_mac_addrs(void *ethhdr)
 {
     __u16 tmp[3];
     __u16 *eth = ethhdr;
 
-    tmp[0] = eth[0]; tmp[1] = eth[1]; tmp[2] = eth[2];
-    eth[0] = eth[3]; eth[1] = eth[4]; eth[2] = eth[5];
-    eth[3] = tmp[0]; eth[4] = tmp[1]; eth[5] = tmp[2];
+    __u32 key = 2;
+    __u64 *value_ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (value_ptr && (*value_ptr != 0)) {
+        copy_mac_addr(eth + 0, eth + 3);
+        copy_mac_addr(eth + 3, value_ptr);
+    } else {
+        copy_mac_addr(tmp + 0, eth + 0);
+        copy_mac_addr(eth + 0, eth + 3);
+        copy_mac_addr(eth + 3, tmp + 0);
+    }
 }
 
 static __inline __u64 *
@@ -156,7 +172,7 @@ update_seq_num(int seq_num)
 #define ACK_ACK_STATE (n_5)
 #define PROCEED_STATE (n_6)
 
-static void
+static __inline void
 live_msg_fmt(__u8 *data, __u8 state)
 {
     data[OTHER_OFS] = state;
@@ -165,7 +181,7 @@ live_msg_fmt(__u8 *data, __u8 state)
     data[BLOB_LEN_OFS] = null;
 }
 
-static void
+static __inline void
 ait_msg_fmt(__u8 *data, __u8 state)
 {
     data[OTHER_OFS] = state;
