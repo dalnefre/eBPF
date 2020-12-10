@@ -100,6 +100,18 @@ release_ait(__u64 ait)
 }
 
 static __inline int
+get_seq_num(int seq_num)
+{
+    __u32 n = seq_num;
+    __u32 key = 3;
+    __u64 *value_ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (value_ptr) {
+        n = *value_ptr;  // truncate to 32 bits
+    }
+    return n;
+}
+
+static __inline int
 set_seq_num(int seq_num)
 {
     __u32 key = 3;
@@ -113,15 +125,8 @@ set_seq_num(int seq_num)
 static __inline int
 update_seq_num(int seq_num)
 {
-    __u32 key = 3;
-    __u64 *value_ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (value_ptr) {
-        __sync_add_and_fetch(value_ptr, 1);
-        seq_num = *value_ptr;
-    } else {
-        ++seq_num;
-    }
-    return seq_num;
+    __u32 n = get_seq_num(seq_num);
+    return set_seq_num(++n);
 }
 
 #define MESSAGE_OFS   (ETH_HLEN + 0)            // 14
@@ -200,9 +205,10 @@ handle_message(__u8 *data, __u8 *end)
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
                 } else {  // forward transition (init)
-                    set_seq_num(n);
+                    __s32 m = set_seq_num(n);
+                    n = set_seq_num((m & ~0xFFFF) | n);
 #if LOG_AIT
-                    bpf_printk("INIT: pkt #%d\n", n);
+                    bpf_printk("INIT: pkt #%d\n", m);
 #endif
                 }
                 break;
