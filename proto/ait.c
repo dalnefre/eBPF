@@ -18,6 +18,8 @@
 #define LOG_RESULT   0  // log result code for all protocol packets
 #define PACKET_LIMIT 13 // halt ping/pong after limited number of packets
 
+#define AIT_EMPTY  (-1)
+
 //static BYTE proto_buf[256];  // message-transfer buffer
 static BYTE proto_buf[64];  // message-transfer buffer
 //static BYTE proto_buf[ETH_ZLEN];  // message-transfer buffer
@@ -220,8 +222,8 @@ handle_message(__u8 *data, __u8 *end)
 {
     __u8 b;
     __s16 n;
-    __u64 i = -1;
-    __u64 u = -1;
+    __u64 i = AIT_EMPTY;
+    __u64 u = AIT_EMPTY;
 
     if (data + MSG_END_OFS > end) return XDP_DROP;  // message too small
     if (data[MESSAGE_OFS] != array) return XDP_DROP;  // require array
@@ -243,7 +245,7 @@ handle_message(__u8 *data, __u8 *end)
                 data[OTHER_OFS] = PONG_STATE;
                 if (b < data[STATE_OFS]) {  // reverse transition
                     __u64 *p = acquire_ait();
-                    if (p && (*p != -1)) {  // outbound ait?
+                    if (p && (*p != AIT_EMPTY)) {  // outbound ait?
                         i = *p;
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
@@ -256,7 +258,7 @@ handle_message(__u8 *data, __u8 *end)
                 data[OTHER_OFS] = PING_STATE;
                 if (b > data[STATE_OFS]) {  // forward transition
                     __u64 *p = acquire_ait();
-                    if (p && (*p != -1)) {  // outbound ait?
+                    if (p && (*p != AIT_EMPTY)) {  // outbound ait?
                         i = *p;
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
@@ -306,7 +308,7 @@ handle_message(__u8 *data, __u8 *end)
                     printf("SENT: 0x%llx\n", __builtin_bswap64(i));
                 }
                 live_msg_fmt(data, PING_STATE);
-                i = u = -1;  // clear ait
+                i = u = AIT_EMPTY;  // clear ait
                 break;
             }
             default: return XDP_DROP;  // bad state

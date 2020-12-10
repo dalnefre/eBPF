@@ -31,6 +31,8 @@ struct bpf_elf_map ait_map SEC("maps") = {
 
 #define ETH_P_DALE (0xDA1E)
 
+#define AIT_EMPTY  (-1)
+
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))
 #endif
@@ -84,7 +86,7 @@ static __inline int
 clear_outbound()
 {
     __u32 key = 0;
-    __u64 ait = -1;
+    __u64 ait = AIT_EMPTY;
     return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
 }
 
@@ -93,7 +95,7 @@ release_ait(__u64 ait)
 {
     __u32 key = 1;
     __u64 *value_ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (value_ptr && (*value_ptr == -1)) {
+    if (value_ptr && (*value_ptr == AIT_EMPTY)) {
         return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
     }
     return -1;  // output slot already full
@@ -177,8 +179,8 @@ handle_message(__u8 *data, __u8 *end)
 {
     __u8 b;
     __s16 n;
-    __u64 i = -1;
-    __u64 u = -1;
+    __u64 i = AIT_EMPTY;
+    __u64 u = AIT_EMPTY;
 
     if (data + MSG_END_OFS > end) return XDP_DROP;  // message too small
     if (data[MESSAGE_OFS] != array) return XDP_DROP;  // require array
@@ -200,7 +202,7 @@ handle_message(__u8 *data, __u8 *end)
                 data[OTHER_OFS] = PONG_STATE;
                 if (b < data[STATE_OFS]) {  // reverse transition
                     __u64 *p = acquire_ait();
-                    if (p && (*p != -1)) {  // outbound ait?
+                    if (p && (*p != AIT_EMPTY)) {  // outbound ait?
                         i = *p;
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
@@ -217,7 +219,7 @@ handle_message(__u8 *data, __u8 *end)
                 data[OTHER_OFS] = PING_STATE;
                 if (b > data[STATE_OFS]) {  // forward transition
                     __u64 *p = acquire_ait();
-                    if (p && (*p != -1)) {  // outbound ait?
+                    if (p && (*p != AIT_EMPTY)) {  // outbound ait?
                         i = *p;
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
@@ -267,7 +269,7 @@ handle_message(__u8 *data, __u8 *end)
                 bpf_printk("SENT: 0x%llx\n", __builtin_bswap64(i));
 #endif
                 live_msg_fmt(data, PING_STATE);
-                i = u = -1;  // clear ait
+                i = u = AIT_EMPTY;  // clear ait
                 break;
             }
             default: return XDP_DROP;  // bad state
