@@ -178,7 +178,7 @@ static int
 handle_message(__u8 *data, __u8 *end)
 {
     __u8 b;
-    __s16 n;
+    __u16 n;
     __u64 i = AIT_EMPTY;
     __u64 u = AIT_EMPTY;
 
@@ -207,7 +207,7 @@ handle_message(__u8 *data, __u8 *end)
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
                 } else {  // forward transition (init)
-                    __s32 m = set_seq_num(n);
+                    __u32 m = set_seq_num(n);
                     n = set_seq_num((m & ~0xFFFF) | n);
 #if LOG_AIT
                     bpf_printk("INIT: pkt #%d\n", m);
