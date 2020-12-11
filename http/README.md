@@ -39,7 +39,7 @@ $ sudo ln -s /etc/nginx/sites-available/ebpfdemo sites-enabled/ebpfdemo
 $ sudo rm sites-enabled/default
 ```
 
-Configuration parameters:
+Edit the configuration in `sites-available/ebpfdemo` for FastCGI setup:
 
 ```
 server {

@@ -9,7 +9,7 @@ or an interactive web page.
 
 The configuration for a basic link demo involves many moving parts.
 
-![Configuration Diagram](Link%20Demo%20Config%20(2020-12-09%20das).001.png)
+![Configuration Diagram](img/link_demo_cfg.png)
 
 Major components include:
   * An Ethernet connection between machines
