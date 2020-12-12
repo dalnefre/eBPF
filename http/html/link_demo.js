@@ -7,10 +7,10 @@ $(function () {
     let $pkt_num = $('#pkt_num');
     let $inbound = $('#inbound');
     let $outbound = $('#outbound');
+    let $send = $('#send');
     let $raw_data = $('#raw_data');
     let $play_pause = $('#play_pause');
 
-    var ait = null;  // outbound AIT
     let get_ait = function (s) {
         let i = s.indexOf('\u0000');
         if (i < 0) {
@@ -28,8 +28,13 @@ $(function () {
         waiting = true;
         $raw_data.removeClass('error');
         var params = {};
-        if (typeof ait === 'string') {
-            params.ait = ait;  // FIXME: only send 64 bits at a time?
+        if ($send.prop('disabled')) {
+            if ($outbound.val()) {
+                params.ait = $outbound.val().slice(0, 8);  // 64-bits at a time
+            } else {
+                params.ait = '\n';  // add newline between outbound messages
+                $send.prop('disabled', false);
+            }
         }
         $.getJSON('/ebpf_map/ait.json', params)
             .done(update);
@@ -42,15 +47,10 @@ $(function () {
             $inbound.append(document.createTextNode(s));
         }
         if (typeof data.sent === 'string') {
-            if (ait.startsWith(data.sent)) {
-                ait = ait.slice(data.sent.length);
-            } else {
-                console.log('WARNING! '
-                    + 'expected "' + data.sent + '"'
-                    + 'as prefix of "' + ait + '"');
-            }
-            if (ait.length == 0) {
-                ait = null;
+            var out = $outbound.val();
+            if (out.startsWith(data.sent)) {
+                out = out.slice(data.sent.length);
+                $outbound.val(out);
             }
         }
         if (typeof data.link === 'string') {
@@ -76,7 +76,7 @@ $(function () {
             $host.text(' ('+data.host+')');
         }
         var cnt = data.ait_map[3];
-        $pkt_num.val(cnt.n);
+        $pkt_num.val(cnt.n & 0xFFFF);
         var fast_rot = (((cnt.b[1] << 8) | cnt.b[0]) * 360) >> 16;
         $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
 //        var slow_rot = (cnt.b[2] * 360) >> 8;
@@ -108,9 +108,8 @@ $(function () {
         toggleRefresh();
     });
 
-    $('#send').click(function (e) {
-        ait = $outbound.val() + '\n';
-        $outbound.val('');
+    $send.click(function (e) {
+        $send.prop('disabled', true);
     });
 
     $('#debug').click(function (e) {
