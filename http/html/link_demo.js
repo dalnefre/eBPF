@@ -1,5 +1,6 @@
 $(function () {
     let $host = $('#host');
+    let $play_pause = $('#play_pause');
     let $spinner = $('#spinner');
     let $fast_hand = $('#fast_hand');
     let $slow_hand = $('#slow_hand');
@@ -9,15 +10,6 @@ $(function () {
     let $outbound = $('#outbound');
     let $send = $('#send');
     let $raw_data = $('#raw_data');
-    let $play_pause = $('#play_pause');
-
-    let get_ait = function (s) {
-        let i = s.indexOf('\u0000');
-        if (i < 0) {
-            i = s.length;
-        }
-        return s.slice(0, i);
-    }
 
     var waiting = false;  // waiting for server response
     let refresh = function () {
@@ -43,6 +35,11 @@ $(function () {
         if (data.ait_map[1].n !== -1) {
             // inbound AIT
             var s = get_ait(data.ait_map[1].s);
+            let i = s.indexOf('\u0000');
+            if (i < 0) {
+                i = s.length;
+            }
+            s = s.slice(0, i);
             //$inbound.text($inbound.text() + s);
             $inbound.append(document.createTextNode(s));
         }
