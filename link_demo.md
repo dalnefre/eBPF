@@ -1,13 +1,13 @@
 # Link Demo
 
-The basic link demo illustrates liveness and AIT (atomic information transfer).
+The Link Demo illustrates the basic Liveness and AIT (atomic information transfer) link protocols.
 It involves direct communication between two server/host machines.
 AIT can be shown either via command-line tools,
 or an interactive web page.
 
 ## Configuration
 
-The configuration for a basic link demo involves many moving parts.
+The configuration for a basic link demo involves several moving parts.
 
 ![Configuration Diagram](img/link_demo_cfg.png)
 
@@ -21,4 +21,21 @@ Major components include:
 ## Setup
 
 Assuming a power-cycle reboot of the machines in the demo configuration,
-the following steps are required to prepare for the demo.
+and the software components have already been built,
+the following steps are required to prepare for the demo:
+
+First, make sure that the eBPF/XDP hook is loaded with the AIT protocol driver.
+```
+$ cd ~/dev/eBPF/XDP
+$ sudo ip -force link set dev eth0 xdp obj ait_kern.o
+```
+
+Second, start up the AIT application server to provide access to the eBPF Map.
+```
+$ cd ~/dev/eBPF/http
+$ sudo cgi-fcgi -start -connect /run/ebpf_map.sock ./ebpf_fcgi
+$ sudo chown www-data /run/ebpf_map.sock
+```
+
+Finally, open a browser window on the client machine
+to display the Link Demo GUI at http://host/link_demo.html
