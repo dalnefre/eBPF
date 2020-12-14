@@ -39,7 +39,9 @@ $ sudo ln -s /etc/nginx/sites-available/ebpfdemo sites-enabled/ebpfdemo
 $ sudo rm sites-enabled/default
 ```
 
-Edit the configuration in `sites-available/ebpfdemo` for FastCGI setup:
+Edit the `sites-available/ebpfdemo` configuration,
+adding a new `location` in your `server` block
+that maps the path `/ebpf_map` to a FastCGI server:
 
 ```
 server {
@@ -97,7 +99,9 @@ add `/usr/local/lib` to the paths searched for shared libraries.
 $ sudo ldconfig /usr/local/lib
 ```
 
-Once installed,
+### An Example FastCGI Server
+
+Once `libfcgi` is installed,
 we should be able to build
 [`examples/tiny_fcgi.c`](https://fastcgi-archives.github.io/FastCGI_Developers_Kit_FastCGI.html),
 shown here:
@@ -120,11 +124,20 @@ int main(void)
 ```
 This program must be compiled and linked with `libfcgi`:
 ```
-$ cc -O2 -Wall -lfcgi -o tiny_fcgi tiny_fcgi.c
+$ cc -O2 -Wall -lfcgi -o examples/tiny_fcgi examples/tiny_fcgi.c
 ```
 
+### Running a FastCGI Server
+
 There is a similar sample program called `hello_fcgi`
+in the `eBPF/http` sub-project
 that should be automatically built by `make`.
+
+```
+$ cd ~/dev/eBPF/http
+$ make
+```
+
 If it built successfully,
 you can use `cgi-fcgi` to start the application server:
 ```
@@ -152,3 +165,17 @@ root     16056     1  0 12:14 pts/0    00:00:00 ./hello_fcgi
 pi       16132 10015  0 12:39 pts/0    00:00:00 grep --color=auto fcgi
 $ sudo kill 16056
 ```
+
+### Running the Link Demo
+
+There is an HTML/SVG GUI available to demonstrate the operation
+of a pair of machines running the link protocol eBPF/XDP programs.
+The static files, served by NGINX, live in the `html` sub-directory,
+and can installed into `/var/www/html` (the web root) with `sudo`:
+
+```
+$ cd ~/dev/eBPF/http
+$ sudo make install
+```
+
+See [`link_demo.md`](../link_demo.md) for more information.
