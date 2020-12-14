@@ -38,4 +38,5 @@ $ sudo chown www-data /run/ebpf_map.sock
 ```
 
 Finally, open a browser window on the client machine
-to display the Link Demo GUI at http://host/link_demo.html
+to display the Link Demo GUI at [`http://localhost/link_demo.html`](http://localhost/link_demo.html)
+(replace `localhost` with the hostname or IP address of the server).
