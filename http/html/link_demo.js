@@ -73,7 +73,7 @@ $(function () {
             $host.text(' ('+data.host+')');
         }
         var cnt = data.ait_map[3];
-        $pkt_num.val(cnt.n & 0xFFFF);
+        $pkt_num.val(('00000000' + cnt.n.toString(16)).substr(-8));
         var fast_rot = (((cnt.b[1] << 8) | cnt.b[0]) * 360) >> 16;
         $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
 //        var slow_rot = (cnt.b[2] * 360) >> 8;
