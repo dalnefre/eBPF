@@ -18,6 +18,39 @@ Major components include:
   * A Web Server to handle browser requests
   * A client Web Browser to run the interactive visualization(s)
 
+## Build
+
+Since there are so many moving parts to the link demo,
+it's always a good idea to make sure everything is as up-to-date as possible.
+
+### Update to latest packages and OS
+```
+$ sudo apt update
+$ sudo apt upgrade
+$ sudo apt autoremove
+$ sudo reboot
+```
+(If you need to update your kernel for XDP, see [Build Custom Kernel](setup.md#build-custom-kernel))
+
+### Update to latest eBPF project repository
+```
+$ cd ~/dev/eBPF
+$ git pull
+```
+
+### Rebuid eBPF project components
+```
+$ cd proto
+$ make clean all test
+$ cd ../XDP
+$ make clean all test
+$ cd ../http
+$ make clean all test
+$ sudo make install
+```
+
+Now, follow the **Setup** instructions to make sure everything is up and running.
+
 ## Setup
 
 Assuming a power-cycle reboot of the machines in the demo configuration,
