@@ -34,7 +34,7 @@ $(function () {
     let update = function (data) {
         if (data.ait_map[1].n !== -1) {
             // inbound AIT
-            var s = get_ait(data.ait_map[1].s);
+            var s = data.ait_map[1].s;
             let i = s.indexOf('\u0000');
             if (i < 0) {
                 i = s.length;
