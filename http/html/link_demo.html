@@ -10,24 +10,20 @@
 body {
   background-color: #EEF;
 }
-#spinner {
-  margin-left: 20px;
+input {
+  margin-right: 1em;
+  margin-bottom: 1ex;
 }
 #link_stat {
   display: inline-block;
   width: 4em;
+  margin-right: 2em;
   padding: 6px 4px 4px;
   border-radius: 3px;
-  margin-right: 2em;
   color: #666;
   background-color: #CCC;
   font-weight: bold;
   text-align: center;
-}
-#pkt_num {
-  margin-right: 2em;
-  color: #66F;
-  font-family: monospace;
 }
 #play_pause {
   display: inline-block;
@@ -35,6 +31,7 @@ body {
   top: 0.35em;
   width: 1.5em;
   height: 1.5em;
+  margin: 0 1em;
   border: 1px solid #777;
   border-radius: 2px;
   background-color: #EAEAEA;
@@ -43,17 +40,32 @@ body {
   border: 1px solid #555;
   background-color: #E1E1E1;
 }
-#play { display: none; }
-#inbound { color: #006; }
-#outbound { font-family: monospace; }
-#info { color: #999; }
+#play {
+  display: none;
+}
+#spinner {
+  margin: 1.2em;
+}
+#pkt_num {
+  color: #66F;
+  font-family: monospace;
+}
+#inbound {
+  color: #006;
+}
+#outbound {
+  font-family: monospace;
+}
+#info {
+  color: #999;
+}
 </style>
 </head>
 <body>
 <h1>AIT Link Demo<span id="host"></span></h1>
 
 <div id="output">
-  <p>
+  <div>
     <label>
       Link:
       <span id="link_stat">????</span>
@@ -67,7 +79,7 @@ body {
         <path d="M 320 192 v 640 h 192 V 192 H 320 z" />
       </svg>
     </span>
-  </p>
+  </div>
   <svg id="spinner" width="100" height="100" viewBox="-50 -50 100 100">
     <defs>
       <radialGradient id="clk_face">
@@ -85,12 +97,12 @@ body {
       <circle cx="0" cy="0" r="3" fill="#000" />
     </g>
   </svg>
-  <p>
+  <div>
     <label>
       Packet:
       <input type="type" id="pkt_num" size="12" readonly>
     </label>
-  </p>
+  </div>
   <label>
     <h2>Inbound</h2>
     <pre id="inbound"></pre>
@@ -103,7 +115,6 @@ body {
     <input type="text" id="outbound" size="64" placeholder="Message to send...">
   </label>
   <span>
-    &nbsp;
     <button id="send">Send</button>
   </span>
 </div>
