@@ -43,6 +43,10 @@ input {
 #play {
   display: none;
 }
+#refresh_rate {
+  margin-left: 1ex;
+  margin-right: 0;
+}
 #spinner {
   margin: 1.2em;
 }
@@ -79,6 +83,13 @@ input {
         <path d="M 320 192 v 640 h 192 V 192 H 320 z" />
       </svg>
     </span>
+      <label>
+        updates @
+        <input type="text" id="refresh_rate" size="2" value="60">
+        / second.
+      </label>
+    <span>
+    </span>
   </div>
   <svg id="spinner" width="100" height="100" viewBox="-50 -50 100 100">
     <defs>
@@ -100,7 +111,7 @@ input {
   <div>
     <label>
       Packet:
-      <input type="type" id="pkt_num" size="12" readonly>
+      <input type="text" id="pkt_num" size="12" readonly>
     </label>
   </div>
   <label>

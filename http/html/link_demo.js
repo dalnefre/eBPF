@@ -1,6 +1,7 @@
 $(function () {
     let $host = $('#host');
     let $play_pause = $('#play_pause');
+    let $refresh_rate = $('#refresh_rate');
     let $spinner = $('#spinner');
     let $fast_hand = $('#fast_hand');
     let $slow_hand = $('#slow_hand');
@@ -84,8 +85,18 @@ $(function () {
     };
 
     var animation;
+    var last_time = 0;
     let animate = function (timestamp) {
-        refresh();
+        let time_diff = (timestamp - last_time);
+        var rate = $refresh_rate.val() * 1;
+        if (!rate || (rate < 0.1) || (rate > 60)) {
+            rate = 60;
+        }
+        let delta_t = 1000 / rate;
+        if (time_diff >= delta_t) {
+            last_time = timestamp;
+            refresh();
+        }
         animation = requestAnimationFrame(animate);
     };
     let toggleRefresh = function () {
