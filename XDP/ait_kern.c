@@ -26,11 +26,11 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define LOG_RESULT 0  // log result code for all protocol packets
 #define LOG_PROTO  1  // log all protocol messages exchanged
-#define LOG_AIT    1  // log each AIT sent/recv
+#define LOG_AIT    0  // log each AIT sent/recv
 #define TRACE_MSG  0  // log raw message data (8 octets)
-#define TRACE_AIT  1  // log ait transfer status
+#define TRACE_AIT  0  // log ait transfer status
 
-#define ETH_P_DALE (0xDA1E)
+#define ETH_P_DALE (0xDa1e)
 
 #define AIT_EMPTY  (-1)
 

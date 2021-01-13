@@ -33,7 +33,7 @@ struct bpf_elf_map liveness_map SEC("maps") = {
 
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
 
-#define ETH_P_DALE (0xDA1E)
+#define ETH_P_DALE (0xDa1e)
 
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))

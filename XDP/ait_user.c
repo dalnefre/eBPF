@@ -71,7 +71,7 @@ ait_rcvd(__u64 ait)
 #include <linux/ethtool.h>
 #include <linux/sockios.h>
 
-#define ETH_P_DALE (0xda1e)
+#define ETH_P_DALE (0xDa1e)
 
 int
 get_link_status(int if_index, int fd, int *status, void *mac_addr)
