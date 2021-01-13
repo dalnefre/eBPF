@@ -30,7 +30,7 @@ static char hostname[32];
 static char if_name[] = "eth0";
 static int if_index = -1;
 static int if_sock = -1;
-static __u64 src_mac = -1;
+static __u64 src_mac = 0;
 
 int
 init_host_if()

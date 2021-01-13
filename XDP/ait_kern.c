@@ -25,9 +25,10 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define LOG_RESULT 0  // log result code for all protocol packets
-#define LOG_PROTO  0  // log all protocol messages exchanged
+#define LOG_PROTO  1  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
 #define TRACE_MSG  0  // log raw message data (8 octets)
+#define TRACE_AIT  1  // log ait transfer status
 
 #define ETH_P_DALE (0xDA1E)
 
@@ -91,19 +92,66 @@ swap_mac_addrs(void *ethhdr)
     }
 }
 
+#define BUSY_FLAG (0x80)
+
 static __inline __u64 *
 acquire_ait()
 {
-    __u32 key = 0;
-    return bpf_map_lookup_elem(&ait_map, &key);
+    __u32 key;
+    __u64 *ptr;
+    __u8 *bp = NULL;
+
+    key = 2;
+    ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (ptr) {
+        bp = (__u8 *)ptr;
+        if (bp[7] & BUSY_FLAG) {
+#if TRACE_AIT
+            bpf_printk("AIT busy!\n");
+#endif
+            return NULL;  // ait busy
+        }
+    }
+    key = 0;
+    ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (ptr && (*ptr != AIT_EMPTY)) {
+        if (bp) {
+#if TRACE_AIT
+            bpf_printk("AIT set busy.\n");
+#endif
+            bp[7] |= BUSY_FLAG;  // set ait busy
+        }
+#if TRACE_AIT
+        bpf_printk("AIT start xfer\n");
+#endif
+        return ptr;  // transfer ait
+    }
+    return NULL;  // no ait
 }
 
 static __inline int
 clear_outbound()
 {
-    __u32 key = 0;
+    __u32 key;
+    __u64 *ptr;
+    __u8 *bp = NULL;
     __u64 ait = AIT_EMPTY;
-    return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
+
+    key = 2;
+    ptr = bpf_map_lookup_elem(&ait_map, &key);
+    if (ptr) {
+        bp = (__u8 *)ptr;
+#if TRACE_AIT
+        bpf_printk("AIT clear busy.\n");
+#endif
+        bp[7] &= ~BUSY_FLAG;  // clear ait busy
+    }
+    key = 0;
+    int rv = bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
+#if TRACE_AIT
+        bpf_printk("AIT xfer done (rv=%d)\n", rv);
+#endif
+    return rv;
 }
 
 static __inline int
