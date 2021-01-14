@@ -25,10 +25,10 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
 #define LOG_RESULT 0  // log result code for all protocol packets
-#define LOG_PROTO  1  // log all protocol messages exchanged
-#define LOG_AIT    0  // log each AIT sent/recv
+#define LOG_PROTO  0  // log all protocol messages exchanged
+#define LOG_AIT    1  // log each AIT sent/recv
 #define TRACE_MSG  0  // log raw message data (8 octets)
-#define TRACE_AIT  0  // log ait transfer status
+#define TRACE_STAT 1  // log persistent status bits
 
 #define ETH_P_DALE (0xDa1e)
 
@@ -92,38 +92,66 @@ swap_mac_addrs(void *ethhdr)
     }
 }
 
-#define BUSY_FLAG (0x80)
+#define PING_FLAG (1<<0)
+#define PONG_FLAG (1<<1)
+#define BUSY_FLAG (1<<7)
+
+static __inline int
+clr_status(__u8 bits)  // clear status bits
+{
+    int rv = -1;  // default: failure
+    __u32 key = 2;
+    __u8 *bp = bpf_map_lookup_elem(&ait_map, &key);
+    if (bp) {
+        bp[7] &= ~bits;
+        rv = 0;  // SUCCESS!
+    }
+    return rv;
+}
+
+static __inline int
+set_status(__u8 bits)  // set status bits
+{
+    int rv = -1;  // default: failure
+    __u32 key = 2;
+    __u8 *bp = bpf_map_lookup_elem(&ait_map, &key);
+    if (bp) {
+        bp[7] |= bits;
+        rv = 0;  // SUCCESS!
+    }
+    return rv;
+}
+
+static __inline __u8
+get_status()  // get status bits
+{
+    __u32 key = 2;
+    __u8 *bp = bpf_map_lookup_elem(&ait_map, &key);
+    if (bp) {
+        return bp[7];
+    }
+    return 0;  // error accessing status
+}
 
 static __inline __u64 *
 acquire_ait()
 {
-    __u32 key;
+    __u32 key = 0;
     __u64 *ptr;
-    __u8 *bp = NULL;
 
-    key = 2;
-    ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (ptr) {
-        bp = (__u8 *)ptr;
-        if (bp[7] & BUSY_FLAG) {
-#if TRACE_AIT
-            bpf_printk("AIT busy!\n");
+    __u8 b = get_status();
+    if (b & BUSY_FLAG) {
+#if TRACE_STAT
+        bpf_printk("AIT busy! (0x%02x)\n", b);
 #endif
-            return NULL;  // ait busy
-        }
+        return NULL;  // ait busy
     }
-    key = 0;
     ptr = bpf_map_lookup_elem(&ait_map, &key);
     if (ptr && (*ptr != AIT_EMPTY)) {
-        if (bp) {
-#if TRACE_AIT
-            bpf_printk("AIT set busy.\n");
+#if TRACE_STAT
+        bpf_printk("AIT set busy.\n");
 #endif
-            bp[7] |= BUSY_FLAG;  // set ait busy
-        }
-#if TRACE_AIT
-        bpf_printk("AIT start xfer\n");
-#endif
+        set_status(BUSY_FLAG);
         return ptr;  // transfer ait
     }
     return NULL;  // no ait
@@ -132,26 +160,14 @@ acquire_ait()
 static __inline int
 clear_outbound()
 {
-    __u32 key;
-    __u64 *ptr;
-    __u8 *bp = NULL;
+    __u32 key = 0;
     __u64 ait = AIT_EMPTY;
 
-    key = 2;
-    ptr = bpf_map_lookup_elem(&ait_map, &key);
-    if (ptr) {
-        bp = (__u8 *)ptr;
-#if TRACE_AIT
-        bpf_printk("AIT clear busy.\n");
+#if TRACE_STAT
+    bpf_printk("AIT clear busy.\n");
 #endif
-        bp[7] &= ~BUSY_FLAG;  // clear ait busy
-    }
-    key = 0;
-    int rv = bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
-#if TRACE_AIT
-        bpf_printk("AIT xfer done (rv=%d)\n", rv);
-#endif
-    return rv;
+    clr_status(BUSY_FLAG);
+    return bpf_map_update_elem(&ait_map, &key, &ait, BPF_ANY);
 }
 
 static __inline int
@@ -260,6 +276,10 @@ handle_message(__u8 *data, __u8 *end)
         switch (b) {
             case INIT_STATE: {  // init
                 live_msg_fmt(data, PING_STATE);
+#if TRACE_STAT
+                bpf_printk("LIVE clear status.\n");
+#endif
+                clr_status(-1);  // clear all status flags
                 break;
             }
             case PING_STATE: {  // ping
@@ -270,12 +290,17 @@ handle_message(__u8 *data, __u8 *end)
                         i = *p;
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
+                    set_status(PING_FLAG);  // set ping status
                 } else {  // forward transition (init)
                     __u32 m = set_seq_num(n);
                     n = set_seq_num((m & ~0xFFFF) | n);
 #if LOG_AIT
                     bpf_printk("INIT: pkt #%d\n", m);
 #endif
+#if TRACE_STAT
+                    bpf_printk("LIVE clear ping/pong.\n");
+#endif
+                    clr_status(PING_FLAG | PONG_FLAG);  // clear ping/pong
                 }
                 break;
             }
@@ -287,6 +312,7 @@ handle_message(__u8 *data, __u8 *end)
                         i = *p;
                         ait_msg_fmt(data, GOT_AIT_STATE);
                     }
+                    set_status(PONG_FLAG);  // set pong status
                 }
                 break;
             }
