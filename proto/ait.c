@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #define DEBUG(x)   /**/
 
@@ -295,7 +296,7 @@ handle_message(__u8 *data, __u8 *end)
                     ait_msg_fmt(data, ACK_AIT_STATE);  // reverse
                 } else {
                     if (proto_opt.log >= 1) {
-                        printf("RCVD: 0x%llx\n", __builtin_bswap64(u));
+                        printf("RCVD: 0x%" PRIx64 "\n", __builtin_bswap64(u));
                     }
                     ait_msg_fmt(data, PROCEED_STATE);
                 }
@@ -305,7 +306,7 @@ handle_message(__u8 *data, __u8 *end)
                 if (clear_outbound() < 0) return XDP_DROP;  // clear failed
                 if (proto_opt.log >= 1) {
                     copy_ait(&i, data + AIT_U_OFS);
-                    printf("SENT: 0x%llx\n", __builtin_bswap64(i));
+                    printf("SENT: 0x%" PRIx64 "\n", __builtin_bswap64(i));
                 }
                 live_msg_fmt(data, PING_STATE);
                 i = u = AIT_EMPTY;  // clear ait

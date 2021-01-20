@@ -55,7 +55,7 @@ int
 send_message(int fd, void *buffer, size_t size)
 {
     struct sockaddr_storage address;
-    size_t addr_len;
+    socklen_t addr_len;
     int n; 
 
     struct sockaddr *addr = set_sockaddr(&address, &addr_len); 

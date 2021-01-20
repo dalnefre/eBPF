@@ -8,7 +8,20 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <arpa/inet.h>
+#include <net/if.h>
+#include <linux/if_packet.h>
+#include <linux/ethtool.h>
+#include <linux/sockios.h>
+
 #include <bpf/bpf.h>
+
+#define ETH_P_DALE (0xDa1e)
 
 static const char *ait_map_filename = "/sys/fs/bpf/xdp/globals/ait_map";
 static int ait_map_fd;
@@ -26,6 +39,55 @@ write_ait_map(__u32 key, __u64 value)
 }
 
 int
+init_ait_map(int if_index)
+{
+    __u32 key;
+    __u64 value;
+    int fd;
+    struct ifreq ifr;
+    int rv;
+
+    key = 2;
+    if (read_ait_map(key, &value) < 0) {
+        perror("read_ait_map() failed");
+        return -1;  // failure
+    }
+
+    fd = socket(AF_PACKET, SOCK_RAW, ETH_P_DALE);
+    if (fd < 0) {
+        perror("socket() failed");
+        return -1;  // failure
+    }
+
+    ifr.ifr_addr.sa_family = AF_PACKET;
+    ifr.ifr_ifindex = if_index;
+
+    // convert if_index into interface name
+    rv = ioctl(fd, SIOCGIFNAME, &ifr);
+    if (rv < 0) {
+        perror("ioctl(SIOCGIFNAME) failed");
+        return -1;  // failure
+    }
+
+    // get hardware (mac) address from interface
+    rv = ioctl(fd, SIOCGIFHWADDR, &ifr);
+    if (rv < 0) {
+        perror("ioctl(SIOCGIFHWADDR) failed");
+        return -1;  // failure
+    }
+
+    // copy src_mac into ait_map
+    memcpy(&value, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    if (write_ait_map(key, value) < 0) {
+        perror("read_write_map() failed");
+        return -1;  // failure
+    }
+
+    rv = close(fd);
+    return rv;
+}
+
+int
 dump_ait_map()
 {
     __u32 key;
@@ -39,10 +101,11 @@ dump_ait_map()
         }
 
         __u8 *bp = (__u8 *)&value;
-        printf("ait_map[%d] = %02x %02x %02x %02x %02x %02x %02x %02x (%lld)\n",
+        printf("ait_map[%d] = %02x %02x %02x %02x %02x %02x %02x %02x (%"
+               PRId64 ")\n",
             key,
             bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
-            value);
+            (__s64)value);
 
     }
 
@@ -61,17 +124,6 @@ ait_rcvd(__u64 ait)
         (char *)&ait);
 #endif
 }
-
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <arpa/inet.h>
-#include <net/if.h>
-#include <linux/if_packet.h>
-#include <linux/ethtool.h>
-#include <linux/sockios.h>
-
-#define ETH_P_DALE (0xDa1e)
 
 int
 get_link_status(int if_index, int fd, int *status, void *mac_addr)
@@ -241,6 +293,8 @@ writer()  // write AIT data (from console)
 {
     __u64 value;
 
+    // FIXME: set local mac address in BPF map
+
     for (;;) {
 
         // check for outbound AIT space
@@ -299,6 +353,7 @@ main(int argc, char *argv[])
     }
     ait_map_fd = rv;
 
+    if (init_ait_map(if_index) < 0) return -1;  // failure
     if (dump_ait_map() < 0) return -1;  // failure
 
     // create process to monitor/maintain liveness

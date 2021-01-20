@@ -22,12 +22,16 @@
 #include <linux/ethtool.h>
 #include <linux/sockios.h>
 
-#define ETH_P_DALE (0xda1e)
+#ifndef IF_NAME
+#define IF_NAME "eth0"
+#endif
+
+#define ETH_P_DALE (0xDa1e)
 
 #define AIT_EMPTY  (-1)
 
 static char hostname[32];
-static char if_name[] = "eth0";
+static char if_name[] = IF_NAME;
 static int if_index = -1;
 static int if_sock = -1;
 static __u64 src_mac = 0;
@@ -176,11 +180,9 @@ html_ait_map()
 
         __u8 *bp = (__u8 *)&value;
         printf("<tr>");
-        //printf("<td>" PRId32 "</td>", key);
-        printf("<td>%d</td>", (int)key);
+        printf("<td>%" PRIu32 "</td>", key);
         printf("<td>%s</td>", ait_map_label(key));
-        //printf("<td>" PRId64 "</td>", value);
-        printf("<td>%lld</td>", value);
+        printf("<td>%" PRId64 "</td>", (__s64)value);
         printf("<td><tt>%02x %02x %02x %02x %02x %02x %02x %02x</tt></td>",
             bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
         printf("</tr>\n");
@@ -256,8 +258,7 @@ json_ait_map()
         printf(",");
 
         printf("\"n\":");
-        //printf(PRId64, value);
-        printf("%lld", value);
+        printf("%" PRId64, (__s64)value);
         printf(",");
 
         printf("\"s\":");
@@ -265,7 +266,7 @@ json_ait_map()
         printf(",");
 
         printf("\"b\":");
-        printf("[%d,%d,%d,%d,%d,%d,%d,%d]",
+        printf("[%u,%u,%u,%u,%u,%u,%u,%u]",
             bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
         printf("}");
 
