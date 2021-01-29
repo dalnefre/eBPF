@@ -293,8 +293,6 @@ writer()  // write AIT data (from console)
 {
     __u64 value;
 
-    // FIXME: set local mac address in BPF map
-
     for (;;) {
 
         // check for outbound AIT space

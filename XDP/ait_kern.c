@@ -24,6 +24,7 @@ struct bpf_elf_map ait_map SEC("maps") = {
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
 #define UNALIGNED  0  // assume unaligned access for packet data
 #define USE_MEMCPY 1  // use __built_in_memcpy() for block copies
+#define USE_BUSY   0  // use AIT busy flag to prevent overlap
 #define LOG_RESULT 0  // log result code for all protocol packets
 #define LOG_PROTO  0  // log all protocol messages exchanged
 #define LOG_AIT    1  // log each AIT sent/recv
@@ -122,6 +123,7 @@ set_status(__u8 bits)  // set status bits
     return rv;
 }
 
+#if USE_BUSY
 static __inline __u8
 get_status()  // get status bits
 {
@@ -132,6 +134,7 @@ get_status()  // get status bits
     }
     return 0;  // error accessing status
 }
+#endif
 
 static __inline __u64 *
 acquire_ait()
@@ -139,6 +142,7 @@ acquire_ait()
     __u32 key = 0;
     __u64 *ptr;
 
+#if USE_BUSY
     __u8 b = get_status();
     if (b & BUSY_FLAG) {
 #if TRACE_STAT
@@ -146,6 +150,7 @@ acquire_ait()
 #endif
         return NULL;  // ait busy
     }
+#endif
     ptr = bpf_map_lookup_elem(&ait_map, &key);
     if (ptr && (*ptr != AIT_EMPTY)) {
 #if TRACE_STAT
