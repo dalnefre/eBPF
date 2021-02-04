@@ -157,7 +157,7 @@ Launch kernel compile using all 4 cores (prepare to wait a while...)
 
 ```
 $ make -j4 zImage modules dtbs
-$ make headers_install
+$ sudo make headers_install INSTALL_HDR_PATH=/usr
 $ sudo make modules_install
 $ sudo cp arch/arm/boot/dts/*.dtb /boot/
 $ sudo cp arch/arm/boot/dts/overlays/*.dtb* /boot/overlays/
@@ -226,21 +226,17 @@ add `/usr/local/lib` to the paths searched for shared libraries.
 $ sudo ldconfig /usr/local/lib
 ```
 
+### Build `bpftool` program.
 ```
 $ cd ~/dev/linux/tools/bpf/bpftool
 $ make
 $ sudo make install
 ```
 
+### Build BPF samples in the kernel source tree.
 ```
 $ cd ~/dev/linux/samples/bpf
 $ make
-```
-
-It feels like the wrong thing to do, but this resolves many dependencies...
-
-```
-$ sudo ln -s /usr/include/asm-generic /usr/include/asm
 ```
 
 ## Build eBPF experiments
