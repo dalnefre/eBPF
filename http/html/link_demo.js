@@ -4,7 +4,7 @@ $(function () {
     let $refresh_rate = $('#refresh_rate');
     let $spinner = $('#spinner');
     let $fast_hand = $('#fast_hand');
-    let $slow_hand = $('#slow_hand');
+//    let $slow_hand = $('#slow_hand');
     let $link_stat = $('#link_stat');
     let $pkt_num = $('#pkt_num');
     let $inbound = $('#inbound');
@@ -74,12 +74,14 @@ $(function () {
             $host.text(' ('+data.host+')');
         }
         var cnt = data.ait_map[3];
-        $pkt_num.val(('00000000' + cnt.n.toString(16)).substr(-8));
+//        $pkt_num.val(('00000000' + cnt.n.toString(16)).substr(-8));
+        var npkts = cnt.n & 0xFFFF;
+        $pkt_num.val(('0000' + npkts.toString(16)).substr(-4));
         var fast_rot = (((cnt.b[1] << 8) | cnt.b[0]) * 360) >> 16;
         $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
 //        var slow_rot = (cnt.b[2] * 360) >> 8;
-        var slow_rot = (((cnt.b[2] << 8) | cnt.b[1]) * 360) >> 12;
-        $slow_hand.attr('transform', 'rotate(' + slow_rot + ')');
+//        var slow_rot = (((cnt.b[2] << 8) | cnt.b[1]) * 360) >> 12;
+//        $slow_hand.attr('transform', 'rotate(' + slow_rot + ')');
         $raw_data.text(JSON.stringify(data, null, 2));
         waiting = false;
     };

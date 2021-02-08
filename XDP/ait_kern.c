@@ -305,7 +305,7 @@ handle_message(__u8 *data, __u8 *end)
 #if TRACE_STAT
                     bpf_printk("LIVE clear ping/pong.\n");
 #endif
-                    clr_status(PING_FLAG | PONG_FLAG);  // clear ping/pong
+                    clr_status(-1);  // clear all status flags
                 }
                 break;
             }
