@@ -17,11 +17,11 @@
 #define DUMP_PACKETS 1  // hexdump raw packets send/received
 #define PACKET_LIMIT 0  // halt ping/pong after limited number of packets
 
-//static BYTE proto_buf[256];  // message-transfer buffer
-static BYTE proto_buf[64];  // message-transfer buffer
-//static BYTE proto_buf[80];  // message-transfer buffer
-//static BYTE proto_buf[ETH_ZLEN];  // message-transfer buffer
-//static BYTE proto_buf[ETH_MIN_MTU];  // message-transfer buffer
+//static octet_t proto_buf[256];  // message-transfer buffer
+static octet_t proto_buf[64];  // message-transfer buffer
+//static octet_t proto_buf[80];  // message-transfer buffer
+//static octet_t proto_buf[ETH_ZLEN];  // message-transfer buffer
+//static octet_t proto_buf[ETH_MIN_MTU];  // message-transfer buffer
 
 typedef struct live_msg {
     int         state;      // self state
@@ -29,8 +29,8 @@ typedef struct live_msg {
     int         count;      // message count
 } live_msg_t;
 
-static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static octet_t eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+static octet_t eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 static int
 next_state(int state)

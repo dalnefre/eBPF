@@ -34,8 +34,8 @@ recv_message(int fd, void *buffer, size_t limit)
     return n;
 }
 
-//static BYTE proto_buf[256];  // message-transfer buffer
-static BYTE proto_buf[2048];  // message-transfer buffer
+//static octet_t proto_buf[256];  // message-transfer buffer
+static octet_t proto_buf[2048];  // message-transfer buffer
 
 int
 server()

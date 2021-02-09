@@ -7,26 +7,26 @@
 #include "code.h"
 
 typedef struct bstr {
-    BYTE        *head;
-    BYTE        *base;
-    BYTE        *start;
-    BYTE        *content;
-    BYTE        *cursor;
-    BYTE        *end;
-    BYTE        *limit;
-    BYTE        *tail;
+    octet_t     *head;
+    octet_t     *base;
+    octet_t     *start;
+    octet_t     *content;
+    octet_t     *cursor;
+    octet_t     *end;
+    octet_t     *limit;
+    octet_t     *tail;
 } bstr_t;
 
 typedef union bpage {
-    BYTE        page[4096];
+    octet_t     page[4096];
     struct {
         struct {
             uint16_t    memo_ofs[256];
-            BYTE        memo_idx;
-            BYTE        room[511];
+            octet_t     memo_idx;
+            octet_t     room[511];
         }           head;
-        BYTE        data[2048];
-        BYTE        tail[1024 - sizeof(bstr_t)];
+        octet_t     data[2048];
+        octet_t     tail[1024 - sizeof(bstr_t)];
         bstr_t      meta;
     }           pt;
 } bpage_t;
@@ -50,7 +50,7 @@ extern bstr_t *bpage_init(bpage_t *page);
 extern bstr_t *bstr_alloc();
 extern bstr_t *bstr_free(bstr_t *bstr);
 
-extern int bstr_put_raw(bstr_t *bstr, BYTE b);
+extern int bstr_put_raw(bstr_t *bstr, octet_t b);
 extern int bstr_put_int(bstr_t *bstr, int i);
 extern int bstr_put_int16(bstr_t *bstr, int16_t i);
 extern int bstr_put_int32(bstr_t *bstr, int32_t i);

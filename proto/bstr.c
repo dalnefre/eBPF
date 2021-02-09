@@ -20,14 +20,14 @@ bpage_init(bpage_t *page)
     assert(page);
     // FIXME: need to enforce 4k page alignment...
     bstr_t *bstr = &page->pt.meta;
-    bstr->head = ((BYTE *) &page->pt.head);
+    bstr->head = ((octet_t *) &page->pt.head);
     bstr->base = page->pt.data;
     bstr->start = page->pt.data;
     bstr->content = page->pt.data;
     bstr->cursor = page->pt.data;
     bstr->end = page->pt.data;
     bstr->limit = page->pt.tail;
-    bstr->tail = ((BYTE *) &page->pt.meta);
+    bstr->tail = ((octet_t *) &page->pt.meta);
     assert(page->page == bstr->head);
     return bstr;
 }
@@ -48,7 +48,7 @@ bstr_free(bstr_t *bstr)
 }
 
 int
-bstr_put_raw(bstr_t *bstr, BYTE b)
+bstr_put_raw(bstr_t *bstr, octet_t b)
 {
     if (bstr->end >= bstr->limit) return -1;
     DEBUG(printf("bstr_put_raw: *%p = 0x%02x\n", bstr->end, b));
@@ -70,7 +70,7 @@ bstr_put_int16(bstr_t *bstr, int16_t i)
 {
     size_t n = 2 + sizeof(i);
     if (bstr->end + n > bstr->limit) return -1;
-    BYTE b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    octet_t b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
     if (bstr_put_raw(bstr, b) < 0) return -1;
     if (bstr_put_raw(bstr, n_2) < 0) return -1;  // size = 2
     b = i;  // lsb
@@ -85,7 +85,7 @@ bstr_put_int32(bstr_t *bstr, int32_t i)
 {
     size_t n = 2 + sizeof(i);
     if (bstr->end + n > bstr->limit) return -1;
-    BYTE b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    octet_t b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
     if (bstr_put_raw(bstr, b) < 0) return -1;
     if (bstr_put_raw(bstr, n_4) < 0) return -1;  // size = 2
     b = i;  // lsb
@@ -104,7 +104,7 @@ bstr_put_int64(bstr_t *bstr, int64_t i)
 {
     size_t n = 2 + sizeof(i);
     if (bstr->end + n > bstr->limit) return -1;
-    BYTE b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
+    octet_t b = (i < 0) ? m_int_0 : p_int_0;  // +/- Int, pad = 0
     if (bstr_put_raw(bstr, b) < 0) return -1;
     if (bstr_put_raw(bstr, n_8) < 0) return -1;  // size = 2
     b = i;  // lsb
@@ -167,7 +167,7 @@ int
 bstr_close_array(bstr_t *bstr)
 {
     DEBUG(printf("> bstr_close_array\n"));
-    BYTE *bp = bstr->start + 1;
+    octet_t *bp = bstr->start + 1;
     DEBUG(hexdump(stdout, bstr->start, (bstr->end - bstr->start)));
     DEBUG(printf("start=%p bp=%p content=%p cursor=%p end=%p limit=%p\n",
         bstr->start, bp, bstr->content, bstr->cursor, bstr->end, bstr->limit));
@@ -182,7 +182,7 @@ bstr_close_array(bstr_t *bstr)
 int
 bstr_get_value(bstr_t *bstr)
 {
-    BYTE b;
+    octet_t b;
     size_t n, m;
 
     if (!bstr) return -1;  // uninitialized bstr_t
@@ -248,13 +248,13 @@ bstr_get_value(bstr_t *bstr)
 #include <assert.h>
 
 static void
-test_3_int_array(BYTE *buffer, size_t limit)
+test_3_int_array(octet_t *buffer, size_t limit)
 {
     size_t offset = 0;
-    BYTE b;
+    octet_t b;
     size_t n;
     int i, j, k;
-    BYTE *data;
+    octet_t *data;
 
     DEBUG(printf("test_3_int_array: buffer=%p limit=%zu\n", buffer, limit));
     bstr_t meta = {
@@ -340,8 +340,8 @@ test_3_int_array(BYTE *buffer, size_t limit)
 void
 test_bstr()
 {
-    BYTE buf_0[] = { array_n, n_4, n_3, n_m64, n_0, n_126 };
-    BYTE buf_1[] = { array, n_3, n_m64, n_0, n_126 };
+    octet_t buf_0[] = { array_n, n_4, n_3, n_m64, n_0, n_126 };
+    octet_t buf_1[] = { array, n_3, n_m64, n_0, n_126 };
 
     test_3_int_array(buf_0, sizeof(buf_0));
     test_3_int_array(buf_1, sizeof(buf_1));

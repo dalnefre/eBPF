@@ -12,12 +12,12 @@
 #define DEBUG(x) x /**/
 
 #if 0
-static BYTE message[] = {
+static octet_t message[] = {
     utf8, n_14,
     'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', '\n',
 };
 #else
-static BYTE message[] = {
+static octet_t message[] = {
 //    array, n_6,
 //    0x04, 0x86,
     octets, n_12,
@@ -27,8 +27,8 @@ static BYTE message[] = {
 };
 #endif
 
-static BYTE eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
-static BYTE eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static octet_t eth_remote[ETH_ALEN] =  { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+static octet_t eth_local[ETH_ALEN] =   { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 
 size_t
 create_message(void *buffer, size_t size)
@@ -72,7 +72,7 @@ send_message(int fd, void *buffer, size_t size)
     return n;
 }
 
-static BYTE proto_buf[256];  // message-transfer buffer
+static octet_t proto_buf[256];  // message-transfer buffer
 
 int
 client()

@@ -19,11 +19,11 @@
  */
 
 size_t
-encode_int(BYTE *buffer, size_t limit, int data)
+encode_int(octet_t *buffer, size_t limit, int data)
 {
     size_t offset = 0;
     size_t content;  // offset to variable-length content
-    BYTE b;
+    octet_t b;
 
     if ((SMOL_MIN <= data) && (data <= SMOL_MAX)) {
         // "smol" integer
@@ -69,10 +69,10 @@ encode_int(BYTE *buffer, size_t limit, int data)
 }
 
 size_t
-encode_int_fixed(BYTE *buffer, size_t width, int data)
+encode_int_fixed(octet_t *buffer, size_t width, int data)
 {
     size_t offset = 0;
-    BYTE b, s;
+    octet_t b, s;
 
     if (width < 1) return 0;  // not enough space
     if (width == 1) {
@@ -110,10 +110,10 @@ encode_int_fixed(BYTE *buffer, size_t width, int data)
 }
 
 size_t
-encode_cstr(BYTE *buffer, size_t limit, char *s)
+encode_cstr(octet_t *buffer, size_t limit, char *s)
 {
     size_t offset = 0;
-    BYTE b;
+    octet_t b;
     size_t n;
 
     size_t len = strlen(s);
@@ -145,10 +145,10 @@ encode_cstr(BYTE *buffer, size_t limit, char *s)
 }
 
 size_t
-encode_blob(BYTE *buffer, size_t limit, void *data, size_t size)
+encode_blob(octet_t *buffer, size_t limit, void *data, size_t size)
 {
     size_t offset = 0;
-    BYTE b;
+    octet_t b;
     size_t n;
 
     if (offset >= limit) return 0;  // out-of-bounds
@@ -163,7 +163,7 @@ encode_blob(BYTE *buffer, size_t limit, void *data, size_t size)
 
     // blob content (data bytes)
     if ((offset + size) >= limit) return 0;  // out-of-bounds
-    BYTE *blob = data;
+    octet_t *blob = data;
     while (size-- > 0) {
         b = *blob++;
         DEBUG(printf("encode_blob: %p[%zu] = 0x%02x\n", buffer, offset, b));
@@ -174,7 +174,7 @@ encode_blob(BYTE *buffer, size_t limit, void *data, size_t size)
 }
 
 size_t
-encode_array_of_int(BYTE *buffer, size_t limit, int *data, size_t count)
+encode_array_of_int(octet_t *buffer, size_t limit, int *data, size_t count)
 {
 #if 0
     bstr_t meta = {
@@ -192,7 +192,7 @@ encode_array_of_int(BYTE *buffer, size_t limit, int *data, size_t count)
     size_t offset = 0;
     size_t content;  // offset to variable-length content
     size_t n, m;
-    BYTE b;
+    octet_t b;
 
     // enforce argument pre-conditions
     if (limit > (size_t)INT_MAX) return 0;  // limit too large
@@ -241,10 +241,10 @@ encode_array_of_int(BYTE *buffer, size_t limit, int *data, size_t count)
  */
 
 size_t
-decode_int(BYTE *buffer, size_t limit, int *data)
+decode_int(octet_t *buffer, size_t limit, int *data)
 {
     size_t offset = 0;
-    BYTE b;
+    octet_t b;
 
     DEBUG(printf("decode_int: buffer=%p limit=%zu data=%p\n",
         buffer, limit, data));
@@ -282,10 +282,10 @@ decode_int(BYTE *buffer, size_t limit, int *data)
 }
 
 size_t
-decode_int64(BYTE *buffer, size_t limit, int64_t *data)
+decode_int64(octet_t *buffer, size_t limit, int64_t *data)
 {
     size_t offset = 0;
-    BYTE b;
+    octet_t b;
 
     DEBUG(printf("decode_int64: buffer=%p limit=%zu data=%p\n",
         buffer, limit, data));
@@ -323,10 +323,10 @@ decode_int64(BYTE *buffer, size_t limit, int64_t *data)
 }
 
 size_t
-decode_cstr(BYTE *buffer, size_t limit, char *data, size_t size)
+decode_cstr(octet_t *buffer, size_t limit, char *data, size_t size)
 {
     size_t offset = 0;
-    BYTE b;
+    octet_t b;
     int i, j;
 
     DEBUG(printf("decode_cstr: buffer=%p limit=%zu data=%p size=%zu\n",
@@ -370,14 +370,14 @@ decode_cstr(BYTE *buffer, size_t limit, char *data, size_t size)
 #include <assert.h>
 
 static void
-assert_buf(BYTE *expect, size_t size, BYTE *buf, size_t n)
+assert_buf(octet_t *expect, size_t size, octet_t *buf, size_t n)
 {
     DEBUG(hexdump(stdout, expect, size));
 //    DEBUG(hexdump(stdout, buf, n));
     assert(size == n);
     for (size_t i = 0; i < n; ++i) {
-        BYTE a = expect[i];
-        BYTE b = buf[i];
+        octet_t a = expect[i];
+        octet_t b = buf[i];
         if (a != b) {
             fprintf(stderr,
                 "mismatch at %p[%zu], expect 0x%02x, actual 0x%02x\n",
@@ -390,14 +390,14 @@ assert_buf(BYTE *expect, size_t size, BYTE *buf, size_t n)
 void
 test_encode()
 {
-    BYTE buf[18];
+    octet_t buf[18];
     size_t n, m;
     int i;
 
     int data_array[] = { SMOL_MIN, 0, SMOL_MAX };
     m = sizeof(data_array) / sizeof(int);
     n = encode_array_of_int(buf, sizeof(buf), data_array, m);
-    BYTE expect_buf[] = { array_n, n_4, n_3, n_m64, n_0, n_126 };
+    octet_t expect_buf[] = { array_n, n_4, n_3, n_m64, n_0, n_126 };
     assert_buf(expect_buf, sizeof(expect_buf), buf, n);
 
     m = sizeof(data_array) / sizeof(int);
@@ -410,7 +410,7 @@ test_encode()
     m = encode_int(buf + n, sizeof(buf) - n, -i);
     assert(m > 0);
     n += m;
-    BYTE expect_num[] = {
+    octet_t expect_num[] = {
         p_int_0, n_3, 0x56, 0x34, 0x12,
         m_int_0, n_3, 0xaa, 0xcb, 0xed
     };
@@ -418,7 +418,7 @@ test_encode()
 
     char *cstr = "clich\xE9";
     n = encode_cstr(buf, sizeof(buf), cstr);
-    BYTE expect_str[] = { utf8, n_6, 'c', 'l', 'i', 'c', 'h', 0x1A };
+    octet_t expect_str[] = { utf8, n_6, 'c', 'l', 'i', 'c', 'h', 0x1A };
     assert_buf(expect_str, sizeof(expect_str), buf, n);
 
 }
@@ -427,13 +427,13 @@ void
 test_decode()
 {
     char scratch[64];
-    BYTE buf_2[] = {
+    octet_t buf_2[] = {
         p_int_0, n_3, 0x56, 0x34, 0x12,
         m_int_0, n_3, 0xaa, 0xcb, 0xed
     };
-    BYTE buf_3[] = { utf8, n_7, 'c', 'l', 'i', 'c', 'h', 0xC3, 0xA9 };
-    BYTE *bp;
-    BYTE b;
+    octet_t buf_3[] = { utf8, n_7, 'c', 'l', 'i', 'c', 'h', 0xC3, 0xA9 };
+    octet_t *bp;
+    octet_t b;
     size_t n;
     int i;
 
@@ -454,8 +454,8 @@ test_decode()
     b = n_m1;
     i = SMOL2INT(b);
     n = SMOL2INT(b);
-    DEBUG(printf("SMOL2INT(0x%02x) -> (int)%d (size_t)%zu (BYTE)%u\n",
-        b, i, n, (BYTE)n));
+    DEBUG(printf("SMOL2INT(0x%02x) -> (int)%d (size_t)%zu (octet_t)%u\n",
+        b, i, n, (octet_t)n));
     assert(SMOL2INT(b) == -1);
 }
 

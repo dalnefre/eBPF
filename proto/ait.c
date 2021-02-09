@@ -21,12 +21,12 @@
 
 #define AIT_EMPTY  (-1)
 
-//static BYTE proto_buf[256];  // message-transfer buffer
-static BYTE proto_buf[64];  // message-transfer buffer
-//static BYTE proto_buf[ETH_ZLEN];  // message-transfer buffer
-//static BYTE proto_buf[ETH_MIN_MTU];  // message-transfer buffer
+//static octet_t proto_buf[256];  // message-transfer buffer
+static octet_t proto_buf[64];  // message-transfer buffer
+//static octet_t proto_buf[ETH_ZLEN];  // message-transfer buffer
+//static octet_t proto_buf[ETH_MIN_MTU];  // message-transfer buffer
 
-static BYTE proto_init[] = {
+static octet_t proto_init[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // src_mac = eth_local
     0xda, 0x1e,                          // protocol ethertype
@@ -36,8 +36,8 @@ static BYTE proto_init[] = {
     p_int_0, n_2, 0x00, 0x00,            // count = 0 (+INT, pad=0)
     null, null,                          // neutral fill...
 };
-static BYTE *eth_remote = &proto_init[0 * ETH_ALEN];
-static BYTE *eth_local = &proto_init[1 * ETH_ALEN];
+static octet_t *eth_remote = &proto_init[0 * ETH_ALEN];
+static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
 
 
 int

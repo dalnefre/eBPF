@@ -29,7 +29,7 @@ typedef struct json {
     int         index;          // sub-element index (default: 0)
     int         count;          // sub-element count (default: -1)
     union {
-        BYTE        raw;            // raw encoded octet
+        octet_t     raw;            // raw encoded octet
         struct {
             int64_t     bits;
             int64_t     base;

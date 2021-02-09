@@ -18,7 +18,7 @@ int
 json_get_value(json_t *json)
 {
     int n;
-    BYTE b;
+    octet_t b;
 
     if (!json) return -1;  // uninitialized json_t
     bstr_t *bstr = json->bstr;
@@ -110,7 +110,7 @@ json_get_value(json_t *json)
             }
             // scan "int" bits
             i = s;
-            BYTE *bp = bstr->cursor;
+            octet_t *bp = bstr->cursor;
             while (z-- > 0) {
                 i = (i << 8) | bp[z];
             }
@@ -140,8 +140,8 @@ json_get_int64(json_t *json)
 void
 test_json()
 {
-    BYTE buf_0[] = { array_n, n_4, n_3, n_m64, n_0, n_126 };
-    BYTE buf_1[] = { array, n_42,
+    octet_t buf_0[] = { array_n, n_4, n_3, n_m64, n_0, n_126 };
+    octet_t buf_1[] = { array, n_42,
         m_int_0, n_3, 0xFE, 0xFF, 0xFF,
         n_0,
         p_int_3, n_8, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
@@ -167,7 +167,7 @@ test_json()
     ]
 }
 */
-    BYTE buf_2[] = { object_n, n_80, n_2,
+    octet_t buf_2[] = { object_n, n_80, n_2,
         utf8, n_5, 's', 'p', 'a', 'c', 'e',
         object, n_32,
             utf8_mem, n_6, 'o', 'r', 'i', 'g', 'i', 'n',
