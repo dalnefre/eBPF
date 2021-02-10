@@ -16,6 +16,7 @@ ALL =	client \
 	server \
 	live \
 	ait \
+	link \
 	getmacs \
 	$(TEST)
 
@@ -37,6 +38,8 @@ server: server.c proto.o util.o
 live: live.o proto.o json.o bstr.o code.o util.o
 
 ait: ait.o proto.o code.o util.o
+
+link: link.o proto.o code.o util.o
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o
