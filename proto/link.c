@@ -15,7 +15,7 @@
 
 #define PERMISSIVE   0  // allow non-protocol packets to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
-#define PACKET_LIMIT 13 // halt ping/pong after limited number of packets
+#define PACKET_LIMIT 3  // halt ping/pong after limited number of packets
 
 #ifndef ETH_P_DALE
 #define ETH_P_DALE (0xDa1e)
@@ -407,6 +407,9 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     s = (b & 0100) >> 6;
     i = (b & 0070) >> 3;
     u = (b & 0007);
+    if (proto_opt.log >= 2) {
+        printf("  #%d %d,%d <--\n", s, i, u);
+    }
 
     // parse payload length
     b = data[ETH_HLEN + 1];
@@ -417,6 +420,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     link->i = u;
     if (i == Init) {
         __builtin_memcpy(eth_remote, data + ETH_ALEN, ETH_ALEN);
+        __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
         if (proto_opt.log >= 1) {
             print_mac_addr(stdout, "eth_remote = ", eth_remote);
 //            print_mac_addr(stdout, "eth_local = ", eth_local);
@@ -426,22 +430,21 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         if (len != 0) return XDP_DROP;  // unexpected payload
         link->u = Ping;
         link->seq = 0;
-        __builtin_memcpy(link->frame, data, ETH_HLEN);
-        __builtin_memcpy(link->frame, eth_local, ETH_ALEN);
-        swap_mac_addrs(link->frame);
-        if (proto_opt.log >= 1) {
-            print_mac_addr(stdout, "eth_remote = ", eth_remote);
-//            print_mac_addr(stdout, "eth_local = ", eth_local);
-        }
     }
 
 /*  --FIXME--
-    // check for expected src/dst mac
+    // check src/dst mac addrs
 */
 
-    // check for duplicate
+    // check sequence number
     if ((link->seq & 1) != s) {
+        if (proto_opt.log >= 2) {
+            printf("wrong seq #. expect=0x%x, actual=0x%x\n",
+                link->seq, s);
+        }
+/*  --FIXME--
         return XDP_TX;  // re-send last frame
+*/
     }
 
     // protocol state machine
@@ -469,6 +472,9 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     link->frame[ETH_HLEN + 0] = b;
     b = 0200 | link->len;
     link->frame[ETH_HLEN + 1] = b;
+    if (proto_opt.log >= 2) {
+        printf("  #%d %d,%d -->\n", link->seq, link->i, link->u);
+    }
 
     return XDP_TX;  // send updated frame out on same interface
 }
