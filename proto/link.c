@@ -130,6 +130,28 @@ recv_message(int fd, void *data, size_t limit, struct timespec *ts)
     return n;
 }
 
+static __inline int
+cmp_mac_addr(void *dst, void *src)
+{
+    __u8 *d = dst;
+    __u8 *s = src;
+
+    return ((int)d[5] - (int)s[5])
+        || ((int)d[4] - (int)s[4])
+        || ((int)d[3] - (int)s[3])
+        || ((int)d[2] - (int)s[2])
+        || ((int)d[1] - (int)s[1])
+        || ((int)d[0] - (int)s[0]);
+}
+
+static __inline int
+mac_is_bcast(void *mac)
+{
+    __u8 *b = mac;
+
+    return ((b[0] & b[2] & b[3] & b[4] & b[5] & b[6]) == 0xFF);
+}
+
 enum xdp_action {
     XDP_ABORTED = 0,
     XDP_DROP,
@@ -165,7 +187,12 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 
     // parse protocol state
     b = data[ETH_HLEN + 0];
-    if ((b & 0200) == 0) return XDP_DROP;  // bad format
+    if ((b & 0200) == 0) {
+        if (proto_opt.log >= 1) {
+            printf("Bad format (state=0x%x)\n", b);
+        }
+        return XDP_DROP;  // bad format
+    }
     s = (b & 0100) >> 6;
     i = (b & 0070) >> 3;
     u = (b & 0007);
@@ -175,11 +202,43 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 
     // parse payload length
     b = data[ETH_HLEN + 1];
-    if ((b & 0200) == 0) return XDP_DROP;  // bad format
+    if ((b & 0200) == 0) {
+        if (proto_opt.log >= 1) {
+            printf("Bad format (length=0x%x)\n", b);
+        }
+        return XDP_DROP;  // bad format
+    }
     len = (b & 0177);
 
     // handle initialization
     link->i = u;
+    if (u == Init) {
+        if (len != 0) {
+            if (proto_opt.log >= 1) {
+                printf("Unexpected payload (len=%d)\n", len);
+            }
+            return XDP_DROP;  // unexpected payload
+        }
+        if (cmp_mac_addr(data, data + ETH_ALEN) < 0) {  // (d < s)?
+            // Bob
+            link->u = Ping;
+            if (proto_opt.log >= 2) {
+                printf("Bob sending initial Ping\n");
+            }
+        } else if (mac_is_bcast(data)) {
+            if (proto_opt.log >= 2) {
+                printf("Drop overlapping Init\n");
+            }
+            return XDP_DROP;  // drop overlapping init
+        } else {
+            // Alice
+            if (proto_opt.log >= 2) {
+                printf("Alice responding with Init\n");
+            }
+            link->u = Init;
+        }
+        link->seq = 0;
+    }
     if (i == Init) {
         __builtin_memcpy(eth_remote, data + ETH_ALEN, ETH_ALEN);
         __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
@@ -188,41 +247,39 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 //            print_mac_addr(stdout, "eth_local = ", eth_local);
         }
     }
-    if (u == Init) {
-        if (len != 0) return XDP_DROP;  // unexpected payload
-        link->u = Ping;
-        link->seq = 0;
-    }
 
 /*  --FIXME--
     // check src/dst mac addrs
 */
 
+/*  --FIXME--
     // check sequence number
     if ((link->seq & 1) != s) {
         if (proto_opt.log >= 2) {
             printf("wrong seq #. expect=0x%x, actual=0x%x\n",
                 link->seq, s);
         }
-/*  --FIXME--
         return XDP_TX;  // re-send last frame
-*/
     }
+*/
 
     // protocol state machine
     switch (u) {
-        case Init : break;  // already handled above...
+        case Init : break;  // handled above, nothing more to do
         case Ping : {
-            if (len != 0) return XDP_DROP;  // unexpected payload
             link->u = Pong;
             break;
         }
         case Pong : {
-            if (len != 0) return XDP_DROP;  // unexpected payload
             link->u = Ping;
             break;
         }
-        default: return XDP_DROP;  // bad state
+        default: {
+            if (proto_opt.log >= 1) {
+                printf("bad state (0x%x)\n", u);
+            }
+            return XDP_DROP;  // bad state
+        }
     }
 
     // construct reply frame
@@ -271,9 +328,6 @@ xdp_filter(void *data, void *end, link_state_t *link)
     if (proto_opt.log >= 3) {
         printf("proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
     }
-#if PACKET_LIMIT
-    if (link->seq > PACKET_LIMIT) return XDP_ABORTED;  // halt ping/pong!
-#endif
 
     return rc;
 }
@@ -331,6 +385,9 @@ server(int fd, link_state_t *link)
             }
         }
 
+#if PACKET_LIMIT
+        if (link->seq > PACKET_LIMIT) return XDP_ABORTED;  // halt ping/pong!
+#endif
     }
 }
 
