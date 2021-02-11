@@ -238,16 +238,16 @@ printf("bcast(d) = %d\n", mac_is_bcast(data));
                 printf("Bob sending initial Ping\n");
             }
         } else if (mac_is_bcast(data)) {
-            if (proto_opt.log >= 2) {
-                printf("Drop overlapping Init\n");
-            }
-            return XDP_DROP;  // drop overlapping init
-        } else {
             // Alice
             if (proto_opt.log >= 2) {
                 printf("Alice responding with Init\n");
             }
             link->u = Init;
+        } else {
+            if (proto_opt.log >= 2) {
+                printf("Drop overlapping Init\n");
+            }
+            return XDP_DROP;  // drop overlapping init
         }
         link->seq = 0;
     }
