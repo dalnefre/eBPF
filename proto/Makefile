@@ -10,6 +10,7 @@ CFLAGS = -O2 -Wall -g
 TEST =	code \
 	bstr \
 	json \
+	test_link \
 	util
 
 ALL =	client \
@@ -29,6 +30,7 @@ test: $(TEST)
 	./code
 	./bstr
 	./json
+	./test_link
 	./util
 
 client: client.o proto.o code.o util.o
@@ -40,6 +42,9 @@ live: live.o proto.o json.o bstr.o code.o util.o
 ait: ait.o proto.o code.o util.o
 
 link: link.o proto.o code.o util.o
+
+test_link: link.c proto.o code.o util.o
+	cc $(CFLAGS) -DTEST_MAIN -o test_link link.c proto.o code.o util.o
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o

@@ -156,7 +156,7 @@ mac_is_bcast(void *mac)
 {
     __u8 *b = mac;
 
-    return ((b[0] & b[2] & b[3] & b[4] & b[5] & b[6]) == 0xFF);
+    return ((b[0] & b[1] & b[2] & b[3] & b[4] & b[5]) == 0xFF);
 }
 
 enum xdp_action {
@@ -226,8 +226,11 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             return XDP_DROP;  // unexpected payload
         }
+print_mac_addr(stdout, "d = ", data);
+print_mac_addr(stdout, "s = ", data + ETH_ALEN);
 printf("(d < s) = %d\n", cmp_mac_addr(data, data + ETH_ALEN));
 printf("(s < d) = %d\n", cmp_mac_addr(data + ETH_ALEN, data));
+printf("bcast(d) = %d\n", mac_is_bcast(data));
         if (cmp_mac_addr(data, data + ETH_ALEN) < 0) {  // (d < s)?
             // Bob
             link->u = Ping;
@@ -400,6 +403,7 @@ server(int fd, link_state_t *link)
     }
 }
 
+#ifndef TEST_MAIN
 int
 main(int argc, char *argv[])
 {
@@ -477,3 +481,44 @@ main(int argc, char *argv[])
 
     return rv;
 }
+#endif /* !TEST_MAIN */
+
+#ifdef TEST_MAIN
+#include <assert.h>
+
+void
+test_link()
+{
+    octet_t bcast_mac[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
+    octet_t alice_mac[ETH_ALEN] = { 0xdc, 0xa6, 0x32, 0x67, 0x7e, 0xa7 };
+    octet_t carol_mac[ETH_ALEN] = { 0xb8, 0x27, 0xeb, 0xf3, 0x5a, 0xd2 };
+
+    memcpy(eth_local, alice_mac, ETH_ALEN);
+    memcpy(eth_remote, carol_mac, ETH_ALEN);
+    print_mac_addr(stdout, "bcast = ", bcast_mac);
+    print_mac_addr(stdout, "alice = ", eth_local);
+    print_mac_addr(stdout, "carol = ", eth_remote);
+
+    assert(cmp_mac_addr(bcast_mac, bcast_mac) == 0);
+    assert(cmp_mac_addr(bcast_mac, alice_mac) > 0);
+    assert(cmp_mac_addr(alice_mac, bcast_mac) < 0);
+    assert(cmp_mac_addr(bcast_mac, carol_mac) > 0);
+    assert(cmp_mac_addr(carol_mac, bcast_mac) < 0);
+
+    assert(cmp_mac_addr(alice_mac, alice_mac) == 0);
+    assert(cmp_mac_addr(carol_mac, carol_mac) == 0);
+    assert(cmp_mac_addr(alice_mac, carol_mac) < 0);
+    assert(cmp_mac_addr(carol_mac, alice_mac) > 0);
+
+    assert(mac_is_bcast(bcast_mac) == 1);
+    assert(mac_is_bcast(alice_mac) == 0);
+    assert(mac_is_bcast(carol_mac) == 0);
+}
+
+int
+main()
+{
+    test_link();
+    return 0;  // success!
+}
+#endif /* TEST_MAIN */
