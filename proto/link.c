@@ -138,244 +138,6 @@ enum xdp_action {
     XDP_REDIRECT,
 };
 
-static __inline void
-swap_mac_addrs(void *data)
-{
-    struct ethhdr *hdr = data;
-
-    __builtin_memcpy(eth_remote, hdr->h_source, ETH_ALEN);
-    __builtin_memcpy(hdr->h_source, hdr->h_dest, ETH_ALEN);
-    __builtin_memcpy(hdr->h_dest, eth_remote, ETH_ALEN);
-}
-
-static __inline void
-copy_ait(void *dst, void *src)
-{
-    __builtin_memcpy(dst, src, 8);
-}
-
-static __inline __u64 *
-acquire_ait()
-{
-    return (__u64 *)proto_opt.ait;
-}
-
-static __inline int
-clear_outbound()
-{
-    if (proto_opt.ait) {
-        size_t z = sizeof(__u64);
-        if (strlen(proto_opt.ait) < z) {
-            proto_opt.ait = NULL;
-        } else {
-            proto_opt.ait += z;
-        }
-    }
-    return 0;  // no-op (success)
-}
-
-static __inline int
-release_ait(__u64 ait)
-{
-#if 1
-    return 0;  // success!
-#else
-    static int once = -1;  // FIXME: fail, but only once...
-
-    int rv = once;
-    once = 0;
-    return rv;
-#endif
-}
-
-#if !SHARED_COUNT
-static __u16 seq_num = 0;
-#endif
-
-static __inline int
-set_seq_num(int count)
-{
-#if PACKET_LIMIT
-    count = 0;  // always start at 0 to enforce PACKET_LIMIT
-#endif
-#if SHARED_COUNT
-    return count;
-#else
-    return seq_num = count;
-#endif
-}
-
-static __inline int
-update_seq_num(int count)
-{
-#if SHARED_COUNT
-    return ++count;
-#else
-    return ++seq_num;
-#endif
-}
-
-#define MESSAGE_OFS   (ETH_HLEN + 0)            // 14
-#define MSG_LEN_OFS   (MESSAGE_OFS + 1)         // 15
-#define MSG_DATA_OFS  (MESSAGE_OFS + 2)         // 16
-#define STATE_OFS     (MSG_DATA_OFS + 0)        // 16
-#define OTHER_OFS     (MSG_DATA_OFS + 1)        // 17
-#define COUNT_OFS     (MSG_DATA_OFS + 2)        // 18
-#define COUNT_LEN_OFS (COUNT_OFS + 1)           // 19
-#define COUNT_LSB_OFS (COUNT_OFS + 2)           // 20
-#define COUNT_MSB_OFS (COUNT_OFS + 3)           // 21
-#define BLOB_OFS      (COUNT_OFS + 4)           // 22
-#define BLOB_LEN_OFS  (BLOB_OFS + 1)            // 23
-#define BLOB_AIT_OFS  (BLOB_OFS + 2)            // 24
-#define AIT_SIZE      (8)                       // 8
-#define AIT_I_OFS     (BLOB_AIT_OFS + 0)        // 24
-#define AIT_U_OFS     (BLOB_AIT_OFS + AIT_SIZE) // 32
-#define MSG_END_OFS   (AIT_U_OFS + AIT_SIZE)    // 40
-
-#define INIT_STATE    (n_0)
-#define PING_STATE    (n_1)
-#define PONG_STATE    (n_2)
-#define GOT_AIT_STATE (n_3)
-#define ACK_AIT_STATE (n_4)
-#define ACK_ACK_STATE (n_5)
-#define PROCEED_STATE (n_6)
-
-static void
-live_msg_fmt(__u8 *data, __u8 state)
-{
-    data[OTHER_OFS] = state;
-    data[MSG_LEN_OFS] = n_6;
-    data[BLOB_OFS] = null;
-    data[BLOB_LEN_OFS] = null;
-}
-
-static void
-ait_msg_fmt(__u8 *data, __u8 state)
-{
-    data[OTHER_OFS] = state;
-    data[MSG_LEN_OFS] = n_24;
-    data[BLOB_OFS] = octets;
-    data[BLOB_LEN_OFS] = n_16;
-}
-
-#define AIT_EMPTY (-1)
-
-static int
-handle_message(__u8 *data, __u8 *end)
-{
-    __u8 b;
-    __s16 n;
-    __u64 i = AIT_EMPTY;
-    __u64 u = AIT_EMPTY;
-
-    if (data + MSG_END_OFS > end) return XDP_DROP;  // message too small
-    if (data[MESSAGE_OFS] != array) return XDP_DROP;  // require array
-    if (data[COUNT_OFS] != p_int_0) return XDP_DROP;  // require +INT (pad=0)
-    if (data[COUNT_LEN_OFS] != n_2) return XDP_DROP;  // require size=2
-    n = (data[COUNT_MSB_OFS] << 8) | data[COUNT_LSB_OFS];
-    b = data[OTHER_OFS];
-    if (proto_opt.log >= 2) {
-        printf("  %d,%d #%d <--\n", SMOL2INT(data[STATE_OFS]), SMOL2INT(b), n);
-    }
-    if (data[MSG_LEN_OFS] == n_6) {  // live len = 6
-        // liveness message
-        switch (b) {
-            case INIT_STATE: {  // init
-                live_msg_fmt(data, PING_STATE);
-                break;
-            }
-            case PING_STATE: {  // ping
-                data[OTHER_OFS] = PONG_STATE;
-                if (b < data[STATE_OFS]) {  // reverse transition
-                    __u64 *p = acquire_ait();
-                    if (p && (*p != AIT_EMPTY)) {  // outbound ait?
-                        i = *p;
-                        ait_msg_fmt(data, GOT_AIT_STATE);
-                    }
-                } else {  // forward transition (init)
-                    set_seq_num(n);
-                }
-                break;
-            }
-            case PONG_STATE: {  // pong
-                data[OTHER_OFS] = PING_STATE;
-                if (b > data[STATE_OFS]) {  // forward transition
-                    __u64 *p = acquire_ait();
-                    if (p && (*p != AIT_EMPTY)) {  // outbound ait?
-                        i = *p;
-                        ait_msg_fmt(data, GOT_AIT_STATE);
-                    }
-                }
-                break;
-            }
-            default: return XDP_DROP;  // bad state
-        }
-    } else if (data[MSG_LEN_OFS] == n_24) {  // ait len = 6 + 18
-        // message carries AIT
-        if (data[BLOB_OFS] != octets) return XDP_DROP;  // require octets
-        if (data[BLOB_LEN_OFS] != n_16) return XDP_DROP;  // require size=16
-        copy_ait(&u, data + AIT_I_OFS);
-        switch (b) {
-            case GOT_AIT_STATE: {
-                if (b < data[STATE_OFS]) {  // reverse
-                    live_msg_fmt(data, PONG_STATE);
-                } else {
-                    ait_msg_fmt(data, ACK_AIT_STATE);
-                }
-                break;
-            }
-            case ACK_AIT_STATE: {
-                if (b < data[STATE_OFS]) {  // reverse
-                    ait_msg_fmt(data, GOT_AIT_STATE);
-                } else {
-                    ait_msg_fmt(data, ACK_ACK_STATE);
-                }
-                copy_ait(&i, data + AIT_U_OFS);
-                break;
-            }
-            case ACK_ACK_STATE: {
-                if (release_ait(u) < 0) {  // release failed
-                    ait_msg_fmt(data, ACK_AIT_STATE);  // reverse
-                } else {
-                    if (proto_opt.log >= 1) {
-                        printf("RCVD: 0x%" PRIx64 "\n", __builtin_bswap64(u));
-                    }
-                    ait_msg_fmt(data, PROCEED_STATE);
-                }
-                break;
-            }
-            case PROCEED_STATE: {
-                if (clear_outbound() < 0) return XDP_DROP;  // clear failed
-                if (proto_opt.log >= 1) {
-                    copy_ait(&i, data + AIT_U_OFS);
-                    printf("SENT: 0x%" PRIx64 "\n", __builtin_bswap64(i));
-                }
-                live_msg_fmt(data, PING_STATE);
-                i = u = AIT_EMPTY;  // clear ait
-                break;
-            }
-            default: return XDP_DROP;  // bad state
-        }
-    } else {
-        return XDP_DROP;  // bad message length
-    }
-    // common processing
-    n = update_seq_num(n);
-#if PACKET_LIMIT
-    if (n > PACKET_LIMIT) return XDP_ABORTED;  // FIXME: halt ping/pong!
-#endif
-    swap_mac_addrs(data);
-    copy_ait(data + AIT_I_OFS, &i);
-    copy_ait(data + AIT_U_OFS, &u);
-    data[STATE_OFS] = b;  // processing state
-    data[COUNT_LSB_OFS] = n;
-    data[COUNT_MSB_OFS] = n >> 8;
-    if (proto_opt.log >= 2) {
-        printf("  %d,%d #%d -->\n", SMOL2INT(b), SMOL2INT(data[OTHER_OFS]), n);
-    }
-    return XDP_TX;  // send updated frame out on same interface
-}
-
 /*
 link_state {
     __u8        frame[64];      // transport frame
@@ -517,28 +279,35 @@ xdp_filter(void *data, void *end, link_state_t *link)
 }
 
 int
-server(int fd)
+send_init(int fd, link_state_t *link)
 {
     struct timespec ts;
-    int rc, n;
+    int n;
 
-    link_state_t *link = get_link_state(proto_opt.if_index);
-    if (!link) {
-        perror("get_link_state() failed");
-        return -1;  // failure
-    }
-
+    link->i = Init;
+    link->u = Init;
+    link->seq = 0;
+    link->link_flags = 0;
+    link->user_flags = 0;
     memset(link->frame, null, sizeof(link->frame)); 
     memcpy(link->frame, proto_init, sizeof(proto_init));
 
     n = send_message(fd, link->frame, ETH_ZLEN, &ts);
     if (n <= 0) {
         perror("send_message() failed");
-        return -1;  // failure
-    }
-    if (proto_opt.log >= 2) {
+    } else if (proto_opt.log >= 2) {
         printf("  #%d %d,%d -->\n", link->seq, link->i, link->u);
     }
+    return n;
+}
+
+int
+server(int fd, link_state_t *link)
+{
+    struct timespec ts;
+    int rc, n;
+
+    if (send_init(fd, link) < 0) return -1;  // failure
 
     for (;;) {
 
@@ -630,7 +399,13 @@ main(int argc, char *argv[])
         printf("link status = %d\n", status);
     }
 
-    rv = server(fd);
+    link_state_t *link = get_link_state(proto_opt.if_index);
+    if (!link) {
+        perror("get_link_state() failed");
+        return -1;  // failure
+    }
+
+    rv = server(fd, link);
 
     close(fd);
 
