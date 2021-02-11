@@ -487,7 +487,7 @@ main(int argc, char *argv[])
 #include <assert.h>
 
 void
-test_link()
+link_test()
 {
     octet_t bcast_mac[ETH_ALEN] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
     octet_t alice_mac[ETH_ALEN] = { 0xdc, 0xa6, 0x32, 0x67, 0x7e, 0xa7 };
@@ -518,7 +518,7 @@ test_link()
 int
 main()
 {
-    test_link();
+    link_test();
     return 0;  // success!
 }
 #endif /* TEST_MAIN */
