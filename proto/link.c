@@ -135,13 +135,20 @@ cmp_mac_addr(void *dst, void *src)
 {
     __u8 *d = dst;
     __u8 *s = src;
+    int dir;
 
-    return ((int)d[5] - (int)s[5])
-        || ((int)d[4] - (int)s[4])
-        || ((int)d[3] - (int)s[3])
-        || ((int)d[2] - (int)s[2])
-        || ((int)d[1] - (int)s[1])
-        || ((int)d[0] - (int)s[0]);
+    dir = ((int)d[5] - (int)s[5]);
+    if (dir) return dir;
+    dir = ((int)d[4] - (int)s[4]);
+    if (dir) return dir;
+    dir = ((int)d[3] - (int)s[3]);
+    if (dir) return dir;
+    dir = ((int)d[2] - (int)s[2]);
+    if (dir) return dir;
+    dir = ((int)d[1] - (int)s[1]);
+    if (dir) return dir;
+    dir = ((int)d[0] - (int)s[0]);
+    return dir;
 }
 
 static __inline int
@@ -219,6 +226,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             return XDP_DROP;  // unexpected payload
         }
+printf("(d < s) = %d\n", cmp_mac_addr(data, data + ETH_ALEN));
+printf("(s < d) = %d\n", cmp_mac_addr(data + ETH_ALEN, data));
         if (cmp_mac_addr(data, data + ETH_ALEN) < 0) {  // (d < s)?
             // Bob
             link->u = Ping;
