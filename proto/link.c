@@ -226,6 +226,9 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         link->link_flags = 0;
         link->user_flags = 0;
         if (mac_is_bcast(dst)) {
+            if (proto_opt.log >= 2) {
+                printf("dst mac is bcast\n");
+            }
             link->u = Init;
         } else {
             int dir = cmp_mac_addr(dst, src);
@@ -239,15 +242,18 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                     }
                     return XDP_DROP;  // drop overlapped init
                 }
-                if (proto_opt.log >= 2) {
-                    printf("Bob sending initial Ping\n");
-                }
-                link->u = Ping;
                 SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
                 if (proto_opt.log >= 2) {
                     printf("ENTL set on send\n");
                 }
+                if (proto_opt.log >= 2) {
+                    printf("Bob sending initial Ping\n");
+                }
+                link->u = Ping;
             } else if (dir > 0) {
+                if (proto_opt.log >= 2) {
+                    printf("Alice breaking symmetry\n");
+                }
                 link->u = Init;  // Alice breaking symmetry
             } else {
                 if (proto_opt.log >= 1) {
@@ -265,7 +271,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     } else if (i == Init) {
         if (GET_FLAG(link->link_flags, LF_ENTL)) {
             if (proto_opt.log >= 1) {
-                printf("Drop duplicate Ping!\n");
+                printf("Drop overlapped Ping!\n");
             }
             return XDP_DROP;  // drop overlapped init
         }
