@@ -13,9 +13,9 @@
 
 #define DEBUG(x)   /**/
 
-#define PERMISSIVE   0  // allow non-protocol packets to pass through
+#define PERMISSIVE   0  // allow non-protocol frames to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
-#define PACKET_LIMIT 3  // halt ping/pong after limited number of packets
+#define FRAME_LIMIT  3  // halt ping/pong after limited number of frames
 #define TEST_OVERLAP 1  // run server() twice to test overlapping init
 
 #ifndef ETH_P_DALE
@@ -257,7 +257,18 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
     }
     if (i == Init) {
-        // TODO
+        if (GET_FLAG(link->link_flags, LF_ENTL)) {
+            if (proto_opt.log >= 1) {
+                printf("Drop overlapped Init!\n");
+            }
+            return XDP_DROP;  // drop overlapped init
+        }
+        SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
+    } else if (!GET_FLAG(link->link_flags, LF_ENTL)) {
+        if (proto_opt.log >= 1) {
+            printf("Drop non-Init frame!\n");
+        }
+        return XDP_DROP;  // drop non-init frame
     }
 
 /*  --FIXME--
@@ -386,8 +397,8 @@ server(int fd, link_state_t *link)
             }
         }
 
-#if PACKET_LIMIT
-        if (link->seq > PACKET_LIMIT) return XDP_ABORTED;  // halt ping/pong!
+#if FRAME_LIMIT
+        if (link->seq > FRAME_LIMIT) return XDP_ABORTED;  // halt ping/pong!
 #endif
     }
 }
