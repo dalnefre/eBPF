@@ -255,8 +255,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 //            print_mac_addr(stdout, "eth_local = ", eth_local);
         }
         __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
-    }
-    if (i == Init) {
+    } else if (i == Init) {
         if (GET_FLAG(link->link_flags, LF_ENTL)) {
             if (proto_opt.log >= 1) {
                 printf("Drop overlapped Init!\n");
