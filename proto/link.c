@@ -16,6 +16,7 @@
 #define PERMISSIVE   0  // allow non-protocol packets to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
 #define PACKET_LIMIT 3  // halt ping/pong after limited number of packets
+#define TEST_OVERLAP 1  // run server() twice to test overlapping init
 
 #ifndef ETH_P_DALE
 #define ETH_P_DALE (0xDa1e)
@@ -250,6 +251,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             return XDP_DROP;  // identical src/dst mac
         }
         link->seq = 0;
+        link->link_flags = 0;
+        link->user_flags = 0;
     }
 
 /*  --FIXME--
@@ -319,7 +322,7 @@ xdp_filter(void *data, void *end, link_state_t *link)
 
     int rc = on_frame_recv(data, end, link);
     if (proto_opt.log >= 3) {
-        printf("proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
+        printf("recv: proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
     }
 
     return rc;
@@ -457,6 +460,10 @@ main(int argc, char *argv[])
     }
 
     rv = server(fd, link);
+#if TEST_OVERLAP
+    printf("server: rv = %d\n", rv);
+    rv = server(fd, link);
+#endif
 
     close(fd);
 
