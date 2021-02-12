@@ -237,11 +237,19 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                     printf("Bob sending initial Ping\n");
                 }
                 link->u = Ping;
+                SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
+                if (proto_opt.log >= 2) {
+                    printf("ENTL set on send\n");
+                }
             } else if (dir > 0) {
                 if (proto_opt.log >= 2) {
                     printf("Alice sending initial Pong\n");
                 }
                 link->u = Pong;
+                SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
+                if (proto_opt.log >= 2) {
+                    printf("ENTL set on send\n");
+                }
             } else {
                 if (proto_opt.log >= 1) {
                     printf("Identical srs/dst mac\n");
@@ -263,6 +271,9 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             return XDP_DROP;  // drop overlapped init
         }
         SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
+        if (proto_opt.log >= 2) {
+            printf("ENTL set on recv\n");
+        }
     } else if (!GET_FLAG(link->link_flags, LF_ENTL)) {
         if (proto_opt.log >= 1) {
             printf("Drop non-Init frame!\n");
