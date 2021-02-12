@@ -215,12 +215,39 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     }
 
     // handle initialization
-    if (i == Init) {
+    if (u == Init) {
         if (len != 0) {
             if (proto_opt.log >= 1) {
                 printf("Unexpected payload (len=%d)\n", len);
             }
             return XDP_DROP;  // unexpected payload
+        }
+        link->seq = 0;
+        link->link_flags = 0;
+        link->user_flags = 0;
+        if (mac_is_bcast(dst)) {
+            link->u = Init;
+        } else {
+            int dir = cmp_mac_addr(dst, src);
+            if (proto_opt.log >= 3) {
+                printf("cmp(dst, src) = %d\n", dir);
+            }
+            if (dir < 0) {
+                if (proto_opt.log >= 2) {
+                    printf("Bob sending initial Ping\n");
+                }
+                link->u = Ping;
+            } else if (dir > 0) {
+                if (proto_opt.log >= 2) {
+                    printf("Alice sending initial Pong\n");
+                }
+                link->u = Pong;
+            } else {
+                if (proto_opt.log >= 1) {
+                    printf("Identical srs/dst mac\n");
+                }
+                return XDP_DROP;  // identical src/dst mac
+            }
         }
         __builtin_memcpy(eth_remote, src, ETH_ALEN);
         if (proto_opt.log >= 1) {
@@ -229,30 +256,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         }
         __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
     }
-    if (u == Init) {
-        int dir = cmp_mac_addr(eth_local, eth_remote);
-        if (proto_opt.log >= 3) {
-            printf("cmp(local, remote) = %d\n", dir);
-        }
-        if (dir < 0) {
-            if (proto_opt.log >= 2) {
-                printf("Bob sending initial Ping\n");
-            }
-            link->u = Ping;
-        } else if (dir > 0) {
-            if (proto_opt.log >= 2) {
-                printf("Alice sending initial Pong\n");
-            }
-            link->u = Pong;
-        } else {
-            if (proto_opt.log >= 1) {
-                printf("Identical srs/dst mac\n");
-            }
-            return XDP_DROP;  // identical src/dst mac
-        }
-        link->seq = 0;
-        link->link_flags = 0;
-        link->user_flags = 0;
+    if (i == Init) {
+        // TODO
     }
 
 /*  --FIXME--
