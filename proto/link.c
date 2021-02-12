@@ -34,10 +34,10 @@ typedef enum {
 
 typedef struct link_state {
     __u8        frame[64];      // transport frame
-    protocol_t  i;              // local link protocol state
-    protocol_t  u;              // remote link protocol state
-    __u8        seq;            // sequence number {0,1}
-    __u8        len;            // payload length (< 127)
+    protocol_t  i;              // local protocol state
+    protocol_t  u;              // remote protocol state
+    __u16       len;            // payload length
+    __u32       seq;            // sequence number
     __u32       link_flags;     // flags controller by link
     __u32       user_flags;     // flags controller by user
 } link_state_t;
@@ -167,18 +167,6 @@ enum xdp_action {
     XDP_REDIRECT,
 };
 
-/*
-link_state {
-    __u8        frame[64];      // transport frame
-    protocol_t  i;              // local link protocol state
-    protocol_t  u;              // remote link protocol state
-    __u8        seq;            // sequence number {0,1}
-    __u8        len;            // payload length (< 127)
-    __u32       link_flags;     // flags controller by link
-    __u32       user_flags;     // flags controller by user
-}
-*/
-
 #define GET_FLAG(lval,rval) !!((lval) & (rval))
 #define SET_FLAG(lval,rval) (lval) |= (rval)
 #define CLR_FLAG(lval,rval) (lval) &= ~(rval)
@@ -187,7 +175,7 @@ static int
 on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 {
     __u8 b;
-    __u8 s;
+    __u8 p;
     protocol_t i;
     protocol_t u;
     __u8 len;
@@ -200,12 +188,13 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         }
         return XDP_DROP;  // bad format
     }
-    s = (b & 0100) >> 6;
+    p = (b & 0100) >> 6;
     i = (b & 0070) >> 3;
     u = (b & 0007);
     if (proto_opt.log >= 2) {
-        printf("  #%d %d,%d <--\n", s, i, u);
+        printf("  #%d %d,%d <--\n", p, i, u);
     }
+    link->i = u;
 
     // parse payload length
     b = data[ETH_HLEN + 1];
@@ -216,63 +205,55 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         return XDP_DROP;  // bad format
     }
     len = (b & 0177);
+    __u8 *dst = data;
+    __u8 *src = data + ETH_ALEN;
+    if (proto_opt.log >= 3) {
+        print_mac_addr(stdout, "dst = ", dst);
+        print_mac_addr(stdout, "src = ", src);
+        printf("len = %d\n", len);
+    }
 
     // handle initialization
-    link->i = u;
-    if (u == Init) {
+    if (i == Init) {
         if (len != 0) {
             if (proto_opt.log >= 1) {
                 printf("Unexpected payload (len=%d)\n", len);
             }
             return XDP_DROP;  // unexpected payload
         }
-print_mac_addr(stdout, "d = ", data);
-print_mac_addr(stdout, "s = ", data + ETH_ALEN);
-printf("(d < s) = %d\n", cmp_mac_addr(data, data + ETH_ALEN));
-printf("(s < d) = %d\n", cmp_mac_addr(data + ETH_ALEN, data));
-printf("bcast(d) = %d\n", mac_is_bcast(data));
-        if (cmp_mac_addr(data, data + ETH_ALEN) < 0) {  // (d < s)?
-            // Bob
-            link->u = Ping;
-            if (proto_opt.log >= 2) {
-                printf("Bob sending initial Ping\n");
-            }
-        } else if (mac_is_bcast(data)) {
-            // Alice
-            if (proto_opt.log >= 2) {
-                printf("Alice responding with Init\n");
-            }
-            link->u = Init;
-        } else {
-            if (proto_opt.log >= 2) {
-                printf("Drop overlapping Init\n");
-            }
-            return XDP_DROP;  // drop overlapping init
-        }
-        link->seq = 0;
-    }
-    if (i == Init) {
-        __builtin_memcpy(eth_remote, data + ETH_ALEN, ETH_ALEN);
-        __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
+        __builtin_memcpy(eth_remote, src, ETH_ALEN);
         if (proto_opt.log >= 1) {
             print_mac_addr(stdout, "eth_remote = ", eth_remote);
 //            print_mac_addr(stdout, "eth_local = ", eth_local);
         }
+        __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
+    }
+    if (u == Init) {
+        int dir = cmp_mac_addr(eth_local, eth_remote);
+        if (proto_opt.log >= 3) {
+            printf("cmp(local, remote) = %d\n", dir);
+        }
+        if (dir < 0) {
+            if (proto_opt.log >= 2) {
+                printf("Bob sending initial Ping\n");
+            }
+            link->u = Ping;
+        } else if (dir > 0) {
+            if (proto_opt.log >= 2) {
+                printf("Alice sending initial Pong\n");
+            }
+            link->u = Pong;
+        } else {
+            if (proto_opt.log >= 1) {
+                printf("Identical srs/dst mac\n");
+            }
+            return XDP_DROP;  // identical src/dst mac
+        }
+        link->seq = 0;
     }
 
 /*  --FIXME--
     // check src/dst mac addrs
-*/
-
-/*  --FIXME--
-    // check sequence number
-    if ((link->seq & 1) != s) {
-        if (proto_opt.log >= 2) {
-            printf("wrong seq #. expect=0x%x, actual=0x%x\n",
-                link->seq, s);
-        }
-        return XDP_TX;  // re-send last frame
-    }
 */
 
     // protocol state machine
