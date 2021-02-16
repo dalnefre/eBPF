@@ -62,11 +62,52 @@ static octet_t proto_init[] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // src_mac = eth_local
     0xDa, 0x1e,                          // protocol ethertype
-    INT2SMOL(0),                         // state = {s:0, i:0, u:0}
+    INT2SMOL(0),                         // state = {i:0, u:0}
     INT2SMOL(0),                         // payload len = 0
 };
 static octet_t *eth_remote = &proto_init[0 * ETH_ALEN];
 static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
+
+
+/* always print warnings and errors */
+#define LOG_WARN(fmt, ...)  LOG_PRINT(0, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...)  LOG_PRINT(0, fmt, ##__VA_ARGS__)
+
+#if 1  // run-time configurable log-level
+
+#define LOG_PRINT(level, fmt, ...)  ({       \
+    if (proto_opt.log >= level) {            \
+        fprintf(stderr, fmt, ##__VA_ARGS__); \
+    }                                        \
+})
+
+#define LOG_INFO(fmt, ...)  LOG_PRINT(1, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, fmt, ##__VA_ARGS__)
+#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, fmt, ##__VA_ARGS__)
+
+#else  // compile-time configured log-level
+
+#define LOG_PRINT(level, fmt, ...)  fprintf(stderr, fmt, ##__VA_ARGS__)
+
+#if (LOG_LEVEL < 1)
+#define LOG_INFO(fmt, ...)  /* REMOVED */
+#else
+#define LOG_INFO(fmt, ...)  LOG_PRINT(1, fmt, ##__VA_ARGS__)
+#endif
+
+#if (LOG_LEVEL < 2)
+#define LOG_DEBUG(fmt, ...)  /* REMOVED */
+#else
+#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, fmt, ##__VA_ARGS__)
+#endif
+
+#if (LOG_LEVEL < 3)
+#define LOG_TRACE(fmt, ...)  /* REMOVED */
+#else
+#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, fmt, ##__VA_ARGS__)
+#endif
+
+#endif
 
 
 link_state_t link_state[16];    // link state by if_index
@@ -99,7 +140,7 @@ send_message(int fd, void *data, size_t size, struct timespec *ts)
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
     if (proto_opt.log >= 3) {
-        fprintf(stdout, "%zu.%09ld Message[%d] --> \n",
+        LOG_TRACE("%zu.%09ld Message[%d] --> \n",
             (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
         hexdump(stdout, data, size);
     }
@@ -123,7 +164,7 @@ recv_message(int fd, void *data, size_t limit, struct timespec *ts)
     DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
     if (proto_opt.log >= 3) {
-        fprintf(stdout, "%zu.%09ld Message[%d] <-- \n",
+        LOG_TRACE("%zu.%09ld Message[%d] <-- \n",
             (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
         hexdump(stdout, data, (n < 0 ? limit : n));
     }
@@ -172,93 +213,75 @@ enum xdp_action {
 #define SET_FLAG(lval,rval) (lval) |= (rval)
 #define CLR_FLAG(lval,rval) (lval) &= ~(rval)
 
+#define PROTO(i, u) (0200 | ((i) & 07) << 3 | ((u) & 07))
+#define PARSE_PROTO(i, u, b) ({ \
+    i = ((b) & 0070) >> 3;      \
+    u = ((b) & 0007);           \
+})
+
 static int
 on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 {
     __u8 b;
-    __u8 p;
     protocol_t i;
     protocol_t u;
     __u8 len;
 
     // parse protocol state
     b = data[ETH_HLEN + 0];
-    if ((b & 0200) == 0) {
-        if (proto_opt.log >= 1) {
-            printf("Bad format (state=0x%x)\n", b);
-        }
+//    if ((b & 0300) != 0200) {
+    if ((b & 0200) != 0200) {  // ignore "phase" bit
+        LOG_WARN("Bad format (state=0%o)\n", b);
         return XDP_DROP;  // bad format
     }
-    p = (b & 0100) >> 6;
-    i = (b & 0070) >> 3;
-    u = (b & 0007);
-    if (proto_opt.log >= 2) {
-        printf("  #%d %d,%d <--\n", p, i, u);
-    }
+    PARSE_PROTO(i, u, b);
+    LOG_DEBUG("  (%d,%d) <--\n", i, u);
     link->i = u;
 
     // parse payload length
     b = data[ETH_HLEN + 1];
-    if ((b & 0200) == 0) {
-        if (proto_opt.log >= 1) {
-            printf("Bad format (length=0x%x)\n", b);
-        }
+    len = SMOL2INT(b);
+    if (len > 126) {
+        LOG_WARN("Bad format (len=%u)\n", len);
         return XDP_DROP;  // bad format
     }
-    len = (b & 0177);
     __u8 *dst = data;
     __u8 *src = data + ETH_ALEN;
     if (proto_opt.log >= 3) {
         print_mac_addr(stdout, "dst = ", dst);
         print_mac_addr(stdout, "src = ", src);
-        printf("len = %d\n", len);
+        LOG_TRACE("len = %d\n", len);
     }
 
     // handle initialization
     if (u == Init) {
         if (len != 0) {
-            if (proto_opt.log >= 1) {
-                printf("Unexpected payload (len=%d)\n", len);
-            }
+            LOG_WARN("Unexpected payload (len=%d)\n", len);
             return XDP_DROP;  // unexpected payload
         }
         link->seq = 0;
         link->link_flags = 0;
         link->user_flags = 0;
         if (mac_is_bcast(dst)) {
-            if (proto_opt.log >= 2) {
-                printf("dst mac is bcast\n");
-            }
+            LOG_DEBUG("dst mac is bcast\n");
             link->u = Init;
         } else {
             int dir = cmp_mac_addr(dst, src);
-            if (proto_opt.log >= 3) {
-                printf("cmp(dst, src) = %d\n", dir);
-            }
+            LOG_TRACE("cmp(dst, src) = %d\n", dir);
             if (dir < 0) {
                 if (GET_FLAG(link->link_flags, LF_ENTL)) {
-                    if (proto_opt.log >= 1) {
-                        printf("Drop overlapped Init!\n");
-                    }
+                    LOG_INFO("Drop overlapped Init!\n");
                     return XDP_DROP;  // drop overlapped init
                 }
                 SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
-                if (proto_opt.log >= 2) {
-                    printf("ENTL set on send\n");
-                }
-                if (proto_opt.log >= 2) {
-                    printf("Bob sending initial Ping\n");
-                }
+                LOG_DEBUG("ENTL set on send\n");
+                LOG_INFO("Bob sending initial Ping\n");
                 link->u = Ping;
             } else if (dir > 0) {
-                if (proto_opt.log >= 2) {
-                    printf("Alice breaking symmetry\n");
-                }
+                LOG_INFO("Alice breaking symmetry\n");
                 link->u = Init;  // Alice breaking symmetry
             } else {
-                if (proto_opt.log >= 1) {
-                    printf("Identical srs/dst mac\n");
-                }
+                LOG_ERROR("Identical srs/dst mac\n");
                 return XDP_DROP;  // identical src/dst mac
             }
         }
@@ -270,19 +293,13 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
     } else if (i == Init) {
         if (GET_FLAG(link->link_flags, LF_ENTL)) {
-            if (proto_opt.log >= 1) {
-                printf("Drop overlapped Ping!\n");
-            }
+            LOG_INFO("Drop overlapped Ping!\n");
             return XDP_DROP;  // drop overlapped init
         }
         SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
-        if (proto_opt.log >= 2) {
-            printf("ENTL set on recv\n");
-        }
+        LOG_DEBUG("ENTL set on recv\n");
     } else if (!GET_FLAG(link->link_flags, LF_ENTL)) {
-        if (proto_opt.log >= 1) {
-            printf("Drop non-Init frame!\n");
-        }
+        LOG_INFO("Drop non-Init frame!\n");
         return XDP_DROP;  // drop non-init frame
     }
 
@@ -302,25 +319,16 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         default: {
-            if (proto_opt.log >= 1) {
-                printf("bad state (0x%x)\n", u);
-            }
+            LOG_ERROR("bad state (%u)\n", u);
             return XDP_DROP;  // bad state
         }
     }
 
     // construct reply frame
     link->seq += 1;
-    b = 0200
-      | (link->seq & 1) << 6
-      | link->i << 3
-      | link->u;
-    link->frame[ETH_HLEN + 0] = b;
-    b = 0200 | link->len;
-    link->frame[ETH_HLEN + 1] = b;
-    if (proto_opt.log >= 2) {
-        printf("  #%d %d,%d -->\n", link->seq, link->i, link->u);
-    }
+    link->frame[ETH_HLEN + 0] = PROTO(link->i, link->u);
+    link->frame[ETH_HLEN + 1] = INT2SMOL(link->len);
+    LOG_DEBUG("  (%d,%d) #%d -->\n", link->i, link->u, link->seq);
 
     return XDP_TX;  // send updated frame out on same interface
 }
@@ -331,30 +339,24 @@ xdp_filter(void *data, void *end, link_state_t *link)
     size_t data_len = end - data;
 
     if (data + ETH_ZLEN > end) {
-        if (proto_opt.log >= 2) {
-            printf("frame too small. expect=%zu, actual=%zu\n",
-                (size_t)ETH_ZLEN, data_len);
-        }
+        LOG_ERROR("frame too small. expect=%zu, actual=%zu\n",
+            (size_t)ETH_ZLEN, data_len);
         return XDP_DROP;  // frame too small
     }
     struct ethhdr *eth = data;
     __u16 eth_proto = ntohs(eth->h_proto);
     if (eth_proto != ETH_P_DALE) {
-        if (proto_opt.log >= 2) {
-            printf("wrong protocol. expect=0x%x, actual=0x%x\n",
-                ETH_P_DALE, eth_proto);
-        }
 #if PERMISSIVE
         return XDP_PASS;  // pass on to default network stack
 #else
+        LOG_WARN("wrong protocol. expect=0x%x, actual=0x%x\n",
+            ETH_P_DALE, eth_proto);
         return XDP_DROP;  // wrong protocol
 #endif
     }
 
     int rc = on_frame_recv(data, end, link);
-    if (proto_opt.log >= 3) {
-        printf("recv: proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
-    }
+    LOG_TRACE("recv: proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
 
     return rc;
 }
@@ -377,7 +379,7 @@ send_init(int fd, link_state_t *link)
     if (n <= 0) {
         perror("send_message() failed");
     } else if (proto_opt.log >= 2) {
-        printf("  #%d %d,%d -->\n", link->seq, link->i, link->u);
+        LOG_DEBUG("  (%d,%d) #%d -->\n", link->i, link->u, link->seq);
     }
     return n;
 }
@@ -447,10 +449,8 @@ main(int argc, char *argv[])
         perror("clock_getres() failed");
         return -1;
     }
-    if (proto_opt.log >= 3) {
-        printf("CLOCK_REALTIME resolution %zu.%09ld\n",
-            (size_t)ts.tv_sec, (long)ts.tv_nsec);
-    }
+    LOG_TRACE("CLOCK_REALTIME resolution %zu.%09ld\n",
+        (size_t)ts.tv_sec, (long)ts.tv_nsec);
 
     fd = create_socket();
     if (fd < 0) {
@@ -480,9 +480,7 @@ main(int argc, char *argv[])
         perror("get_link_status() failed");
         return -1;  // failure
     }
-    if (proto_opt.log >= 1) {
-        printf("link status = %d\n", status);
-    }
+    LOG_INFO("link status = %d\n", status);
 
     link_state_t *link = get_link_state(proto_opt.if_index);
     if (!link) {
@@ -492,7 +490,7 @@ main(int argc, char *argv[])
 
     rv = server(fd, link);
 #if TEST_OVERLAP
-    printf("server: rv = %d\n", rv);
+    LOG_INFO("server: rv = %d\n", rv);
     rv = server(fd, link);
 #endif
 
