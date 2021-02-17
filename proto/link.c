@@ -219,28 +219,36 @@ enum xdp_action {
     u = ((b) & 0007);           \
 })
 
+static inline int
+check_src_mac(__u8 *src)
+{
+    if (cmp_mac_addr(eth_remote, src) != 0) {
+        print_mac_addr(stdout, "expect = ", eth_remote);
+        print_mac_addr(stdout, "actual = ", src);
+        LOG_ERROR("Unexpected peer address!\n");
+        return -1;  // failure
+    }
+    return 0;  // success
+}
+
 static int
 on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 {
-    __u8 b;
     protocol_t i;
     protocol_t u;
-    __u8 len;
 
     // parse protocol state
-    b = data[ETH_HLEN + 0];
-//    if ((b & 0300) != 0200) {
-    if ((b & 0200) != 0200) {  // ignore "phase" bit
-        LOG_WARN("Bad format (state=0%o)\n", b);
+    __u8 proto = data[ETH_HLEN + 0];
+    if ((proto & 0200) != 0200) {  // ignore "phase" bit
+        LOG_WARN("Bad format (proto=0%o)\n", proto);
         return XDP_DROP;  // bad format
     }
-    PARSE_PROTO(i, u, b);
-    LOG_DEBUG("  (%d,%d) <--\n", i, u);
+    PARSE_PROTO(i, u, proto);
+    LOG_DEBUG("  (%u,%u) <--\n", i, u);
     link->i = u;
 
     // parse payload length
-    b = data[ETH_HLEN + 1];
-    len = SMOL2INT(b);
+    __u8 len = SMOL2INT(data[ETH_HLEN + 1]);
     if (len > 126) {
         LOG_WARN("Bad format (len=%u)\n", len);
         return XDP_DROP;  // bad format
@@ -253,73 +261,72 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         LOG_TRACE("len = %d\n", len);
     }
 
-    // handle initialization
-    if (u == Init) {
-        if (len != 0) {
-            LOG_WARN("Unexpected payload (len=%d)\n", len);
-            return XDP_DROP;  // unexpected payload
-        }
-        link->seq = 0;
-        link->link_flags = 0;
-        link->user_flags = 0;
-        if (mac_is_bcast(dst)) {
-            LOG_DEBUG("dst mac is bcast\n");
-            link->u = Init;
-        } else {
-            int dir = cmp_mac_addr(dst, src);
-            LOG_TRACE("cmp(dst, src) = %d\n", dir);
-            if (dir < 0) {
-                if (GET_FLAG(link->link_flags, LF_ENTL)) {
-                    LOG_INFO("Drop overlapped Init!\n");
-                    return XDP_DROP;  // drop overlapped init
-                }
-                SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
-                LOG_DEBUG("ENTL set on send\n");
-                LOG_INFO("Bob sending initial Ping\n");
-                link->u = Ping;
-            } else if (dir > 0) {
-                LOG_INFO("Alice breaking symmetry\n");
-                link->u = Init;  // Alice breaking symmetry
-            } else {
-                LOG_ERROR("Identical srs/dst mac\n");
-                return XDP_DROP;  // identical src/dst mac
-            }
-        }
-        __builtin_memcpy(eth_remote, src, ETH_ALEN);
-        if (proto_opt.log >= 1) {
-            print_mac_addr(stdout, "eth_remote = ", eth_remote);
-//            print_mac_addr(stdout, "eth_local = ", eth_local);
-        }
-        __builtin_memcpy(link->frame, eth_remote, ETH_ALEN);
-    } else if (i == Init) {
-        if (GET_FLAG(link->link_flags, LF_ENTL)) {
-            LOG_INFO("Drop overlapped Ping!\n");
-            return XDP_DROP;  // drop overlapped init
-        }
-        SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
-        LOG_DEBUG("ENTL set on recv\n");
-    } else if (!GET_FLAG(link->link_flags, LF_ENTL)) {
-        LOG_INFO("Drop non-Init frame!\n");
-        return XDP_DROP;  // drop non-init frame
-    }
-
-/*  --FIXME--
-    // check src/dst mac addrs
-*/
-
     // protocol state machine
-    switch (u) {
-        case Init : break;  // handled above, nothing more to do
-        case Ping : {
+    switch (proto) {
+        case PROTO(Init, Init) : {
+            if (len != 0) {
+                LOG_WARN("Unexpected payload (len=%d)\n", len);
+                return XDP_DROP;  // unexpected payload
+            }
+            link->seq = 0;
+            link->link_flags = 0;
+            link->user_flags = 0;
+            if (mac_is_bcast(dst)) {
+                LOG_DEBUG("dst mac is bcast\n");
+                link->u = Init;
+            } else {
+                int dir = cmp_mac_addr(dst, src);
+                LOG_TRACE("cmp(dst, src) = %d\n", dir);
+                if (dir < 0) {
+                    if (GET_FLAG(link->link_flags, LF_ENTL)) {
+                        LOG_INFO("Drop overlapped Init!\n");
+                        return XDP_DROP;  // drop overlapped init
+                    }
+                    SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
+                    LOG_DEBUG("ENTL set on send\n");
+                    LOG_INFO("Bob sending initial Ping\n");
+                    link->u = Ping;
+                } else if (dir > 0) {
+                    LOG_INFO("Alice breaking symmetry\n");
+                    link->u = Init;  // Alice breaking symmetry
+                } else {
+                    LOG_ERROR("Identical srs/dst mac\n");
+                    return XDP_DROP;  // identical src/dst mac
+                }
+            }
+            memcpy(eth_remote, src, ETH_ALEN);
+            if (proto_opt.log >= 1) {
+                print_mac_addr(stdout, "eth_remote = ", eth_remote);
+//                print_mac_addr(stdout, "eth_local = ", eth_local);
+            }
+            memcpy(link->frame, eth_remote, ETH_ALEN);
+            break;
+        }
+        case PROTO(Init, Ping) : {
+            if (cmp_mac_addr(dst, src) < 0) {
+                LOG_ERROR("Bob received Ping!\n");
+                return XDP_DROP;  // wrong role for ping
+            }
+            if (GET_FLAG(link->link_flags, LF_ENTL)) {
+                LOG_INFO("Drop overlapped Ping!\n");
+                return XDP_DROP;  // drop overlapped ping
+            }
+            SET_FLAG(link->link_flags, LF_ENTL);  // link entangled
+            LOG_DEBUG("ENTL set on recv\n");
+            break;
+        }
+        case PROTO(Pong, Ping) : {
+            if (check_src_mac(src) < 0) return XDP_DROP;  // failure
             link->u = Pong;
             break;
         }
-        case Pong : {
+        case PROTO(Ping, Pong) : {
+            if (check_src_mac(src) < 0) return XDP_DROP;  // failure
             link->u = Ping;
             break;
         }
         default: {
-            LOG_ERROR("bad state (%u)\n", u);
+            LOG_ERROR("bad state (%u,%u)\n", i, u);
             return XDP_DROP;  // bad state
         }
     }
@@ -328,7 +335,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     link->seq += 1;
     link->frame[ETH_HLEN + 0] = PROTO(link->i, link->u);
     link->frame[ETH_HLEN + 1] = INT2SMOL(link->len);
-    LOG_DEBUG("  (%d,%d) #%d -->\n", link->i, link->u, link->seq);
+    LOG_DEBUG("  (%u,%u) #%u -->\n", link->i, link->u, link->seq);
 
     return XDP_TX;  // send updated frame out on same interface
 }
@@ -379,7 +386,7 @@ send_init(int fd, link_state_t *link)
     if (n <= 0) {
         perror("send_message() failed");
     } else if (proto_opt.log >= 2) {
-        LOG_DEBUG("  (%d,%d) #%d -->\n", link->i, link->u, link->seq);
+        LOG_DEBUG("  (%u,%u) #%u -->\n", link->i, link->u, link->seq);
     }
     return n;
 }
