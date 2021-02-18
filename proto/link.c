@@ -260,8 +260,8 @@ inbound_AIT(link_state_t *link)
     and set AIT-in-progress flags
 */
     LOG_INFO("inbound_AIT()\n");
-    return 0;  // success
-//    return -1;  // failure
+    return 1;  // success
+//    return 0;  // failure
 }
 
 static int
@@ -285,8 +285,8 @@ clear_AIT(link_state_t *link)
     and clear AIT-in-progress flags
 */
     LOG_INFO("clear_AIT()\n");
-    return 0;  // success
-//    return -1;  // failure
+    return 1;  // success
+//    return 0;  // failure
 }
 
 static int
