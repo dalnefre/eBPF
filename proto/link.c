@@ -15,7 +15,7 @@
 
 #define PERMISSIVE   0  // allow non-protocol frames to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
-#define FRAME_LIMIT  3  // halt ping/pong after limited number of frames
+#define FRAME_LIMIT  5  // halt ping/pong after limited number of frames
 #define TEST_OVERLAP 1  // run server() twice to test overlapping init
 
 #ifndef ETH_P_DALE
@@ -245,6 +245,7 @@ outbound_AIT(link_state_t *link)
     static int test_phase = 0;
     test_phase = !test_phase;
     if (test_phase == 0) {
+        LOG_INFO("outbound_AIT()\n");
         return 1;  // send AIT
     }
     return 0;  // no AIT
@@ -258,8 +259,9 @@ inbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-//    return -1;  // failure
+    LOG_INFO("inbound_AIT()\n");
     return 0;  // success
+//    return -1;  // failure
 }
 
 static int
@@ -270,8 +272,9 @@ release_AIT(link_state_t *link)
     copy the data from the link buffer
     and clear AIT-in-progress flags
 */
-//    return 1;  // AIT released
-    return 0;  // reject AIT
+    LOG_INFO("release_AIT()\n");
+    return 1;  // AIT released
+//    return 0;  // reject AIT
 }
 
 static int
@@ -281,8 +284,9 @@ clear_AIT(link_state_t *link)
     acknowlege successful AIT
     and clear AIT-in-progress flags
 */
-//    return -1;  // failure
+    LOG_INFO("clear_AIT()\n");
     return 0;  // success
+//    return -1;  // failure
 }
 
 static int
@@ -435,7 +439,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         default: {
-            LOG_ERROR("bad state (%u,%u)\n", i, u);
+            LOG_ERROR("Bad state (%u,%u)\n", i, u);
             return XDP_DROP;  // bad state
         }
     }
@@ -531,7 +535,10 @@ server(int fd, link_state_t *link)
         }
 
 #if FRAME_LIMIT
-        if (link->seq > FRAME_LIMIT) return XDP_ABORTED;  // halt ping/pong!
+        if (link->seq > FRAME_LIMIT) {
+            LOG_WARN("frame %u exceeded limit\n", link->seq);
+            return XDP_ABORTED;  // halt ping/pong!
+        }
 #endif
     }
 }
