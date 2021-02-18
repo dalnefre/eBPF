@@ -221,7 +221,7 @@ enum xdp_action {
     u = ((b) & 0007);           \
 })
 
-static inline int
+static __inline int
 check_src_mac(__u8 *src)
 {
     if (cmp_mac_addr(eth_remote, src) != 0) {
@@ -234,6 +234,58 @@ check_src_mac(__u8 *src)
 }
 
 static int
+outbound_AIT(link_state_t *link)
+{
+/*
+    if there is not AIT in progress already
+    and there is outbound data to send
+    copy the data into the link buffer
+    and set AIT-in-progress flags
+*/
+    static int test_phase = 0;
+    test_phase = !test_phase;
+    if (test_phase == 0) {
+        return 1;  // send AIT
+    }
+    return 0;  // no AIT
+}
+
+static int
+inbound_AIT(link_state_t *link)
+{
+/*
+    if there is not AIT in progress already
+    copy the data into the link buffer
+    and set AIT-in-progress flags
+*/
+//    return -1;  // failure
+    return 0;  // success
+}
+
+static int
+release_AIT(link_state_t *link)
+{
+/*
+    if the client has room to accept the AIT
+    copy the data from the link buffer
+    and clear AIT-in-progress flags
+*/
+//    return 1;  // AIT released
+    return 0;  // reject AIT
+}
+
+static int
+clear_AIT(link_state_t *link)
+{
+/*
+    acknowlege successful AIT
+    and clear AIT-in-progress flags
+*/
+//    return -1;  // failure
+    return 0;  // success
+}
+
+static int
 on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 {
     protocol_t i;
@@ -241,7 +293,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 
     // parse protocol state
     __u8 proto = data[ETH_HLEN + 0];
-    if ((proto & 0200) != 0200) {  // ignore "phase" bit
+    if ((proto & 0300) != 0200) {
         LOG_WARN("Bad format (proto=0%o)\n", proto);
         return XDP_DROP;  // bad format
     }
@@ -315,6 +367,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             SET_FLAG(link->link_flags, LF_ENTL | LF_ID_A);
             LOG_DEBUG("ENTL set on recv\n");
+            LOG_INFO("Alice sending initial Pong\n");
+            link->u = Pong;
             break;
         }
         case PROTO(Pong, Ping) : {
@@ -323,7 +377,11 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                 LOG_INFO("Ping is for Alice!\n");
                 return XDP_DROP;  // wrong role for ping
             }
-            link->u = Pong;
+            if (outbound_AIT(link)) {
+                link->u = Got_AIT;
+            } else {
+                link->u = Pong;
+            }
             break;
         }
         case PROTO(Ping, Pong) : {
@@ -332,7 +390,48 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                 LOG_INFO("Pong is for Bob!\n");
                 return XDP_DROP;  // wrong role for pong
             }
-            link->u = Ping;
+            if (outbound_AIT(link)) {
+                link->u = Got_AIT;
+            } else {
+                link->u = Ping;
+            }
+            break;
+        }
+        case PROTO(Ping, Got_AIT) : {
+            if (inbound_AIT(link)) {
+                link->u = Ack_AIT;
+            } else {
+                link->u = Ping;
+            }
+            break;
+        }
+        case PROTO(Pong, Got_AIT) : {
+            if (inbound_AIT(link)) {
+                link->u = Ack_AIT;
+            } else {
+                link->u = Pong;
+            }
+            break;
+        }
+        case PROTO(Got_AIT, Ack_AIT) : {
+            link->u = Ack_Ack;
+            break;
+        }
+        case PROTO(Ack_AIT, Ack_Ack) : {
+            if (release_AIT(link)) {
+                link->u = Proceed;
+            } else {
+                link->u = Ack_AIT;
+            }
+            break;
+        }
+        case PROTO(Ack_Ack, Proceed) : {
+            clear_AIT(link);
+            if (GET_FLAG(link->link_flags, LF_ID_B)) {
+                link->u = Ping;
+            } else {
+                link->u = Pong;
+            }
             break;
         }
         default: {
