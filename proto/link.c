@@ -15,7 +15,7 @@
 
 #define PERMISSIVE   0  // allow non-protocol frames to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
-#define FRAME_LIMIT  5  // halt ping/pong after limited number of frames
+#define FRAME_LIMIT  7  // halt ping/pong after limited number of frames
 #define TEST_OVERLAP 1  // run server() twice to test overlapping init
 
 #ifndef ETH_P_DALE
@@ -375,6 +375,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             link->u = Pong;
             break;
         }
+        case PROTO(Proceed, Ping) : /* FALL-THRU */
         case PROTO(Pong, Ping) : {
             if (check_src_mac(src) < 0) return XDP_DROP;  // failure
             if (!GET_FLAG(link->link_flags, LF_ID_A)) {
@@ -388,6 +389,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             break;
         }
+        case PROTO(Proceed, Pong) : /* FALL-THRU */
         case PROTO(Ping, Pong) : {
             if (check_src_mac(src) < 0) return XDP_DROP;  // failure
             if (!GET_FLAG(link->link_flags, LF_ID_B)) {
