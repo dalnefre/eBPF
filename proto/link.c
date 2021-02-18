@@ -411,6 +411,10 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             break;
         }
+        case PROTO(Got_AIT, Ping) : {  // reverse
+            link->u = Pong;  // give the other end a chance to send
+            break;
+        }
         case PROTO(Pong, Got_AIT) : {
             if (inbound_AIT(link)) {
                 link->u = Ack_AIT;
@@ -419,16 +423,32 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             break;
         }
+        case PROTO(Got_AIT, Pong) : {  // reverse
+            link->u = Ping;  // give the other end a chance to send
+            break;
+        }
         case PROTO(Got_AIT, Ack_AIT) : {
             link->u = Ack_Ack;
+            break;
+        }
+        case PROTO(Ack_AIT, Got_AIT) : {  // reverse
+            if (GET_FLAG(link->link_flags, LF_ID_B)) {
+                link->u = Ping;
+            } else {
+                link->u = Pong;
+            }
             break;
         }
         case PROTO(Ack_AIT, Ack_Ack) : {
             if (release_AIT(link)) {
                 link->u = Proceed;
             } else {
-                link->u = Ack_AIT;
+                link->u = Ack_AIT;  // reverse
             }
+            break;
+        }
+        case PROTO(Ack_Ack, Ack_AIT) : {  // reverse
+            link->u = Got_AIT;
             break;
         }
         case PROTO(Ack_Ack, Proceed) : {
