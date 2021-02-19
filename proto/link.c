@@ -17,7 +17,7 @@
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
 #define FRAME_LIMIT  7  // halt ping/pong after limited number of frames
 #define MAX_PAYLOAD  44 // maxiumum number of AIT data octets
-#define TEST_OVERLAP 1  // run server() twice to test overlapping init
+#define TEST_OVERLAP 0  // run server() twice to test overlapping init
 
 #ifndef ETH_P_DALE
 #define ETH_P_DALE (0xDa1e)
@@ -248,13 +248,14 @@ outbound_AIT(link_state_t *link)
         link->len = (n > MAX_PAYLOAD) ? MAX_PAYLOAD : n;
         memcpy(link->frame + ETH_HLEN + 2, proto_opt.ait, link->len);
         LOG_INFO("outbound_AIT (%u of %u)\n", link->len, n);
+        hexdump(stdout, proto_opt.ait, link->len);
         return 1;  // send AIT
     }
     return 0;  // no AIT
 }
 
 static int
-inbound_AIT(link_state_t *link)
+inbound_AIT(link_state_t *link, __u8 *payload)
 {
 /*
     if there is not AIT in progress already
@@ -262,8 +263,8 @@ inbound_AIT(link_state_t *link)
     and set AIT-in-progress flags
 */
     LOG_INFO("inbound_AIT (%u octets)\n", link->len);
-//    if (link->len > 0) {
-    if (link->len >= 0) {
+    if (link->len > 0) {
+        memcpy(link->frame + ETH_HLEN + 2, payload, link->len);
         return 1;  // success
     }
     link->len = 0;
@@ -424,7 +425,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         }
         case PROTO(Ping, Got_AIT) : {
             link->len = len;
-            if (inbound_AIT(link)) {
+            if (inbound_AIT(link, data + ETH_HLEN + 2)) {
                 link->u = Ack_AIT;
             } else {
                 link->u = Ping;
@@ -437,7 +438,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         }
         case PROTO(Pong, Got_AIT) : {
             link->len = len;
-            if (inbound_AIT(link)) {
+            if (inbound_AIT(link, data + ETH_HLEN + 2)) {
                 link->u = Ack_AIT;
             } else {
                 link->u = Pong;
