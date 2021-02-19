@@ -16,6 +16,7 @@
 #define PERMISSIVE   0  // allow non-protocol frames to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
 #define FRAME_LIMIT  7  // halt ping/pong after limited number of frames
+#define MAX_PAYLOAD  44 // maxiumum number of AIT data octets
 #define TEST_OVERLAP 1  // run server() twice to test overlapping init
 
 #ifndef ETH_P_DALE
@@ -242,10 +243,11 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    static int test_phase = 0;
-    test_phase = !test_phase;
-    if (test_phase == 0) {
-        LOG_INFO("outbound_AIT()\n");
+    if (proto_opt.ait) {
+        size_t n = strlen(proto_opt.ait);
+        link->len = (n > MAX_PAYLOAD) ? MAX_PAYLOAD : n;
+        memcpy(link->frame + ETH_HLEN + 2, proto_opt.ait, link->len);
+        LOG_INFO("outbound_AIT (%u of %u)\n", link->len, n);
         return 1;  // send AIT
     }
     return 0;  // no AIT
@@ -259,9 +261,13 @@ inbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    LOG_INFO("inbound_AIT()\n");
-    return 1;  // success
-//    return 0;  // failure
+    LOG_INFO("inbound_AIT (%u octets)\n", link->len);
+//    if (link->len > 0) {
+    if (link->len >= 0) {
+        return 1;  // success
+    }
+    link->len = 0;
+    return 0;  // failure
 }
 
 static int
@@ -272,7 +278,8 @@ release_AIT(link_state_t *link)
     copy the data from the link buffer
     and clear AIT-in-progress flags
 */
-    LOG_INFO("release_AIT()\n");
+    LOG_INFO("release_AIT (%u octets)\n", link->len);
+    hexdump(stdout, link->frame + ETH_HLEN + 2, link->len);
     return 1;  // AIT released
 //    return 0;  // reject AIT
 }
@@ -284,7 +291,18 @@ clear_AIT(link_state_t *link)
     acknowlege successful AIT
     and clear AIT-in-progress flags
 */
-    LOG_INFO("clear_AIT()\n");
+    LOG_INFO("clear_AIT (%u octets)\n", link->len);
+    if (proto_opt.ait) {
+        size_t n = strlen(proto_opt.ait);
+        if (link->len < n) {
+            proto_opt.ait += link->len;
+        } else {
+            proto_opt.ait = NULL;
+        }
+        LOG_INFO("clear_AIT (%u of %u)\n", link->len, n);
+        return 1;  // send AIT
+    }
+    link->len = 0;
     return 1;  // success
 //    return 0;  // failure
 }
@@ -318,6 +336,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         print_mac_addr(stdout, "src = ", src);
         LOG_TRACE("len = %d\n", len);
     }
+    link->len = 0;
 
     // protocol state machine
     switch (proto) {
@@ -404,6 +423,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Ping, Got_AIT) : {
+            link->len = len;
             if (inbound_AIT(link)) {
                 link->u = Ack_AIT;
             } else {
@@ -416,6 +436,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Pong, Got_AIT) : {
+            link->len = len;
             if (inbound_AIT(link)) {
                 link->u = Ack_AIT;
             } else {
@@ -428,6 +449,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Ack_AIT) : {
+            link->len = len;
             link->u = Ack_Ack;
             break;
         }
@@ -440,6 +462,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Ack_AIT, Ack_Ack) : {
+            link->len = len;
             if (release_AIT(link)) {
                 link->u = Proceed;
             } else {
@@ -452,6 +475,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Ack_Ack, Proceed) : {
+            link->len = len;
             clear_AIT(link);
             if (GET_FLAG(link->link_flags, LF_ID_B)) {
                 link->u = Ping;
@@ -470,6 +494,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     link->seq += 1;
     link->frame[ETH_HLEN + 0] = PROTO(link->i, link->u);
     link->frame[ETH_HLEN + 1] = INT2SMOL(link->len);
+    size_t n = ETH_HLEN + 2 + link->len; 
+    memset(link->frame + n, null, sizeof(link->frame) - n);
     LOG_DEBUG("  (%u,%u) #%u -->\n", link->i, link->u, link->seq);
 
     return XDP_TX;  // send updated frame out on same interface
