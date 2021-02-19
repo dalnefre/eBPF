@@ -35,13 +35,15 @@ typedef enum {
 } protocol_t;
 
 typedef struct link_state {
+    __u8        outbound[44];   // outbound data buffer
+    __u32       user_flags;     // flags controller by user
+    __u8        inbound[44];    // inbound data buffer
+    __u32       link_flags;     // flags controller by link
     __u8        frame[64];      // transport frame
     protocol_t  i;              // local protocol state
     protocol_t  u;              // remote protocol state
     __u16       len;            // payload length
     __u32       seq;            // sequence number
-    __u32       link_flags;     // flags controller by link
-    __u32       user_flags;     // flags controller by user
 } link_state_t;
 
 #define LF_ID_A (((__u32)1)<<0) // endpoint role Alice
@@ -345,8 +347,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 
     // parse payload length
     __u8 len = SMOL2INT(data[ETH_HLEN + 1]);
-    if (len > 126) {
-        LOG_WARN("Bad format (len=%u)\n", len);
+    if (len > 44) {
+        LOG_WARN("Bad format (len=%u > 44)\n", len);
         return XDP_DROP;  // bad format
     }
     __u8 *dst = data;
