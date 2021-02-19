@@ -292,7 +292,6 @@ clear_AIT(link_state_t *link)
     acknowlege successful AIT
     and clear AIT-in-progress flags
 */
-    LOG_INFO("clear_AIT (%u octets)\n", link->len);
     if (proto_opt.ait) {
         size_t n = strlen(proto_opt.ait);
         if (link->len < n) {
@@ -301,7 +300,6 @@ clear_AIT(link_state_t *link)
             proto_opt.ait = NULL;
         }
         LOG_INFO("clear_AIT (%u of %u)\n", link->len, n);
-        return 1;  // send AIT
     }
     link->len = 0;
     return 1;  // success
