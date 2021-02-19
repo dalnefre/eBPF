@@ -14,7 +14,7 @@
 #define DEBUG(x)   /**/
 
 #define PERMISSIVE   0  // allow non-protocol frames to pass through
-#define LOG_LEVEL    2  // log level (0=none, 1=AIT, 2=protocol, 3=hexdump)
+#define LOG_LEVEL    2  // log level (0=none, 1=info, 2=debug, 3=trace)
 #define FRAME_LIMIT  7  // halt ping/pong after limited number of frames
 #define MAX_PAYLOAD  44 // maxiumum number of AIT data octets
 #define TEST_OVERLAP 0  // run server() twice to test overlapping init
@@ -73,41 +73,66 @@ static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
 
 
 /* always print warnings and errors */
-#define LOG_WARN(fmt, ...)  LOG_PRINT(0, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...)  LOG_PRINT(0, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 
 #if 1  // run-time configurable log-level
 
-#define LOG_PRINT(level, fmt, ...)  ({       \
-    if (proto_opt.log >= level) {            \
-        fprintf(stderr, fmt, ##__VA_ARGS__); \
-    }                                        \
+#define LOG_PRINT(level, fmt, ...)  ({         \
+    if (proto_opt.log >= (level)) {            \
+        fprintf(stderr, (fmt), ##__VA_ARGS__); \
+    }                                          \
 })
+#define LOG_INFO(fmt, ...)   LOG_PRINT(1, (fmt), ##__VA_ARGS__)
+#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, (fmt), ##__VA_ARGS__)
+#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, (fmt), ##__VA_ARGS__)
 
-#define LOG_INFO(fmt, ...)  LOG_PRINT(1, fmt, ##__VA_ARGS__)
-#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, fmt, ##__VA_ARGS__)
-#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, fmt, ##__VA_ARGS__)
+#define MAC_PRINT(level, tag, mac)  ({        \
+    if (proto_opt.log >= (level)) {           \
+        print_mac_addr(stderr, (tag), (mac)); \
+    }                                         \
+})
+#define MAC_TRACE(tag, mac)  MAC_PRINT(3, (tag), (mac))
+
+#define HEX_DUMP(level, buf, len) ({   \
+    if (proto_opt.log >= (level)) {    \
+        hexdump(stderr, (buf), (len)); \
+    }                                  \
+})
+#define HEX_INFO(buf, len)   HEX_DUMP(1, (buf), (len))
+#define HEX_DEBUG(buf, len)  HEX_DUMP(2, (buf), (len))
+#define HEX_TRACE(buf, len)  HEX_DUMP(3, (buf), (len))
 
 #else  // compile-time configured log-level
 
-#define LOG_PRINT(level, fmt, ...)  fprintf(stderr, fmt, ##__VA_ARGS__)
+#define LOG_PRINT(level, fmt, ...)  fprintf(stderr, (fmt), ##__VA_ARGS__)
+#define MAC_PRINT(level, tag, mac)  print_mac_addr(stderr, (tag), (mac))
+#define HEX_DUMP(level, buf, len)   hexdump(stderr, (buf), (len))
 
 #if (LOG_LEVEL < 1)
 #define LOG_INFO(fmt, ...)  /* REMOVED */
+#define HEX_INFO(buf, len)  /* REMOVED */
 #else
-#define LOG_INFO(fmt, ...)  LOG_PRINT(1, fmt, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)  LOG_PRINT(1, (fmt), ##__VA_ARGS__)
+#define HEX_INFO(buf, len)  HEX_DUMP(1, (buf), (len))
 #endif
 
 #if (LOG_LEVEL < 2)
 #define LOG_DEBUG(fmt, ...)  /* REMOVED */
+#define HEX_DEBUG(buf, len)  /* REMOVED */
 #else
-#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, (fmt), ##__VA_ARGS__)
+#define HEX_DEBUG(buf, len)  HEX_DUMP(2, (buf), (len))
 #endif
 
 #if (LOG_LEVEL < 3)
 #define LOG_TRACE(fmt, ...)  /* REMOVED */
+#define MAC_TRACE(tag, mac)  /* REMOVED */
+#define HEX_TRACE(buf, len)  /* REMOVED */
 #else
-#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, fmt, ##__VA_ARGS__)
+#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, (fmt), ##__VA_ARGS__)
+#define MAC_TRACE(tag, mac)  MAC_PRINT(3, (tag), (mac))
+#define HEX_TRACE(buf, len)  HEX_DUMP(3, (buf), (len))
 #endif
 
 #endif
@@ -133,20 +158,18 @@ send_message(int fd, void *data, size_t size, struct timespec *ts)
     int n;
 
     struct sockaddr *addr = set_sockaddr(&address, &addr_len); 
-    DEBUG(dump_sockaddr(stdout, addr, addr_len));
+    DEBUG(dump_sockaddr(stderr, addr, addr_len));
 
     clock_gettime(CLOCK_REALTIME, ts);
 
     n = sendto(fd, data, size, 0, addr, addr_len);
     if (n < 0) return n;  // sendto error
 
-    DEBUG(dump_sockaddr(stdout, addr, addr_len));
+    DEBUG(dump_sockaddr(stderr, addr, addr_len));
 
-    if (proto_opt.log >= 3) {
-        LOG_TRACE("%zu.%09ld Message[%d] --> \n",
-            (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
-        hexdump(stdout, data, size);
-    }
+    LOG_TRACE("%zu.%09ld Message[%d] --> \n",
+        (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
+    HEX_TRACE(data, size);
 
     return n;
 }
@@ -164,13 +187,11 @@ recv_message(int fd, void *data, size_t limit, struct timespec *ts)
 
     clock_gettime(CLOCK_REALTIME, ts);
 
-    DEBUG(dump_sockaddr(stdout, addr, addr_len));
+    DEBUG(dump_sockaddr(stderr, addr, addr_len));
 
-    if (proto_opt.log >= 3) {
-        LOG_TRACE("%zu.%09ld Message[%d] <-- \n",
-            (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
-        hexdump(stdout, data, (n < 0 ? limit : n));
-    }
+    LOG_TRACE("%zu.%09ld Message[%d] <-- \n",
+        (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
+    HEX_TRACE(data, (n < 0 ? limit : n));
 
     return n;
 }
@@ -226,8 +247,8 @@ static __inline int
 check_src_mac(__u8 *src)
 {
     if (cmp_mac_addr(eth_remote, src) != 0) {
-        print_mac_addr(stdout, "expect = ", eth_remote);
-        print_mac_addr(stdout, "actual = ", src);
+        MAC_TRACE("expect = ", eth_remote);
+        MAC_TRACE("actual = ", src);
         LOG_ERROR("Unexpected peer address!\n");
         return -1;  // failure
     }
@@ -248,7 +269,7 @@ outbound_AIT(link_state_t *link)
         link->len = (n > MAX_PAYLOAD) ? MAX_PAYLOAD : n;
         memcpy(link->frame + ETH_HLEN + 2, proto_opt.ait, link->len);
         LOG_INFO("outbound_AIT (%u of %u)\n", link->len, n);
-        hexdump(stdout, proto_opt.ait, link->len);
+        HEX_INFO(proto_opt.ait, link->len);
         return 1;  // send AIT
     }
     return 0;  // no AIT
@@ -280,7 +301,7 @@ release_AIT(link_state_t *link)
     and clear AIT-in-progress flags
 */
     LOG_INFO("release_AIT (%u octets)\n", link->len);
-    hexdump(stdout, link->frame + ETH_HLEN + 2, link->len);
+    HEX_INFO(link->frame + ETH_HLEN + 2, link->len);
     return 1;  // AIT released
 //    return 0;  // reject AIT
 }
@@ -331,8 +352,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     __u8 *dst = data;
     __u8 *src = data + ETH_ALEN;
     if (proto_opt.log >= 3) {
-        print_mac_addr(stdout, "dst = ", dst);
-        print_mac_addr(stdout, "src = ", src);
+        MAC_TRACE("dst = ", dst);
+        MAC_TRACE("src = ", src);
         LOG_TRACE("len = %d\n", len);
     }
     link->len = 0;
@@ -372,8 +393,8 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             }
             memcpy(eth_remote, src, ETH_ALEN);
             if (proto_opt.log >= 1) {
-                print_mac_addr(stdout, "eth_remote = ", eth_remote);
-//                print_mac_addr(stdout, "eth_local = ", eth_local);
+                MAC_TRACE("eth_remote = ", eth_remote);
+//                MAC_TRACE("eth_local = ", eth_local);
             }
             memcpy(link->frame, eth_remote, ETH_ALEN);
             break;
