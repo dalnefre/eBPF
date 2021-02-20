@@ -16,6 +16,7 @@ OBJS =	pass_kern.o \
 	map_array_kern.o \
 	live_kern.o \
 	ait_kern.o \
+	link_kern.o \
 	multi_kern.o
 
 TEST =	code
@@ -59,6 +60,9 @@ ait_kern.o: ait_kern.c code.c
 
 ait_user: ait_user.c
 	cc $(CFLAGS) -o ait_user ait_user.c $(LIBBPF)
+
+link_kern.o: link_kern.c code.c
+	clang $(CLANG_FLAGS) -c -o link_kern.o link_kern.c
 
 multi_kern.o: multi_kern.c
 	clang $(CLANG_FLAGS) -c -o multi_kern.o multi_kern.c

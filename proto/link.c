@@ -19,6 +19,14 @@
 #define MAX_PAYLOAD  44 // maxiumum number of AIT data octets
 #define TEST_OVERLAP 0  // run server() twice to test overlapping init
 
+enum xdp_action {
+    XDP_ABORTED = 0,
+    XDP_DROP,
+    XDP_PASS,
+    XDP_TX,
+    XDP_REDIRECT,
+};
+
 #ifndef ETH_P_DALE
 #define ETH_P_DALE (0xDa1e)
 #endif
@@ -78,8 +86,6 @@ static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
 #define LOG_WARN(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 
-#if 1  // run-time configurable log-level
-
 #define LOG_PRINT(level, fmt, ...)  ({         \
     if (proto_opt.log >= (level)) {            \
         fprintf(stderr, (fmt), ##__VA_ARGS__); \
@@ -104,40 +110,6 @@ static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
 #define HEX_INFO(buf, len)   HEX_DUMP(1, (buf), (len))
 #define HEX_DEBUG(buf, len)  HEX_DUMP(2, (buf), (len))
 #define HEX_TRACE(buf, len)  HEX_DUMP(3, (buf), (len))
-
-#else  // compile-time configured log-level
-
-#define LOG_PRINT(level, fmt, ...)  fprintf(stderr, (fmt), ##__VA_ARGS__)
-#define MAC_PRINT(level, tag, mac)  print_mac_addr(stderr, (tag), (mac))
-#define HEX_DUMP(level, buf, len)   hexdump(stderr, (buf), (len))
-
-#if (LOG_LEVEL < 1)
-#define LOG_INFO(fmt, ...)  /* REMOVED */
-#define HEX_INFO(buf, len)  /* REMOVED */
-#else
-#define LOG_INFO(fmt, ...)  LOG_PRINT(1, (fmt), ##__VA_ARGS__)
-#define HEX_INFO(buf, len)  HEX_DUMP(1, (buf), (len))
-#endif
-
-#if (LOG_LEVEL < 2)
-#define LOG_DEBUG(fmt, ...)  /* REMOVED */
-#define HEX_DEBUG(buf, len)  /* REMOVED */
-#else
-#define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, (fmt), ##__VA_ARGS__)
-#define HEX_DEBUG(buf, len)  HEX_DUMP(2, (buf), (len))
-#endif
-
-#if (LOG_LEVEL < 3)
-#define LOG_TRACE(fmt, ...)  /* REMOVED */
-#define MAC_TRACE(tag, mac)  /* REMOVED */
-#define HEX_TRACE(buf, len)  /* REMOVED */
-#else
-#define LOG_TRACE(fmt, ...)  LOG_PRINT(3, (fmt), ##__VA_ARGS__)
-#define MAC_TRACE(tag, mac)  MAC_PRINT(3, (tag), (mac))
-#define HEX_TRACE(buf, len)  HEX_DUMP(3, (buf), (len))
-#endif
-
-#endif
 
 
 link_state_t link_state[16];    // link state by if_index
@@ -226,14 +198,6 @@ mac_is_bcast(void *mac)
 
     return ((b[0] & b[1] & b[2] & b[3] & b[4] & b[5]) == 0xFF);
 }
-
-enum xdp_action {
-    XDP_ABORTED = 0,
-    XDP_DROP,
-    XDP_PASS,
-    XDP_TX,
-    XDP_REDIRECT,
-};
 
 #define GET_FLAG(lval,rval) !!((lval) & (rval))
 #define SET_FLAG(lval,rval) (lval) |= (rval)
