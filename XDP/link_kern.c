@@ -382,11 +382,11 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     if (!GET_FLAG(link->link_flags, LF_SEND)
     &&  !ob_valid(link)) {
         ob_clr_full(link);
-        LOG_DEBUG("outbound FULL cleared.\n");
+        LOG_TRACE("outbound FULL cleared.\n");
     }
     if (ib_full(link)) {
         ib_clr_valid(link);
-        LOG_DEBUG("inbound VALD cleared.\n");
+        LOG_TRACE("inbound VALD cleared.\n");
     }
 
     // construct reply frame

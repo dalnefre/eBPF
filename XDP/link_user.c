@@ -28,11 +28,13 @@ static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
 static int link_map_fd;
 
 #define ob_full(link)          GET_FLAG(link->link_flags, LF_FULL)
+#define ob_valid(link)         GET_FLAG(link->user_flags, UF_VALD)
 #define ob_set_valid(link)     SET_FLAG(link->user_flags, UF_VALD)
 #define ob_clr_valid(link)     CLR_FLAG(link->user_flags, UF_VALD)
 #define copy_payload(dst,src)  memcpy((dst), (src), MAX_PAYLOAD)
 #define clear_payload(dst)     memset((dst), null, MAX_PAYLOAD)
 #define ib_valid(link)         GET_FLAG(link->link_flags, LF_VALD)
+#define ib_full(link)          GET_FLAG(link->user_flags, UF_FULL)
 #define ib_set_full(link)      SET_FLAG(link->user_flags, UF_FULL)
 #define ib_clr_full(link)      CLR_FLAG(link->user_flags, UF_FULL)
 
@@ -219,6 +221,8 @@ send_init_msg(int if_index)
         if (rv < 0) {
             perror("sendto() failed");
         }
+        printf("init sent.\n");
+        fflush(stdout);
 
     }
 
@@ -280,7 +284,7 @@ reader(int if_index)  // read AIT data (and display it)
             return -1;  // failure
         }
 
-        if (ib_valid(link)) {  // ait available
+        if (ib_valid(link) && !ib_full(link)) {  // ait available
 
             // update link state
             ib_set_full(link);
@@ -293,7 +297,7 @@ reader(int if_index)  // read AIT data (and display it)
             hexdump(stdout, link->outbound, MAX_PAYLOAD);
             fflush(stdout);
 
-        } else {
+        } else if (!ib_valid(link)) {
 
             // clear link state
             ib_clr_full(link);
@@ -322,7 +326,7 @@ writer(int if_index)  // write AIT data (from console)
             return -1;  // failure
         }
 
-        if (!ob_full(link)) {  // space available
+        if (!ob_full(link) && !ob_valid(link)) {  // space available
 
             // get data from console
             if (!fgets((char *)link->outbound, MAX_PAYLOAD, stdin)) {
@@ -336,7 +340,7 @@ writer(int if_index)  // write AIT data (from console)
                 return -1;  // failure
             }
 
-        } else {
+        } else if (ob_full(link)) {  // transfer in progress
 
             // clear link state
             ob_clr_valid(link);
