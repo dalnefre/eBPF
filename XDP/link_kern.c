@@ -12,7 +12,7 @@
 #include "code.h"
 
 #define PERMISSIVE   0  // allow non-protocol frames to pass through
-#define LOG_LEVEL    2  // log level (0=none, 1=info, 2=debug, 3=trace)
+#define LOG_LEVEL    1  // log level (0=none, 1=info, 2=debug, 3=trace)
 
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))
@@ -120,7 +120,9 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if (ob_valid(link)) {
+    if (!GET_FLAG(link->link_flags, LF_SEND)
+    &&  ob_valid(link)) {
+        SET_FLAG(link->link_flags, LF_SEND);
         ob_set_full(link);
         copy_payload(link->frame + ETH_HLEN + 2, link->outbound);
         link->len = MAX_PAYLOAD;
@@ -132,6 +134,23 @@ outbound_AIT(link_state_t *link)
 }
 
 static int
+clear_AIT(link_state_t *link)
+{
+/*
+    acknowlege successful AIT
+    and clear AIT-in-progress flags
+*/
+    CLR_FLAG(link->link_flags, LF_SEND);
+    if (ob_valid(link)) {
+        LOG_WARN("clear_AIT: outbound VALID still set!\n");
+    }
+    LOG_INFO("clear_AIT (%u octets)\n", link->len);
+    link->len = 0;
+    return 1;  // success
+//    return 0;  // failure
+}
+
+static int
 inbound_AIT(link_state_t *link, __u8 *payload)
 {
 /*
@@ -139,12 +158,10 @@ inbound_AIT(link_state_t *link, __u8 *payload)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-//    if (ib_full(link)) {
-        ib_clr_valid(link);  // clear previous VALID
-//    }  <--- FIXME: should have been cleared to ack FULL previously
     LOG_INFO("inbound_AIT (%u octets)\n", link->len);
-    if (link->len > 0) {
-//        memcpy(link->frame + ETH_HLEN + 2, payload, link->len);
+    if (!GET_FLAG(link->link_flags, LF_RECV)
+    &&  (link->len > 0)) {
+        SET_FLAG(link->link_flags, LF_RECV);
         copy_payload(link->frame + ETH_HLEN + 2, payload);
         return 1;  // success
     }
@@ -161,6 +178,7 @@ release_AIT(link_state_t *link)
     and clear AIT-in-progress flags
 */
     if (!ib_full(link)) {
+        CLR_FLAG(link->link_flags, LF_RECV);
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
         ib_set_valid(link);
         LOG_INFO("release_AIT (%u octets)\n", link->len);
@@ -168,24 +186,6 @@ release_AIT(link_state_t *link)
         return 1;  // AIT released
     }
     return 0;  // reject AIT
-}
-
-static int
-clear_AIT(link_state_t *link)
-{
-/*
-    acknowlege successful AIT
-    and clear AIT-in-progress flags
-*/
-    if (ob_valid(link)) {
-        LOG_WARN("clear_AIT: outbound VALID still set!\n");
-    }
-    // FIXME: should not clear FULL until !VALID, but when would we notice?
-    ob_clr_full(link);
-    LOG_INFO("clear_AIT (%u octets)\n", link->len);
-    link->len = 0;
-    return 1;  // success
-//    return 0;  // failure
 }
 
 static int
@@ -317,6 +317,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Ping) : {  // reverse
+            CLR_FLAG(link->link_flags, LF_SEND);
             link->u = Pong;  // give the other end a chance to send
             break;
         }
@@ -330,6 +331,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Pong) : {  // reverse
+            CLR_FLAG(link->link_flags, LF_SEND);
             link->u = Ping;  // give the other end a chance to send
             break;
         }
@@ -339,6 +341,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Ack_AIT, Got_AIT) : {  // reverse
+            CLR_FLAG(link->link_flags, LF_RECV);
             if (GET_FLAG(link->link_flags, LF_ID_B)) {
                 link->u = Ping;
             } else {
@@ -373,6 +376,17 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             LOG_ERROR("Bad state (%u,%u)\n", i, u);
             return XDP_DROP;  // bad state
         }
+    }
+
+    // update flags
+    if (!GET_FLAG(link->link_flags, LF_SEND)
+    &&  !ob_valid(link)) {
+        ob_clr_full(link);
+        LOG_DEBUG("outbound FULL cleared.\n");
+    }
+    if (ib_full(link)) {
+        ib_clr_valid(link);
+        LOG_DEBUG("inbound VALD cleared.\n");
     }
 
     // construct reply frame
