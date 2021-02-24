@@ -512,6 +512,10 @@ xdp_filter(void *data, void *end, link_state_t *link)
     int rc = on_frame_recv(data, end, link);
     LOG_TRACE("recv: proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
 
+    if (rc == XDP_TX) {
+        memcpy(data, link->frame, ETH_ZLEN);  // copy frame to i/o buffer
+    }
+
     return rc;
 }
 
@@ -561,7 +565,7 @@ server(int fd, link_state_t *link)
         }
 
         if (rc == XDP_TX) {
-            n = send_message(fd, link->frame, ETH_ZLEN, &ts);
+            n = send_message(fd, proto_buf, ETH_ZLEN, &ts);
             if (n <= 0) {
                 perror("send_message() failed");
                 return -1;  // failure

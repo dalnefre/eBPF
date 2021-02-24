@@ -6,6 +6,14 @@
 
 #include <stddef.h>
 
+#ifdef true
+#undef true
+#endif
+
+#ifdef false
+#undef false
+#endif
+
 typedef unsigned char octet_t;
 
 typedef enum { /*2#_000*/ /*2#_001*/ /*2#_010*/ /*2#_011*/ /*2#_100*/ /*2#_101*/ /*2#_110*/ /*2#_111*/

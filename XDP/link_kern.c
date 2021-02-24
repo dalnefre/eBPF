@@ -421,6 +421,10 @@ xdp_filter(struct xdp_md *ctx)
     int rc = on_frame_recv(data, end, link);
     LOG_TRACE("recv: proto=0x%x len=%u rc=%d\n", eth_proto, data_len, rc);
 
+    if (rc == XDP_TX) {
+        memcpy(data, link->frame, ETH_ZLEN);  // copy frame to i/o buffer
+    }
+
     return rc;
 }
 

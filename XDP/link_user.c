@@ -22,6 +22,7 @@
 #include <bpf/bpf.h>
 
 #include "link.h"
+#include "code.h"
 
 static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
 static int link_map_fd;
@@ -177,9 +178,9 @@ send_init_msg(int if_index)
     static __u8 proto_init[] = {
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
-        0xda, 0x1e,                          // protocol ethertype
-        0x80,                                // proto = (0, 0)
-        0x80,                                // payload len = 0
+        0xDa, 0x1e,                          // protocol ethertype
+        INT2SMOL(0),                         // state = {i:0, u:0}
+        INT2SMOL(0),                         // payload len = 0
     };
     int fd, rv;
 
