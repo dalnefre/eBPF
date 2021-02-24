@@ -23,6 +23,7 @@ TEST =	code
 
 PROGS =	$(TEST) \
 	ait_user \
+	link_user \
 	nprocs
 
 ALL =	$(PROGS) $(OBJS)
@@ -63,6 +64,9 @@ ait_user: ait_user.c
 
 link_kern.o: link_kern.c code.c
 	clang $(CLANG_FLAGS) -c -o link_kern.o link_kern.c
+
+link_user: link_user.c
+	cc $(CFLAGS) -o link_user link_user.c $(LIBBPF)
 
 multi_kern.o: multi_kern.c
 	clang $(CLANG_FLAGS) -c -o multi_kern.o multi_kern.c

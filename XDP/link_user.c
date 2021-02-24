@@ -1,7 +1,7 @@
 /*
- * ait_user.c -- XDP userspace control program
+ * link_user.c -- XDP userspace control program
  *
- * Implement atomic information transfer protocol in XDP
+ * Implement Liveness and AIT protocols in XDP
  */
 #include <stddef.h>
 #include <stdlib.h>
@@ -21,35 +21,86 @@
 
 #include <bpf/bpf.h>
 
-#define ETH_P_DALE (0xDa1e)
+#include "link.h"
 
-static const char *ait_map_filename = "/sys/fs/bpf/xdp/globals/ait_map";
-static int ait_map_fd;
+static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
+static int link_map_fd;
+
+#define ob_full(link)          GET_FLAG(link->link_flags, LF_FULL)
+#define ob_set_valid(link)     SET_FLAG(link->user_flags, UF_VALD)
+#define ob_clr_valid(link)     CLR_FLAG(link->user_flags, UF_VALD)
+#define copy_payload(dst,src)  memcpy((dst), (src), MAX_PAYLOAD)
+#define clear_payload(dst)     memset((dst), null, MAX_PAYLOAD)
+#define ib_valid(link)         GET_FLAG(link->link_flags, LF_VALD)
+#define ib_set_full(link)      SET_FLAG(link->user_flags, UF_FULL)
+#define ib_clr_full(link)      CLR_FLAG(link->user_flags, UF_FULL)
 
 int
-read_ait_map(__u32 key, __u64 *value_ptr)
+read_link_map(__u32 key, link_state_t *link)
 {
-    return bpf_map_lookup_elem(ait_map_fd, &key, value_ptr);
+    return bpf_map_lookup_elem(link_map_fd, &key, link);
 }
 
 int
-write_ait_map(__u32 key, __u64 value)
+write_link_map(__u32 key, link_state_t *link)
 {
-    return bpf_map_update_elem(ait_map_fd, &key, &value, BPF_ANY);
+    return bpf_map_update_elem(link_map_fd, &key, link, BPF_ANY);
+}
+
+void
+hexdump(FILE *f, void *data, size_t size)
+{
+    uint8_t *buffer = data;
+    const int span = 16;
+    size_t offset = 0;
+    int i, j;
+
+    while (offset < size) {
+        fprintf(f, "%04zx:  ", offset);
+        for (i = 0; i < span; ++i) {
+            if (i == 8) {
+                fputc(' ', f);  // gutter between 64-bit words
+            }
+            j = offset + i;
+            if (j < size) {
+                fprintf(f, "%02x ", buffer[j]);
+            } else {
+                fputs("   ", f);
+            }
+        }
+        fputc(' ', f);
+        fputc('|', f);
+        for (i = 0; i < span; ++i) {
+            j = offset + i;
+            if (j < size) {
+                uint8_t b = buffer[j];
+                if ((0x20 <= b) && (b < 0x7F)) {
+                    fprintf(f, "%c", (int)b);
+                } else {
+                    fputc('.', f);
+                }
+            } else {
+                fputc(' ', f);
+            }
+        }
+        fputc('|', f);
+        fputc('\n', f);
+        offset += span;
+    }
+    fflush(f);
 }
 
 int
-init_ait_map(int if_index)
+init_link_map(int if_index)
 {
-    __u32 key;
-    __u64 value;
+    link_state_t link_state;
+    link_state_t *link = &link_state;
     int fd;
     struct ifreq ifr;
     int rv;
 
-    key = 2;
-    if (read_ait_map(key, &value) < 0) {
-        perror("read_ait_map() failed");
+    if (read_link_map(if_index, link) < 0) {
+        perror("read_link_map() failed");
         return -1;  // failure
     }
 
@@ -76,53 +127,17 @@ init_ait_map(int if_index)
         return -1;  // failure
     }
 
-    // copy src_mac into ait_map
-    memcpy(&value, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
-    if (write_ait_map(key, value) < 0) {
-        perror("write_ait_map() failed");
+    // copy src_mac and eth_proto into link_map
+    struct ethhdr *eth = (struct ethhdr *)link->frame;
+    eth->h_proto = htons(ETH_P_DALE);
+    memcpy(eth->h_source, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    if (write_link_map(if_index, link) < 0) {
+        perror("write_link_map() failed");
         return -1;  // failure
     }
 
     rv = close(fd);
     return rv;
-}
-
-int
-dump_ait_map()
-{
-    __u32 key;
-    __u64 value;
-
-    for (key = 0; key < 4; ++key) {
-
-        if (read_ait_map(key, &value) < 0) {
-            perror("read_ait_map() failed");
-            return -1;  // failure
-        }
-
-        __u8 *bp = (__u8 *)&value;
-        printf("ait_map[%d] = %02x %02x %02x %02x %02x %02x %02x %02x (%"
-               PRId64 ")\n",
-            key,
-            bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
-            (__s64)value);
-
-    }
-
-    return 0;  // success
-}
-
-void
-ait_rcvd(__u64 ait)
-{
-#if 1
-    printf("%.8s", (char *)&ait);
-#else
-    __u8 *bp = (__u8 *)&ait;
-    printf("%02x %02x %02x %02x %02x %02x %02x %02x \"%.8s\"\n",
-        bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
-        (char *)&ait);
-#endif
 }
 
 int
@@ -163,11 +178,8 @@ send_init_msg(int if_index)
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
         0xda, 0x1e,                          // protocol ethertype
-        0x04, 0x86,                          // array (size=6)
-        0x80,                                // state = 0
-        0x80,                                // other = 0
-        0x10, 0x82, 0x00, 0x00,              // count = 0 (+INT, pad=0)
-        0xff, 0xff,                          // neutral fill...
+        0x80,                                // proto = (0, 0)
+        0x80,                                // payload len = 0
     };
     int fd, rv;
 
@@ -220,14 +232,16 @@ send_init_msg(int if_index)
 int
 monitor(int if_index)  // monitor and maintain liveness
 {
-    __u64 count;
-    __u64 value;
+    link_state_t link_state;
+    link_state_t *link = &link_state;
+    __u32 prev_seq;
 
     // get initial count
-    if (read_ait_map(3, &count) < 0) {
-        perror("read_ait_map(3) failed");
+    if (read_link_map(if_index, link) < 0) {
+        perror("read_link_map() failed");
         return -1;  // failure
     }
+    prev_seq = link->seq;
 
     for (;;) {
 
@@ -235,82 +249,98 @@ monitor(int if_index)  // monitor and maintain liveness
         usleep(1000000);  // 1 second = 1,000,000 microseconds
 
         // check updated value
-        if (read_ait_map(3, &value) < 0) {
-            perror("read_ait_map(3) failed");
+        if (read_link_map(if_index, link) < 0) {
+            perror("read_link_map() failed");
             return -1;  // failure
         }
-        if (count == value) {
+        if (link->seq == prev_seq) {
             // try to kick-start protocol
             if (send_init_msg(if_index) < 0) {
                 return -1;  // failure
             }
         } else {
-            count = value;
+            prev_seq = link->seq;
         }
 
     }
 }
 
 int
-reader()  // read AIT data (and display it)
+reader(int if_index)  // read AIT data (and display it)
 {
-    __u64 value;
+    link_state_t link_state;
+    link_state_t *link = &link_state;
 
     for (;;) {
 
-        // check for inbound AIT
-        if (read_ait_map(1, &value) < 0) {
-            perror("read_ait_map(1) failed");
+        // get link state
+        if (read_link_map(if_index, link) < 0) {
+            perror("read_link_map() failed");
             return -1;  // failure
         }
 
-        if (value != -1) {  // ait present
+        if (ib_valid(link)) {  // ait available
 
-            // clear inbound AIT
-            if (write_ait_map(1, -1) < 0) {
-                perror("write_ait_map(1) failed");
+            // update link state
+            ib_set_full(link);
+            if (write_link_map(if_index, link) < 0) {
+                perror("write_link_map() failed");
                 return -1;  // failure
             }
 
             // display AIT received
-#if 1
-            printf("%.8s", (char *)&value);
-#else
-            __u8 *bp = (__u8 *)&value;
-            printf("%02x %02x %02x %02x %02x %02x %02x %02x \"%.8s\"\n",
-                bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7],
-                (char *)&value);
-#endif
+            hexdump(stdout, link->outbound, MAX_PAYLOAD);
             fflush(stdout);
 
+        } else {
+
+            // clear link state
+            ib_clr_full(link);
+            if (write_link_map(if_index, link) < 0) {
+                perror("write_link_map() failed");
+                return -1;  // failure
+            }
+
         }
+
     }
 
 }
 
 int
-writer()  // write AIT data (from console)
+writer(int if_index)  // write AIT data (from console)
 {
-    __u64 value;
+    link_state_t link_state;
+    link_state_t *link = &link_state;
 
     for (;;) {
 
-        // check for outbound AIT space
-        if (read_ait_map(0, &value) < 0) {
-            perror("read_ait_map(0) failed");
+        // get link state
+        if (read_link_map(if_index, link) < 0) {
+            perror("read_link_map() failed");
             return -1;  // failure
         }
 
-        if (value == -1) {  // space available
+        if (!ob_full(link)) {  // space available
 
             // get data from console
-            if (!fgets((char *)&value, sizeof(value), stdin)) {
+            if (!fgets((char *)link->outbound, MAX_PAYLOAD, stdin)) {
                 return 1;  // EOF (or error)
             }
 
             // send AIT
-            if (write_ait_map(0, value) < 0) {
-                perror("write_ait_map(0) failed");
+            ob_set_valid(link);
+            if (write_link_map(if_index, link) < 0) {
+                perror("write_link_map() failed");
+                return -1;  // failure
+            }
+
+        } else {
+
+            // clear link state
+            ob_clr_valid(link);
+            if (write_link_map(if_index, link) < 0) {
+                perror("write_link_map() failed");
                 return -1;  // failure
             }
 
@@ -343,16 +373,15 @@ main(int argc, char *argv[])
         return 1;  // exit
     }
 
-    // get access to AIT map
-    rv = bpf_obj_get(ait_map_filename);
+    // get access to Link map
+    rv = bpf_obj_get(link_map_filename);
     if (rv < 0) {
         perror("bpf_obj_get() failed");
         return -1;  // failure
     }
-    ait_map_fd = rv;
+    link_map_fd = rv;
 
-    if (init_ait_map(if_index) < 0) return -1;  // failure
-    if (dump_ait_map() < 0) return -1;  // failure
+    if (init_link_map(if_index) < 0) return -1;  // failure
 
     // create process to monitor/maintain liveness
     pid = fork();
@@ -371,7 +400,7 @@ main(int argc, char *argv[])
         perror("fork() failed");
         return -1;  // failure
     } else if (pid == 0) {  // child process
-        rv = reader();
+        rv = reader(if_index);
         exit(rv);
     }
     printf("reader pid=%d\n", pid);
@@ -382,7 +411,7 @@ main(int argc, char *argv[])
         perror("fork() failed");
         return -1;  // failure
     } else if (pid == 0) {  // child process
-        rv = writer();
+        rv = writer(if_index);
         exit(rv);
     }
     printf("writer pid=%d\n", pid);

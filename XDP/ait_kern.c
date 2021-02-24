@@ -8,6 +8,7 @@
 #include <linux/if_ether.h>
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
+#include "code.h"
 
 #include <iproute2/bpf_elf.h>
 
@@ -18,8 +19,6 @@ struct bpf_elf_map ait_map SEC("maps") = {
     .pinning    = PIN_GLOBAL_NS,
     .max_elem   = 4,
 };
-
-#include "code.c"  // data encoding/decoding
 
 #define PERMISSIVE 1  // allow non-protocol packets to pass through
 #define UNALIGNED  0  // assume unaligned access for packet data

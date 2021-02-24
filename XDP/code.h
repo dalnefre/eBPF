@@ -5,11 +5,8 @@
 #define _CODE_H_
 
 #include <stddef.h>
-#include <linux/types.h>
 
-#ifndef BYTE
-#define BYTE __u8
-#endif
+typedef unsigned char octet_t;
 
 typedef enum { /*2#_000*/ /*2#_001*/ /*2#_010*/ /*2#_011*/ /*2#_100*/ /*2#_101*/ /*2#_110*/ /*2#_111*/
 /*2#00000_*/   false,     true,      array_0,   object_0,  array,     object,    array_n,   object_n,
@@ -44,11 +41,11 @@ typedef enum { /*2#_000*/ /*2#_001*/ /*2#_010*/ /*2#_011*/ /*2#_100*/ /*2#_101*/
 /*2#11101_*/   n_104,     n_105,     n_106,     n_107,     n_108,     n_109,     n_110,     n_111,
 /*2#11110_*/   n_112,     n_113,     n_114,     n_115,     n_116,     n_117,     n_118,     n_119,
 /*2#11111_*/   n_120,     n_121,     n_122,     n_123,     n_124,     n_125,     n_126,     null
-} prefix_t;  // prefix BYTE values
+} prefix_t;  // prefix octet_t values
 
 #define SMOL_MIN (-64)
 #define SMOL_MAX (126)
-#define INT2SMOL(n) (BYTE)(n_0 + (n))
+#define INT2SMOL(n) (octet_t)(n_0 + (n))
 #define SMOL2INT(b) (int)((b) - n_0)
 
 #endif /* _CODE_H_ */

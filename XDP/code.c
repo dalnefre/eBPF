@@ -4,6 +4,7 @@
  * NOTE: This file is meant to be #include'd, not separately compiled.
  *       With -DTEST_MAIN, it builds a standalone unit-test program.
  */
+#include <linux/types.h>
 #include "code.h"
 
 #ifndef __inline

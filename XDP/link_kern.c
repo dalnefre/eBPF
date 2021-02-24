@@ -8,12 +8,11 @@
 #include <linux/if_ether.h>
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
-
-#include "code.c"  // data encoding/decoding
+#include "link.h"
+#include "code.h"
 
 #define PERMISSIVE   0  // allow non-protocol frames to pass through
 #define LOG_LEVEL    2  // log level (0=none, 1=info, 2=debug, 3=trace)
-#define MAX_PAYLOAD  44 // maxiumum number of AIT data octets
 
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))
@@ -21,43 +20,6 @@
 
 #define memcpy(dst,src,len)  __builtin_memcpy(dst, src, len);
 #define memset(dst,val,len)  __builtin_memset(dst, val, len);
-
-#define ETH_P_DALE (0xDa1e)
-
-typedef enum {
-    Init,       // = 0
-    Ping,       // = 1
-    Pong,       // = 2
-    Got_AIT,    // = 3
-    Ack_AIT,    // = 4
-    Ack_Ack,    // = 5
-    Proceed,    // = 6
-    Error       // = 7
-} protocol_t;
-
-typedef struct link_state {
-    __u8        outbound[44];   // outbound data buffer
-    __u32       user_flags;     // flags controller by user
-    __u8        inbound[44];    // inbound data buffer
-    __u32       link_flags;     // flags controller by link
-    __u8        frame[64];      // transport frame
-    protocol_t  i;              // local protocol state
-    protocol_t  u;              // remote protocol state
-    __u16       len;            // payload length
-    __u32       seq;            // sequence number
-} link_state_t;
-
-#define LF_ID_A (((__u32)1)<<0) // endpoint role Alice
-#define LF_ID_B (((__u32)1)<<1) // endpoint role Bob
-#define LF_ENTL (((__u32)1)<<2) // link entangled
-#define LF_FULL (((__u32)1)<<3) // outbound AIT full
-#define LF_VALD (((__u32)1)<<4) // inbound AIT valid
-#define LF_SEND (((__u32)1)<<5) // link sending AIT
-#define LF_RECV (((__u32)1)<<6) // link receiving AIT
-
-#define UF_FULL (((__u32)1)<<0) // inbound AIT full
-#define UF_VALD (((__u32)1)<<1) // outbound AIT valid
-#define UF_STOP (((__u32)1)<<2) // run=1, stop=0
 
 
 /* always print warnings and errors */
@@ -139,16 +101,6 @@ mac_is_bcast(void *mac)
 
     return ((b[0] & b[1] & b[2] & b[3] & b[4] & b[5]) == 0xFF);
 }
-
-#define GET_FLAG(lval,rval) !!((lval) & (rval))
-#define SET_FLAG(lval,rval) (lval) |= (rval)
-#define CLR_FLAG(lval,rval) (lval) &= ~(rval)
-
-#define PROTO(i, u) (0200 | ((i) & 07) << 3 | ((u) & 07))
-#define PARSE_PROTO(i, u, b) ({ \
-    i = ((b) & 0070) >> 3;      \
-    u = ((b) & 0007);           \
-})
 
 #define ob_valid(link)         GET_FLAG(link->user_flags, UF_VALD)
 #define ob_set_full(link)      SET_FLAG(link->link_flags, LF_FULL)
