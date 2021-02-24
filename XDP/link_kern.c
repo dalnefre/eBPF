@@ -28,7 +28,10 @@
 
 #define LOG_PRINT(level, fmt, ...)  bpf_printk((fmt), ##__VA_ARGS__)
 #define MAC_PRINT(level, tag, mac)  /* FIXME: NOT IMPLEMENTED */
-#define HEX_DUMP(level, buf, len)   /* FIXME: NOT IMPLEMENTED */
+#define HEX_DUMP(level, buf, len)   \
+  bpf_printk("[%u] %llx %llx\n", (len), \
+    __builtin_bswap64(((__u64 *)buf)[0]), \
+    __builtin_bswap64(((__u64 *)buf)[1]));
 
 #if (LOG_LEVEL < 1)
 #define LOG_INFO(fmt, ...)  /* REMOVED */
@@ -120,8 +123,7 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if (!GET_FLAG(link->link_flags, LF_SEND)
-    &&  ob_valid(link)) {
+    if (!GET_FLAG(link->link_flags, LF_SEND) && ob_valid(link)) {
         SET_FLAG(link->link_flags, LF_SEND);
         ob_set_full(link);
         copy_payload(link->frame + ETH_HLEN + 2, link->outbound);
@@ -228,7 +230,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             link->link_flags = 0;
             link->user_flags = 0;
             if (mac_is_bcast(dst)) {
-                LOG_INFO("dst mac is bcast\n");
+                LOG_INFO("Init: dst mac is bcast\n");
                 link->u = Init;
             } else {
                 int dir = cmp_mac_addr(dst, src);
@@ -414,6 +416,7 @@ xdp_filter(struct xdp_md *ctx)
             ETH_ZLEN, data_len);
         return XDP_DROP;  // frame too small
     }
+    HEX_TRACE(data, data_len);
     struct ethhdr *eth = data;
     __u16 eth_proto = bpf_ntohs(eth->h_proto);
     if (eth_proto != ETH_P_DALE) {
