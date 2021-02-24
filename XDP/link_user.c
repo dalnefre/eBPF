@@ -24,6 +24,8 @@
 #include "link.h"
 #include "code.h"
 
+#define DEBUG(x) x /**/
+
 static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
 static int link_map_fd;
 
@@ -221,6 +223,7 @@ send_init_msg(int if_index)
         if (rv < 0) {
             perror("sendto() failed");
         }
+        DEBUG(hexdump(stdout, proto_init, sizeof(proto_init)));
         printf("init sent.\n");
         fflush(stdout);
 
@@ -294,7 +297,7 @@ reader(int if_index)  // read AIT data (and display it)
             }
 
             // display AIT received
-            hexdump(stdout, link->outbound, MAX_PAYLOAD);
+            hexdump(stdout, link->inbound, MAX_PAYLOAD);
             fflush(stdout);
 
         } else if (!ib_valid(link)) {

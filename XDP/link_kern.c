@@ -228,7 +228,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             link->link_flags = 0;
             link->user_flags = 0;
             if (mac_is_bcast(dst)) {
-                LOG_DEBUG("dst mac is bcast\n");
+                LOG_INFO("dst mac is bcast\n");
                 link->u = Init;
             } else {
                 int dir = cmp_mac_addr(dst, src);
