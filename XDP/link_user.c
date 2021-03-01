@@ -105,9 +105,9 @@ dump_link_state(FILE *f, link_state_t *link)
     fprintf(stderr, "user_flags = 0x%08lx (%c%c%c%c)\n",
         (unsigned long)uf,
         '-',
-        (GET_FLAG(uf, UF_STOP) ? 's' : 'r'),
-        (GET_FLAG(uf, UF_VALD) ? 'v' : '-'),
-        (GET_FLAG(uf, UF_FULL) ? 'f' : 'e'));
+        (GET_FLAG(uf, UF_STOP) ? 'R' : 's'),
+        (GET_FLAG(uf, UF_VALD) ? 'V' : '-'),
+        (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'));
 
     fprintf(stderr, "inbound[44] =\n");
     hexdump(stderr, link->inbound, 44);
@@ -119,10 +119,10 @@ dump_link_state(FILE *f, link_state_t *link)
         (GET_FLAG(lf, LF_ID_A) ? 'A' : '-'),
         (GET_FLAG(lf, LF_ID_B) ? 'B' : '-'),
         (GET_FLAG(lf, LF_ENTL) ? '&' : '-'),
-        (GET_FLAG(lf, LF_FULL) ? 'f' : 'e'),
-        (GET_FLAG(lf, LF_VALD) ? 'v' : '-'),
-        (GET_FLAG(lf, LF_SEND) ? 's' : '-'),
-        (GET_FLAG(lf, LF_RECV) ? 'r' : '-'));
+        (GET_FLAG(lf, LF_FULL) ? 'F' : 'e'),
+        (GET_FLAG(lf, LF_VALD) ? 'V' : '-'),
+        (GET_FLAG(lf, LF_SEND) ? 'S' : '-'),
+        (GET_FLAG(lf, LF_RECV) ? 'R' : '-'));
 
     fprintf(stderr, "frame[64] =\n");
     hexdump(stderr, link->frame, 64);
