@@ -71,7 +71,7 @@ static octet_t proto_buf[64];  // message-transfer buffer
 //static octet_t proto_buf[ETH_ZLEN];  // message-transfer buffer
 //static octet_t proto_buf[ETH_MIN_MTU];  // message-transfer buffer
 
-static octet_t proto_init[] = {
+static octet_t proto_init[64] = {
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // src_mac = eth_local
     0xDa, 0x1e,                          // protocol ethertype

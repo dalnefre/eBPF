@@ -179,7 +179,7 @@ get_link_status(int if_index, int fd, int *status, void *mac_addr)
 int
 send_init_msg(int if_index)
 {
-    static __u8 proto_init[] = {
+    static __u8 proto_init[64] = {
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // dst_mac = broadcast
         0xff, 0xff, 0xff, 0xff, 0xff, 0xff,  // src_mac = broadcast
         0xDa, 0x1e,                          // protocol ethertype
@@ -219,7 +219,7 @@ send_init_msg(int if_index)
 
         socklen_t addr_len = sizeof(*sll);
         struct sockaddr *addr = (struct sockaddr *)sll;
-        rv = sendto(fd, proto_init, sizeof(proto_init), 0, addr, addr_len);
+        rv = sendto(fd, proto_init, ETH_ZLEN, 0, addr, addr_len);
         if (rv < 0) {
             perror("sendto() failed");
         }
