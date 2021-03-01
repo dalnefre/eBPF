@@ -95,6 +95,43 @@ hexdump(FILE *f, void *data, size_t size)
     fflush(f);
 }
 
+void
+dump_link_state(FILE *f, link_state_t *link)
+{
+    fprintf(stderr, "outbound[44] =\n");
+    hexdump(stderr, link->outbound, 44);
+
+    __u32 uf = link->user_flags;
+    fprintf(stderr, "user_flags = 0x%08lx (%c%c%c%c)\n",
+        (unsigned long)uf,
+        '-',
+        (GET_FLAG(uf, UF_STOP) ? 's' : 'r'),
+        (GET_FLAG(uf, UF_VALD) ? 'v' : '-'),
+        (GET_FLAG(uf, UF_FULL) ? 'f' : 'e'));
+
+    fprintf(stderr, "inbound[44] =\n");
+    hexdump(stderr, link->inbound, 44);
+
+    __u32 lf = link->link_flags;
+    fprintf(stderr, "link_flags = 0x%08lx (%c%c%c%c%c%c%c%c)\n",
+        (unsigned long)lf,
+        '-',
+        (GET_FLAG(lf, LF_ID_A) ? 'A' : '-'),
+        (GET_FLAG(lf, LF_ID_B) ? 'B' : '-'),
+        (GET_FLAG(lf, LF_ENTL) ? '&' : '-'),
+        (GET_FLAG(lf, LF_FULL) ? 'f' : 'e'),
+        (GET_FLAG(lf, LF_VALD) ? 'v' : '-'),
+        (GET_FLAG(lf, LF_SEND) ? 's' : '-'),
+        (GET_FLAG(lf, LF_RECV) ? 'r' : '-'));
+
+    fprintf(stderr, "frame[64] =\n");
+    hexdump(stderr, link->frame, 64);
+
+    fprintf(stderr, "i,u = (%o,%o)\n", link->i, link->u);
+    fprintf(stderr, "len = %u\n", link->len);
+    fprintf(stderr, "seq = 0x%08lx\n", (unsigned long)link->seq);
+}
+
 int
 init_link_map(int if_index)
 {
@@ -140,6 +177,9 @@ init_link_map(int if_index)
         perror("write_link_map() failed");
         return -1;  // failure
     }
+
+    DEBUG(fprintf(stderr, "LINK_STATE [%d]\n", if_index));
+    DEBUG(dump_link_state(stderr, link));
 
     rv = close(fd);
     return rv;
@@ -223,9 +263,8 @@ send_init_msg(int if_index)
         if (rv < 0) {
             perror("sendto() failed");
         }
-        DEBUG(hexdump(stdout, proto_init, sizeof(proto_init)));
-        printf("init sent.\n");
-        fflush(stdout);
+        DEBUG(hexdump(stderr, proto_init, sizeof(proto_init)));
+        fprintf(stderr, "init sent.\n");
 
     }
 
@@ -295,12 +334,13 @@ reader(int if_index)  // read AIT data (and display it)
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
+            DEBUG(fprintf(stderr, "inbound FULL set.\n"));
 
             // display AIT received
-            hexdump(stdout, link->inbound, MAX_PAYLOAD);
-            fflush(stdout);
+            fprintf(stderr, "inbound AIT:\n");
+            hexdump(stderr, link->inbound, MAX_PAYLOAD);
 
-        } else if (!ib_valid(link)) {
+        } else if (!ib_valid(link) && ib_full(link)) {
 
             // clear link state
             ib_clr_full(link);
@@ -308,6 +348,7 @@ reader(int if_index)  // read AIT data (and display it)
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
+            DEBUG(fprintf(stderr, "inbound FULL cleared.\n"));
 
         }
 
@@ -336,14 +377,19 @@ writer(int if_index)  // write AIT data (from console)
                 return 1;  // EOF (or error)
             }
 
+            // display AIT to be sent
+            fprintf(stderr, "outbound AIT:\n");
+            hexdump(stderr, link->outbound, MAX_PAYLOAD);
+
             // send AIT
             ob_set_valid(link);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
+            DEBUG(fprintf(stderr, "outbound VALD set.\n"));
 
-        } else if (ob_full(link)) {  // transfer in progress
+        } else if (ob_full(link) && ob_valid(link)) {  // transfer in progress
 
             // clear link state
             ob_clr_valid(link);
@@ -351,6 +397,7 @@ writer(int if_index)  // write AIT data (from console)
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
+            DEBUG(fprintf(stderr, "outbound VALD cleared.\n"));
 
         }
 
@@ -400,7 +447,7 @@ main(int argc, char *argv[])
         rv = monitor(if_index);
         exit(rv);
     }
-    printf("monitor pid=%d\n", pid);
+    fprintf(stderr, "monitor pid=%d\n", pid);
 
     // create process to read AIT data
     pid = fork();
@@ -411,7 +458,7 @@ main(int argc, char *argv[])
         rv = reader(if_index);
         exit(rv);
     }
-    printf("reader pid=%d\n", pid);
+    fprintf(stderr, "reader pid=%d\n", pid);
 
     // create process to write AIT data
     pid = fork();
@@ -422,7 +469,7 @@ main(int argc, char *argv[])
         rv = writer(if_index);
         exit(rv);
     }
-    printf("writer pid=%d\n", pid);
+    fprintf(stderr, "writer pid=%d\n", pid);
 
     // ignore termination signals so we can clean up children
     signal(SIGHUP, SIG_IGN);
@@ -440,7 +487,7 @@ main(int argc, char *argv[])
             break;
         }
     }
-    fputs("parent exit.\n", stdout);
+    fputs("parent exit.\n", stderr);
 
     return 0;  // success
 }
