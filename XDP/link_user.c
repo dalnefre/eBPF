@@ -116,13 +116,13 @@ dump_link_state(FILE *f, link_state_t *link)
     fprintf(stderr, "link_flags = 0x%08lx (%c%c%c%c%c%c%c%c)\n",
         (unsigned long)lf,
         '-',
-        (GET_FLAG(lf, LF_ID_A) ? 'A' : '-'),
-        (GET_FLAG(lf, LF_ID_B) ? 'B' : '-'),
-        (GET_FLAG(lf, LF_ENTL) ? '&' : '-'),
-        (GET_FLAG(lf, LF_FULL) ? 'F' : 'e'),
-        (GET_FLAG(lf, LF_VALD) ? 'V' : '-'),
+        (GET_FLAG(lf, LF_RECV) ? 'R' : '-'),
         (GET_FLAG(lf, LF_SEND) ? 'S' : '-'),
-        (GET_FLAG(lf, LF_RECV) ? 'R' : '-'));
+        (GET_FLAG(lf, LF_VALD) ? 'V' : '-'),
+        (GET_FLAG(lf, LF_FULL) ? 'F' : 'e'),
+        (GET_FLAG(lf, LF_ENTL) ? '&' : '-'),
+        (GET_FLAG(lf, LF_ID_B) ? 'B' : '-'),
+        (GET_FLAG(lf, LF_ID_A) ? 'A' : '-'));
 
     fprintf(stderr, "frame[64] =\n");
     hexdump(stderr, link->frame, 64);
