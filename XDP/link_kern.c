@@ -8,7 +8,7 @@
 #include <linux/if_ether.h>
 #include "bpf_helpers.h"
 #include "bpf_endian.h"
-#include "code.h"
+#include "../include/code.h"
 #include "../include/link.h"
 
 #define PERMISSIVE   0  // allow non-protocol frames to pass through

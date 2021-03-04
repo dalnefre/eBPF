@@ -28,7 +28,7 @@ struct bpf_elf_map liveness_map SEC("maps") = {
 #if USE_CODE_C
 #include "code.c"  // data encoding/decoding
 #else
-#include "code.h"  // data encoding/decoding
+#include "../include/code.h"  // data encoding/decoding
 #endif
 
 #define PERMISSIVE 1  // allow non-protocol packets to pass through

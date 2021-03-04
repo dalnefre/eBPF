@@ -21,7 +21,7 @@
 
 #include <bpf/bpf.h>
 
-#include "code.h"
+#include "../include/code.h"
 #include "../include/link.h"
 
 #define DEBUG(x) x /**/

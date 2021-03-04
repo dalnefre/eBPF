@@ -5,7 +5,7 @@
  *       With -DTEST_MAIN, it builds a standalone unit-test program.
  */
 #include <linux/types.h>
-#include "code.h"
+#include "../include/code.h"
 
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))
