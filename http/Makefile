@@ -10,6 +10,7 @@ TEST =	ebpf_test
 
 ALL =	ebpf_map \
 	ebpf_fcgi \
+	link_fcgi \
 	hello_fcgi \
         $(TEST)
 
@@ -35,6 +36,9 @@ ebpf_fcgi: ebpf_fcgi.c
 
 ebpf_test: ebpf_fcgi.c
 	cc $(CFLAGS) -DTEST_MAIN -o ebpf_test ebpf_fcgi.c -lfcgi -lbpf
+
+link_fcgi: link_fcgi.c
+	cc $(CFLAGS) -o link_fcgi link_fcgi.c -lfcgi -lbpf
 
 install:
 	cp -r html/* /var/www/html/
