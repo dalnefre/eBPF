@@ -6,7 +6,9 @@
 
 #include <linux/types.h>
 
+#ifndef ETH_P_DALE
 #define ETH_P_DALE (0xDa1e)
+#endif
 
 #define MAX_PAYLOAD 44  // maxiumum number of AIT data octets
 
