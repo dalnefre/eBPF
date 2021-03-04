@@ -26,7 +26,7 @@
 #define IF_NAME "eth0"
 #endif
 
-#define SUPPORT_JSON 0 // support JSON output format
+#define SUPPORT_JSON 1 // support JSON output format
 
 static char hostname[32];
 static char if_name[] = IF_NAME;
@@ -239,9 +239,9 @@ html_link_state()
     printf("%u", link->len);
     printf("</td></tr>\n");
 
-    printf("<tr><td>%s</td><td>", "seq");
+    printf("<tr><td>%s</td><td><tt>", "seq");
     printf("0x%08x", link->seq);
-    printf("</td></tr>\n");
+    printf("</tt></td></tr>\n");
 
     printf("</table>\n");
 
@@ -286,59 +286,110 @@ json_string(char *s, int n)
 static __u32 pkt_count = -1;  // packet counter value
 
 int
-json_link_map()
+json_link_state()
 {
     int rv = 0;  // success
-    __u32 key;
-    __u64 value;
+    __u8 *bp;
 
     if (link_map_fd < 0) return -1;  // failure
 
-    printf("[");
-    for (key = 0; key < 4; ++key) {
+    // get link_state structure for this interface
+    link_state_t link_state;
+    link_state_t *link = &link_state;
+    rv = read_link_map(if_index, link);
+    if (rv < 0) return rv;  // failure
 
-        if (read_link_map(key, &value) < 0) {
-            perror("read_link_map() failed");
-            rv = -1;  // failure
-            break;
-        }
-        __u8 *bp = (__u8 *)&value;
-
-        if (key > 0) {
-            printf(",");
-        }
-        printf("\n");
-        printf("{");
-
-        printf("\"id\":");
-        char *id = link_map_label(key);
-        json_string(id, strlen(id));
-        printf(",");
-
-        printf("\"n\":");
-        printf("%" PRId64, (__s64)value);
-        printf(",");
-
-        printf("\"s\":");
-        json_string((char *)&value, sizeof(value));
-        printf(",");
-
-        printf("\"b\":");
-        printf("[%u,%u,%u,%u,%u,%u,%u,%u]",
-            bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
-        printf("}");
-
-        if (key == 3) {
-            pkt_count = value;  // update packet count
-        }
-    }
+    printf("{");
     printf("\n");
-    printf("]");
 
+    printf("  ");
+    printf("\"outbound\":");
+    json_string((char *)link->outbound, MAX_PAYLOAD);
+    printf(",");
+    printf("\n");
+ 
+    printf("  ");
+    printf("\"user_flags\":");
+    __u32 uf = link->user_flags;
+    printf("{");
+    printf("\"STOP\":%s", (GET_FLAG(uf, UF_STOP) ? "true" : "false"));
+    printf(",");
+    printf("\"VALD\":%s", (GET_FLAG(uf, UF_VALD) ? "true" : "false"));
+    printf(",");
+    printf("\"FULL\":%s", (GET_FLAG(uf, UF_FULL) ? "true" : "false"));
+    printf("}");
+    printf(",");
+    printf("\n");
+
+    printf("  ");
+    printf("\"inbound\":");
+    json_string((char *)link->inbound, MAX_PAYLOAD);
+    printf(",");
+    printf("\n");
+
+    printf("  ");
+    printf("\"link_flags\":");
+    __u32 lf = link->link_flags;
+    printf("{");
+    printf("\"RECV\":%s", (GET_FLAG(lf, LF_RECV) ? "true" : "false"));
+    printf(",");
+    printf("\"SEND\":%s", (GET_FLAG(lf, LF_SEND) ? "true" : "false"));
+    printf(",");
+    printf("\"VALD\":%s", (GET_FLAG(lf, LF_VALD) ? "true" : "false"));
+    printf(",");
+    printf("\"FULL\":%s", (GET_FLAG(lf, LF_FULL) ? "true" : "false"));
+    printf(",");
+    printf("\"ENTL\":%s", (GET_FLAG(lf, LF_ENTL) ? "true" : "false"));
+    printf(",");
+    printf("\"ID_B\":%s", (GET_FLAG(lf, LF_ID_B) ? "true" : "false"));
+    printf(",");
+    printf("\"ID_A\":%s", (GET_FLAG(lf, LF_ID_A) ? "true" : "false"));
+    printf("}");
+    printf(",");
+    printf("\n");
+
+    printf("  ");
+    printf("\"frame\":");
+    bp = link->frame;
+    printf("[");
+    printf("%u,%u,%u,%u,%u,%u,%u,%u",
+        bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
+    bp += 8;
+    printf(",");
+    printf("%u,%u,%u,%u,%u,%u,%u,%u",
+        bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
+    bp += 8;
+    printf(",");
+    printf("%u,%u,%u,%u,%u,%u,%u,%u",
+        bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
+    bp += 8;
+    printf(",");
+    printf("%u,%u,%u,%u,%u,%u,%u,%u",
+        bp[0], bp[1], bp[2], bp[3], bp[4], bp[5], bp[6], bp[7]);
+    printf("]");
+    printf(",");
+    printf("\n");
+ 
+    printf("  ");
+    printf("\"i\":%u,\n", link->i);
+    printf("  ");
+    printf("\"u\":%u,\n", link->u);
+    printf("  ");
+    printf("\"len\":%u,\n", link->len);
+    printf("  ");
+    printf("\"seq\":%u,\n", link->seq);
+
+    printf("}");
+//    printf("\n");
+
+    pkt_count = link->seq;  // update packet count
+
+#if 0
     // clear inbound AIT, if any
     if (write_link_map(1, AIT_EMPTY) < 0) {
         rv = -1;
     }
+#endif
 
     return rv;
 }
@@ -503,10 +554,7 @@ json_query(char *query_string)
     }
 
     // check for space in outbound AIT register
-    if (read_link_map(0, &ait) < 0) return -1;  // failure
-    if (ait != AIT_EMPTY) {
-        return 0;  // success (outbound not empty)
-    }
+    return -1;  // failure -- NOT IMPLEMENTED --
 
     // we have outbound AIT to write
     if (n > 8) {
@@ -517,8 +565,8 @@ json_query(char *query_string)
     memcpy(&ait, value, n);
 
     // write outbound AIT
-    rv = write_link_map(0, ait);
-    if (rv < 0) return rv;  // failure
+    return -1;  // failure -- NOT IMPLEMENTED --
+
     printf("\"sent\":");
     json_string(value, n);
     printf(",");
@@ -677,8 +725,8 @@ json_content(int req_num)
 
     int old = (int32_t)pkt_count;  // save old packet count
 
-    printf("\"link_map\":");
-    if (json_link_map() < 0) {
+    printf("\"link_state\":");
+    if (json_link_state() < 0) {
         printf(",");
         printf("\"error\":\"%s\"", "Map Unavailable");
     }
