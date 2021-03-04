@@ -373,9 +373,14 @@ writer(int if_index)  // write AIT data (from console)
         if (!ob_full(link) && !ob_valid(link)) {  // space available
 
             // get data from console
-            if (!fgets((char *)link->outbound, MAX_PAYLOAD, stdin)) {
+            clear_payload(link->outbound);
+            char *str = (char *)link->outbound + 2;
+            if (!fgets(str, MAX_PAYLOAD - 2, stdin)) {
                 return 1;  // EOF (or error)
             }
+            int len = strlen(str);
+            link->outbound[0] = octets;
+            link->outbound[1] = INT2SMOL(len);
 
             // display AIT to be sent
             fprintf(stderr, "outbound AIT:\n");
