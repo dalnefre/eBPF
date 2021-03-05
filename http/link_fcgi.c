@@ -302,14 +302,12 @@ json_link_state()
     printf("{");
     printf("\n");
 
-    printf("  ");
-    printf("\"outbound\":");
+    printf("  \"outbound\":");
     json_string((char *)link->outbound, MAX_PAYLOAD);
     printf(",");
     printf("\n");
  
-    printf("  ");
-    printf("\"user_flags\":");
+    printf("  \"user_flags\":");
     __u32 uf = link->user_flags;
     printf("{");
     printf("\"STOP\":%s", (GET_FLAG(uf, UF_STOP) ? "true" : "false"));
@@ -321,14 +319,12 @@ json_link_state()
     printf(",");
     printf("\n");
 
-    printf("  ");
-    printf("\"inbound\":");
+    printf("  \"inbound\":");
     json_string((char *)link->inbound, MAX_PAYLOAD);
     printf(",");
     printf("\n");
 
-    printf("  ");
-    printf("\"link_flags\":");
+    printf("  \"link_flags\":");
     __u32 lf = link->link_flags;
     printf("{");
     printf("\"RECV\":%s", (GET_FLAG(lf, LF_RECV) ? "true" : "false"));
@@ -348,8 +344,7 @@ json_link_state()
     printf(",");
     printf("\n");
 
-    printf("  ");
-    printf("\"frame\":");
+    printf("  \"frame\":");
     bp = link->frame;
     printf("[");
     printf("%u,%u,%u,%u,%u,%u,%u,%u",
@@ -370,15 +365,11 @@ json_link_state()
     printf(",");
     printf("\n");
  
-    printf("  ");
-    printf("\"i\":%u,\n", link->i);
-    printf("  ");
-    printf("\"u\":%u,\n", link->u);
-    printf("  ");
-    printf("\"len\":%u,\n", link->len);
-    printf("  ");
-    printf("\"seq\":%u,\n", link->seq);
+    printf("  \"i\":%u,\n", link->i);
+    printf("  \"u\":%u,\n", link->u);
+    printf("  \"len\":%u,\n", link->len);
 
+    printf("  \"seq\":%u\n", link->seq);
     printf("}");
 //    printf("\n");
 

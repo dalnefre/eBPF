@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Link State</title>
+<link rel="stylesheet" href="style.css">
+<script src="jquery-3.5.1.js"></script>
+<script src="link_state.js"></script>
+<style>
+body {
+  background-color: #EFF;
+}
+input {
+  margin-right: 1em;
+  margin-bottom: 1ex;
+}
+#link_stat {
+  display: inline-block;
+  width: 4em;
+  margin-right: 2em;
+  padding: 6px 4px 4px;
+  border-radius: 3px;
+  color: #666;
+  background-color: #CCC;
+  font-weight: bold;
+  text-align: center;
+}
+#play_pause {
+  display: inline-block;
+  position: relative;
+  top: 0.35em;
+  width: 1.5em;
+  height: 1.5em;
+  margin: 0 1em;
+  border: 1px solid #777;
+  border-radius: 2px;
+  background-color: #EAEAEA;
+}
+#play_pause:hover {
+  border: 1px solid #555;
+  background-color: #E1E1E1;
+}
+#play {
+  display: none;
+}
+#refresh_rate {
+  margin-left: 1ex;
+  margin-right: 0;
+}
+#spinner {
+  margin: 1.2em;
+}
+#pkt_num {
+  color: #66F;
+  font-family: monospace;
+}
+#inbound {
+  color: #006;
+}
+#outbound {
+  font-family: monospace;
+}
+#info {
+  color: #999;
+}
+</style>
+</head>
+<body>
+<h1>Link State<span id="host"></span></h1>
+
+<div id="output">
+  <div>
+    <label>
+      Link:
+      <span id="link_stat">????</span>
+    </label>
+    <span id="play_pause">
+      <svg id="play" height="1.5em" width="1.5em" viewBox="-256 0 1024 1024">
+        <path d="M 0 192 l 512 320 L 0 832 V 192 z" />
+      </svg>
+      <svg id="pause" height="1.5em" width="1.5em" viewBox="-256 0 1024 1024">
+        <path d="M 0 832 h 192 V 192 H 0 V 832 z" />
+        <path d="M 320 192 v 640 h 192 V 192 H 320 z" />
+      </svg>
+    </span>
+      <label>
+        updates @
+        <input type="text" id="refresh_rate" size="2" value="6">
+        / second.
+      </label>
+    <span>
+    </span>
+  </div>
+  <svg id="spinner" width="100" height="100" viewBox="-50 -50 100 100">
+    <defs>
+      <radialGradient id="clk_face">
+        <stop offset="0%" stop-color="#FFF" />
+        <stop offset="85%" stop-color="#FFF" />
+        <stop offset="100%" stop-color="#DDD" />
+      </radialGradient>
+    </defs>
+    <g>
+      <circle cx="0" cy="0" r="48" fill="url(#clk_face)" stroke="#BBB" />
+      <line id="fast_hand" x1="0" y1="0" x2="0" y2="-42"
+        stroke="#C33" stroke-width="1" stroke-linecap="round" />
+      <circle cx="0" cy="0" r="3" fill="#000" />
+    </g>
+  </svg>
+  <div>
+    <label>
+      Packet:
+      <input type="text" id="pkt_num" size="8" readonly>
+    </label>
+  </div>
+  <label>
+    <h2>Inbound</h2>
+    <pre id="inbound"></pre>
+  </label>
+</div>
+
+<div id="input">
+  <label>
+    <h2>Outbound</h2>
+    <input type="text" id="outbound" size="64" placeholder="Message to send...">
+  </label>
+  <span>
+    <button id="send">Send</button>
+  </span>
+</div>
+
+<p>
+  <button id="debug">Debug</button>
+</p>
+<div id="info">
+  <pre id="raw_data" class="hidden"></pre>
+</div>
+
+</body>
+</html>
