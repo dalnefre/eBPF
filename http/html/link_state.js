@@ -8,49 +8,67 @@ $(function () {
     let $pkt_num = $('#pkt_num');
     let $inbound = $('#inbound');
     let $outbound = $('#outbound');
+    let $src = $('#src');
+    let $snk = $('#snk');
     let $send = $('#send');
     let $raw_data = $('#raw_data');
 
     var link = {  // port/link interface
         snk: {
             get full() {
-                return true;  // FIXME: replace stub value
+                if (link.data) {
+                    return link.data.link_state.link_flags.FULL;
+                }
+                return true;
             },
             set valid(set) {
-                if (set && !this.full) {
-                    // FIXME: set valid flag
-                }
-                if (!set && this.full) {
-                    // FIXME: clear valid flag
+                if (link.data) {
+                    if (set && !this.full) {
+                        link.data.link_state.user_flag.VALD = true;
+                    }
+                    if (!set && this.full) {
+                        link.data.link_state.user_flag.VALD = false;
+                    }
                 }
             },
             get valid() {
-                return false;  // FIXME: replace stub value
+                if (link.data) {
+                    return link.data.link_state.user_flags.VALD;
+                }
+                return false;
             },
             set data(payload) {
-                if (!this.full) {
-                    // FIXME: copy data to outbound
+                if (link.data && !this.full) {
+                    link.data.link_state.outbound = payload;
                 }
             }
         },
         src: {
             get valid() {
-                return false;  // FIXME: replace stub value
+                if (link.data) {
+                    return link.data.link_state.link_flags.VALD;
+                }
+                return false;
             },
             set full(set) {
-                if (set && this.valid) {
-                    // FIXME: set full flag
-                }
-                if (!set && !this.valid) {
-                    // FIXME: clear full flag
+                if (link.data) {
+                    if (set && this.valid) {
+                        link.data.link_state.user_flag.FULL = true;
+                    }
+                    if (!set && !this.valid) {
+                        link.data.link_state.user_flag.FULL = false;
+                    }
                 }
             },
             get full() {
-                return false;  // FIXME: replace stub value
+                if (link.data) {
+                    return link.data.link_state.user_flags.FULL;
+                }
+                return false;
             },
             get data() {
-                if (this.full) {
-                    // FIXME: copy data from inbound
+                if (link.data && this.full) {
+                    return link.data.link_state.inbound;
                 }
             }
         }
@@ -104,7 +122,7 @@ $(function () {
                 out = String.fromCodePoint(0x08)  // raw octets
                     + String.fromCodePoint(0x80 + 1)  // length = 1
                     + out[0];  // first character of output
-                link.snk.data(out);
+                link.snk.data = out;
                 link.snk.valid = true;
             }
         } else if (link.snk.valid && link.snk.full) {
@@ -132,6 +150,8 @@ $(function () {
         if (typeof data.host === 'string') {
             $host.text(' ('+data.host+')');
         }
+        $src.text(' ('+link.src.valid+','+link.src.full+')');
+        $snk.text(' ('+link.snk.full+','+link.snk.valid+')');
         var seq32 = data.link_state.seq;
         $pkt_num.val(('00000000' + seq32.toString(16)).substr(-8));
         var seq16 = seq32 & 0xFFFF;
