@@ -24,10 +24,10 @@ $(function () {
             set valid(set) {
                 if (link.data) {
                     if (set && !this.full) {
-                        link.data.link_state.user_flag.VALD = true;
+                        link.data.link_state.user_flags.VALD = true;
                     }
                     if (!set && this.full) {
-                        link.data.link_state.user_flag.VALD = false;
+                        link.data.link_state.user_flags.VALD = false;
                     }
                 }
             },
@@ -41,6 +41,11 @@ $(function () {
                 if (link.data && !this.full) {
                     link.data.link_state.outbound = payload;
                 }
+            },
+            get data() {
+                if (link.data) {
+                    return link.data.link_state.outbound;
+                }
             }
         },
         src: {
@@ -53,10 +58,10 @@ $(function () {
             set full(set) {
                 if (link.data) {
                     if (set && this.valid) {
-                        link.data.link_state.user_flag.FULL = true;
+                        link.data.link_state.user_flags.FULL = true;
                     }
                     if (!set && !this.valid) {
-                        link.data.link_state.user_flag.FULL = false;
+                        link.data.link_state.user_flags.FULL = false;
                     }
                 }
             },
@@ -67,7 +72,7 @@ $(function () {
                 return false;
             },
             get data() {
-                if (link.data && this.full) {
+                if (link.data && this.valid) {
                     return link.data.link_state.inbound;
                 }
             }
@@ -82,15 +87,12 @@ $(function () {
         }
         waiting = true;
         $raw_data.removeClass('error');
-        var params = {};
-        if ($send.prop('disabled')) {
-              $outbound.val('');  // clear outbound
-//            if ($outbound.val()) {
-//                params.ait = $outbound.val().slice(0, 8);  // 64-bit chunks
-//            } else {
-//                params.ait = '\n';  // add newline between outbound messages
-                $send.prop('disabled', false);
-//            }
+        var params = {
+            FULL: link.src.full,
+            VALD: link.snk.valid
+        };
+        if (params.VALD) {
+            params.DATA = link.snk.data;
         }
         $.getJSON('/link_map/link.json', params)
             .fail(jqXHRfail)
@@ -100,6 +102,7 @@ $(function () {
        console.log('jqXHRfail!', textStatus, errorThrown);
     };
     let update = function (data) {
+        $raw_data.text(JSON.stringify(data, null, 2));
         link.data = data;
         if (link.src.valid && !link.src.full) {  // inbound AIT
             var s = link.src.data;
@@ -115,15 +118,20 @@ $(function () {
             link.src.full = false;  // clear inbound full flag
         }
         if (!link.snk.full && !link.snk.valid) {  // outbound AIT
-            var out = $outbound.val();
-            if ((typeof out === 'string') && (out.len > 0)) {
-                // there is data ready to send...
-                $outbound.val(out.slice(1));  // remove first character
-                out = String.fromCodePoint(0x08)  // raw octets
-                    + String.fromCodePoint(0x80 + 1)  // length = 1
-                    + out[0];  // first character of output
-                link.snk.data = out;
-                link.snk.valid = true;
+            if ($send.prop('disabled')) {
+                var out = $outbound.val();
+                if ((typeof out === 'string') && (out.length > 0)) {
+                    // there is data ready to send...
+                    $outbound.val(out.slice(1));  // remove first character
+                    out = String.fromCodePoint(0x08)  // raw octets
+                        + String.fromCodePoint(0x80 + 1)  // length = 1
+                        + out.charAt(0);  // first character of output
+                    link.snk.data = out;
+                    link.snk.valid = true;
+                } else {
+                    $outbound.val('');  // clear outbound
+                    $send.prop('disabled', false);  // enable text field
+                }
             }
         } else if (link.snk.valid && link.snk.full) {
             link.snk.valid = false;  // clear outbound valid flag
@@ -151,14 +159,13 @@ $(function () {
             $host.text(' ('+data.host+')');
         }
         $src.text(' ('+link.src.valid+','+link.src.full+')');
-        $snk.text(' ('+link.snk.full+','+link.snk.valid+')');
+        $snk.text(' ('+link.snk.valid+','+link.snk.full+')');
         var seq32 = data.link_state.seq;
         $pkt_num.val(('00000000' + seq32.toString(16)).substr(-8));
         var seq16 = seq32 & 0xFFFF;
 //        $pkt_num.val(('0000' + seq16.toString(16)).substr(-4));
         var fast_rot = (seq16 * 360) >> 16;
         $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
-        $raw_data.text(JSON.stringify(data, null, 2));
         waiting = false;
     };
 
@@ -196,6 +203,8 @@ $(function () {
 
     $send.click(function (e) {
         $send.prop('disabled', true);
+        var out = $outbound.val();
+        $outbound.val(out + '\n');  // add newline to outbound message
     });
 
     $('#debug').click(function (e) {

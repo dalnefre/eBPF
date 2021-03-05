@@ -20,13 +20,12 @@
 #include <linux/sockios.h>
 #include <bpf/bpf.h>
 
+#include "../include/code.h"
 #include "../include/link.h"
 
 #ifndef IF_NAME
 #define IF_NAME "eth0"
 #endif
-
-#define SUPPORT_JSON 1 // support JSON output format
 
 static char hostname[32];
 static char if_name[] = IF_NAME;
@@ -248,7 +247,6 @@ html_link_state()
     return rv;
 }
 
-#if SUPPORT_JSON
 int
 json_unescaped(int c)
 {
@@ -286,18 +284,9 @@ json_string(char *s, int n)
 static __u32 pkt_count = -1;  // packet counter value
 
 int
-json_link_state()
+json_link_state(link_state_t *link)
 {
-    int rv = 0;  // success
     __u8 *bp;
-
-    if (link_map_fd < 0) return -1;  // failure
-
-    // get link_state structure for this interface
-    link_state_t link_state;
-    link_state_t *link = &link_state;
-    rv = read_link_map(if_index, link);
-    if (rv < 0) return rv;  // failure
 
     printf("{");
     printf("\n");
@@ -373,18 +362,8 @@ json_link_state()
     printf("}");
 //    printf("\n");
 
-    pkt_count = link->seq;  // update packet count
-
-#if 0
-    // clear inbound AIT, if any
-    if (write_link_map(1, AIT_EMPTY) < 0) {
-        rv = -1;
-    }
-#endif
-
-    return rv;
+    return 0;  // success
 }
-#endif /* SUPPORT_JSON */
 
 int
 uri_unreserved(int c)
@@ -529,42 +508,51 @@ html_query(char *query_string)
     return rv;
 }
 
-#if SUPPORT_JSON
 int
-json_query(char *query_string)
+json_query(link_state_t *link, char *query_string)
 {
-    int rv = 0;  // success
-    __u64 ait;
     char value[256];
+    char *q;
+    int n;
 
-    // check for outbound AIT in query string
-    char *q = query_string;
-    int n = get_uri_param(value, sizeof(value) - 1, &q, "ait");
-    if (n < 0) {
-        return 0;  // success (no outbound AIT)
-    }
-
-    // check for space in outbound AIT register
-    return -1;  // failure -- NOT IMPLEMENTED --
-
-    // we have outbound AIT to write
-    if (n > 8) {
-        n = 8;  // truncate to 64 bits
-    }
-    value[n] = '\0';  // add NUL termination
-    ait = 0;
-    memcpy(&ait, value, n);
-
-    // write outbound AIT
-    return -1;  // failure -- NOT IMPLEMENTED --
-
-    printf("\"sent\":");
-    json_string(value, n);
+    // echo query string
+    printf("\"query\":");
+    json_string(query_string, strlen(query_string));
     printf(",");
 
-    return rv;
+    // check for inbound FULL flag
+    q = query_string;
+    n = get_uri_param(value, sizeof(value) - 1, &q, "FULL");
+    if ((n == 4) && (strncmp(value, "true", 4) == 0)) {
+        SET_FLAG(link->user_flags, UF_FULL);
+    }
+    if ((n == 5) && (strncmp(value, "false", 5) == 0)) {
+        CLR_FLAG(link->user_flags, UF_FULL);
+    }
+
+    // check for outbound VALD flag
+    q = query_string;
+    n = get_uri_param(value, sizeof(value) - 1, &q, "VALD");
+    if ((n == 4) && (strncmp(value, "true", 4) == 0)) {
+        SET_FLAG(link->user_flags, UF_VALD);
+//        memset((char *)link->outbound, null, MAX_PAYLOAD);
+        memset((char *)link->outbound, 0, MAX_PAYLOAD);  // FIXME!
+        q = query_string;
+        n = get_uri_param(value, sizeof(value) - 1, &q, "DATA");
+        if (n > 0) {
+            if (n > MAX_PAYLOAD) {
+                n = MAX_PAYLOAD;  // FIXME: decode utf8?
+            }
+            memcpy((char *)link->outbound, value, n);
+        }
+    }
+    if ((n == 5) && (strncmp(value, "false", 5) == 0)) {
+        CLR_FLAG(link->user_flags, UF_VALD);
+        memset((char *)link->outbound, null, MAX_PAYLOAD);
+    }
+
+    return 0;  // success
 }
-#endif /* SUPPORT_JSON */
 
 int
 html_params()
@@ -660,7 +648,6 @@ html_content(int req_num)
     printf("</html>\n");
 }
 
-#if SUPPORT_JSON
 int
 json_info(int old, int new)
 {
@@ -712,23 +699,30 @@ json_content(int req_num)
     printf("\"req_num\":%d", req_num);
     printf(",");
 
-    json_query(getenv("QUERY_STRING"));
+    int old = (__s32)pkt_count;  // save old packet count
 
-    int old = (int32_t)pkt_count;  // save old packet count
-
-    printf("\"link_state\":");
-    if (json_link_state() < 0) {
+    // get link_state structure for this interface
+    link_state_t link_state;
+    link_state_t *link = &link_state;
+    if ((link_map_fd < 0)
+    ||  (read_link_map(if_index, link) < 0)) {
         printf(",");
         printf("\"error\":\"%s\"", "Map Unavailable");
+    } else {
+
+        json_query(link, getenv("QUERY_STRING"));
+
+        printf("\"link_state\":");
+        json_link_state(link);
+        pkt_count = link->seq;  // update packet count
+
     }
 
-    int new = (int32_t)pkt_count;  // get new packet count
-
+    int new = (__s32)pkt_count;  // get new packet count
     json_info(old, new);
 
     printf("}\n");
 }
-#endif /* SUPPORT_JSON */
 
 int
 init_src_mac()
@@ -782,13 +776,11 @@ main(void)
                 continue;  // next request...
             }
 
-#if SUPPORT_JSON
             if ((n == 19) && (strncmp(buf, "/link_map/link.json", n) == 0)) {
                 http_header("application/json");
                 json_content(count);
                 continue;  // next request...
             }
-#endif /* SUPPORT_JSON */
 
         }
 
