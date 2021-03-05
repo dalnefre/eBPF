@@ -11,6 +11,51 @@ $(function () {
     let $send = $('#send');
     let $raw_data = $('#raw_data');
 
+    var link = {  // port/link interface
+        snk: {
+            get full() {
+                return true;  // FIXME: replace stub value
+            },
+            set valid(set) {
+                if (set && !this.full) {
+                    // FIXME: set valid flag
+                }
+                if (!set && this.full) {
+                    // FIXME: clear valid flag
+                }
+            },
+            get valid() {
+                return false;  // FIXME: replace stub value
+            },
+            set data(payload) {
+                if (!this.full) {
+                    // FIXME: copy data to outbound
+                }
+            }
+        },
+        src: {
+            get valid() {
+                return false;  // FIXME: replace stub value
+            },
+            set full(set) {
+                if (set && this.valid) {
+                    // FIXME: set full flag
+                }
+                if (!set && !this.valid) {
+                    // FIXME: clear full flag
+                }
+            },
+            get full() {
+                return false;  // FIXME: replace stub value
+            },
+            get data() {
+                if (this.full) {
+                    // FIXME: copy data from inbound
+                }
+            }
+        }
+    };
+
     var waiting = false;  // waiting for server response
     let refresh = function () {
         if (waiting) {
@@ -37,27 +82,34 @@ $(function () {
        console.log('jqXHRfail!', textStatus, errorThrown);
     };
     let update = function (data) {
-//        link.data = data;
-/*
-        if (data.ait_map[1].n !== -1) {
-            // inbound AIT
-            var s = data.ait_map[1].s;
-            let i = s.indexOf('\u0000');
-            if (i < 0) {
-                i = s.length;
+        link.data = data;
+        if (link.src.valid && !link.src.full) {  // inbound AIT
+            var s = link.src.data;
+            if ((s.charCodeAt(0) == 0x08)    // raw octets
+            &&  (s.charCodeAt(1) > 0x80)) {  // smol length
+                let n = s.charCodeAt(1) - 0x80;
+                s = s.slice(2, 2 + n);
+                //$inbound.text($inbound.text() + s);
+                $inbound.append(document.createTextNode(s));
             }
-            s = s.slice(0, i);
-            //$inbound.text($inbound.text() + s);
-            $inbound.append(document.createTextNode(s));
+            link.src.full = true;
+        } else if (link.src.full && !link.src.valid) {
+            link.src.full = false;  // clear inbound full flag
         }
-        if (typeof data.sent === 'string') {
+        if (!link.snk.full && !link.snk.valid) {  // outbound AIT
             var out = $outbound.val();
-            if (out.startsWith(data.sent)) {
-                out = out.slice(data.sent.length);
-                $outbound.val(out);
+            if ((typeof out === 'string') && (out.len > 0)) {
+                // there is data ready to send...
+                $outbound.val(out.slice(1));  // remove first character
+                out = String.fromCodePoint(0x08)  // raw octets
+                    + String.fromCodePoint(0x80 + 1)  // length = 1
+                    + out[0];  // first character of output
+                link.snk.data(out);
+                link.snk.valid = true;
             }
+        } else if (link.snk.valid && link.snk.full) {
+            link.snk.valid = false;  // clear outbound valid flag
         }
-*/
         if (typeof data.link === 'string') {
             if (data.link == 'INIT') {
                 $link_stat.css({ "color": "#333",
