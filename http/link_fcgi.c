@@ -365,6 +365,37 @@ json_link_state(link_state_t *link)
     return 0;  // success
 }
 
+static const char hex[] = "0123456789ABCDEF";
+
+int
+hex_to_octets(char *dbuf, int dlen, char *sbuf, int slen)
+{
+    int i = 0, j = 0;
+    char *s;
+    int c;
+
+    while (i+1 < slen) {
+        if (j >= dlen) {
+            return -1;  // fail: dbuf overflow
+        }
+
+        s = strchr(hex, toupper(sbuf[i++]));
+        if (!(s && *s)) {
+            return -1;  // fail: non-hex digit
+        }
+        c = (s - hex);
+
+        s = strchr(hex, toupper(sbuf[i++]));
+        if (!(s && *s)) {
+            return -1;  // fail: non-hex digit
+        }
+        c = (c << 4) | (s - hex);
+
+        dbuf[j++] = c;
+    }
+    return j;  // success: # of characters written to dbuf
+}
+
 int
 uri_unreserved(int c)
 {
@@ -375,8 +406,6 @@ uri_unreserved(int c)
         || ((c >= 'A') && (c <= 'Z'))
         || (c == '-') || (c == '_') || (c == '.');
 }
-
-static const char hex[] = "0123456789ABCDEF";
 
 int
 uri_to_utf8(char *dbuf, int dlen, char *sbuf, int slen)
@@ -534,17 +563,13 @@ json_query(link_state_t *link, char *query_string)
     q = query_string;
     n = get_uri_param(value, sizeof(value) - 1, &q, "VALD");
     if ((n == 4) && (strncmp(value, "true", 4) == 0)) {
-        SET_FLAG(link->user_flags, UF_VALD);
-//        memset((char *)link->outbound, null, MAX_PAYLOAD);
-        memset((char *)link->outbound, 0, MAX_PAYLOAD);  // FIXME!
+        memset((char *)link->outbound, null, MAX_PAYLOAD);
         q = query_string;
         n = get_uri_param(value, sizeof(value) - 1, &q, "DATA");
-        if (n > 0) {
-            if (n > MAX_PAYLOAD) {
-                n = MAX_PAYLOAD;  // FIXME: decode utf8?
-            }
-            memcpy((char *)link->outbound, value, n);
-        }
+        if (n < 0) return -1;  // failure!
+        n = hex_to_octets((char *)link->outbound, MAX_PAYLOAD, value, n);
+        if (n < 0) return -1;  // failure!
+        SET_FLAG(link->user_flags, UF_VALD);
     }
     if ((n == 5) && (strncmp(value, "false", 5) == 0)) {
         CLR_FLAG(link->user_flags, UF_VALD);

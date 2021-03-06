@@ -79,6 +79,16 @@ $(function () {
         }
     };
 
+    let octets_to_hex = function (s) {
+        var i = 0;
+        var h = '';
+        while (i < s.length) {
+            let d = '00' + s.charCodeAt(i).toString(16);
+            h += d.slice(-2);
+            ++i;
+        }
+        return h;
+    };
     var waiting = false;  // waiting for server response
     let refresh = function () {
         if (waiting) {
@@ -92,7 +102,7 @@ $(function () {
             VALD: link.snk.valid
         };
         if (params.VALD) {
-            params.DATA = link.snk.data;
+            params.DATA = octets_to_hex(link.snk.data);
         }
         $.getJSON('/link_map/link.json', params)
             .fail(jqXHRfail)
