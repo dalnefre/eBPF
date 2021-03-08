@@ -115,6 +115,7 @@ $(function () {
         $raw_data.text(JSON.stringify(data, null, 2));
         link.data = data;
         if (link.src.valid && !link.src.full) {  // inbound AIT
+            link.src.full = true;  // set inbound full flag
             var s = link.src.data;
             if ((s.charCodeAt(0) == 0x08)    // raw octets
             &&  (s.charCodeAt(1) > 0x80)) {  // smol length
@@ -123,7 +124,6 @@ $(function () {
                 //$inbound.text($inbound.text() + s);
                 $inbound.append(document.createTextNode(s));
             }
-            link.src.full = true;
         } else if (link.src.full && !link.src.valid) {
             link.src.full = false;  // clear inbound full flag
         }

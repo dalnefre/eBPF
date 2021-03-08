@@ -118,6 +118,7 @@ outbound_AIT(link_state_t *link)
     and set AIT-in-progress flags
 */
     if (!GET_FLAG(link->link_flags, LF_SEND)
+    &&  !GET_FLAG(link->link_flags, LF_FULL)
     &&  GET_FLAG(link->user_flags, UF_VALD)) {
         SET_FLAG(link->link_flags, LF_SEND);
         SET_FLAG(link->link_flags, LF_FULL);
@@ -137,11 +138,18 @@ clear_AIT(link_state_t *link)
     acknowlege successful AIT
     and clear AIT-in-progress flags
 */
-    CLR_FLAG(link->link_flags, LF_SEND);
-    if (GET_FLAG(link->user_flags, UF_VALD)) {
-        LOG_WARN("clear_AIT: outbound VALID still set!\n");
+    if (GET_FLAG(link->link_flags, LF_SEND)) {
+        CLR_FLAG(link->link_flags, LF_SEND);
+        if (GET_FLAG(link->link_flags, LF_FULL)
+        &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+            CLR_FLAG(link->link_flags, LF_FULL);
+            LOG_INFO("clear_AIT (%u octets)\n", link->len);
+        } else {
+            LOG_WARN("clear_AIT: outbound VALID still set!\n");
+        }
+    } else {
+        LOG_WARN("clear_AIT: outbound SEND not set!\n");
     }
-    LOG_INFO("clear_AIT (%u octets)\n", link->len);
     link->len = 0;
     return 1;  // success
 //    return 0;  // failure
@@ -174,7 +182,9 @@ release_AIT(link_state_t *link)
     copy the data from the link buffer
     and clear AIT-in-progress flags
 */
-    if (!GET_FLAG(link->user_flags, UF_FULL)) {
+    if (GET_FLAG(link->link_flags, LF_RECV)
+    &&  !GET_FLAG(link->user_flags, UF_FULL)
+    &&  !GET_FLAG(link->link_flags, LF_VALD)) {
         CLR_FLAG(link->link_flags, LF_RECV);
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
         SET_FLAG(link->link_flags, LF_VALD);
@@ -377,11 +387,13 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 
     // update flags
     if (!GET_FLAG(link->link_flags, LF_SEND)
+    &&  GET_FLAG(link->link_flags, LF_FULL)
     &&  !GET_FLAG(link->user_flags, UF_VALD)) {
         CLR_FLAG(link->link_flags, LF_FULL);
         LOG_TRACE("outbound FULL cleared.\n");
     }
-    if (GET_FLAG(link->user_flags, UF_FULL)) {
+    if (GET_FLAG(link->user_flags, UF_FULL)
+    &&  GET_FLAG(link->link_flags, LF_VALD)) {
         CLR_FLAG(link->link_flags, LF_VALD);
         LOG_TRACE("inbound VALD cleared.\n");
     }
