@@ -29,16 +29,8 @@
 static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
 static int link_map_fd;
 
-#define ob_full(link)          GET_FLAG(link->link_flags, LF_FULL)
-#define ob_valid(link)         GET_FLAG(link->user_flags, UF_VALD)
-#define ob_set_valid(link)     SET_FLAG(link->user_flags, UF_VALD)
-#define ob_clr_valid(link)     CLR_FLAG(link->user_flags, UF_VALD)
 #define copy_payload(dst,src)  memcpy((dst), (src), MAX_PAYLOAD)
 #define clear_payload(dst)     memset((dst), null, MAX_PAYLOAD)
-#define ib_valid(link)         GET_FLAG(link->link_flags, LF_VALD)
-#define ib_full(link)          GET_FLAG(link->user_flags, UF_FULL)
-#define ib_set_full(link)      SET_FLAG(link->user_flags, UF_FULL)
-#define ib_clr_full(link)      CLR_FLAG(link->user_flags, UF_FULL)
 
 int
 read_link_map(__u32 key, link_state_t *link)
@@ -320,16 +312,20 @@ reader(int if_index)  // read AIT data (and display it)
 
     for (;;) {
 
+        // delay between reads
+        usleep(10000);  // 0.01 second = 10,000 microseconds
+
         // get link state
         if (read_link_map(if_index, link) < 0) {
             perror("read_link_map() failed");
             return -1;  // failure
         }
 
-        if (ib_valid(link) && !ib_full(link)) {  // ait available
+        if (GET_FLAG(link->link_flags, LF_VALD)
+        &&  !GET_FLAG(link->user_flags, UF_FULL)) {  // ait available
 
             // update link state
-            ib_set_full(link);
+            SET_FLAG(link->user_flags, UF_FULL);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
@@ -340,10 +336,11 @@ reader(int if_index)  // read AIT data (and display it)
             fprintf(stderr, "inbound AIT:\n");
             hexdump(stderr, link->inbound, MAX_PAYLOAD);
 
-        } else if (!ib_valid(link) && ib_full(link)) {
+        } else if (!GET_FLAG(link->link_flags, LF_VALD)
+               &&  GET_FLAG(link->user_flags, UF_FULL)) {
 
             // clear link state
-            ib_clr_full(link);
+            CLR_FLAG(link->user_flags, UF_FULL);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
@@ -364,13 +361,17 @@ writer(int if_index)  // write AIT data (from console)
 
     for (;;) {
 
+        // delay between writes
+        usleep(10000);  // 0.01 second = 10,000 microseconds
+
         // get link state
         if (read_link_map(if_index, link) < 0) {
             perror("read_link_map() failed");
             return -1;  // failure
         }
 
-        if (!ob_full(link) && !ob_valid(link)) {  // space available
+        if (!GET_FLAG(link->link_flags, LF_FULL)
+        &&  !GET_FLAG(link->user_flags, UF_VALD)) {  // space available
 
             // get data from console
             clear_payload(link->outbound);
@@ -387,17 +388,18 @@ writer(int if_index)  // write AIT data (from console)
             hexdump(stderr, link->outbound, MAX_PAYLOAD);
 
             // send AIT
-            ob_set_valid(link);
+            SET_FLAG(link->user_flags, UF_VALD);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
             DEBUG(fprintf(stderr, "outbound VALD set.\n"));
 
-        } else if (ob_full(link) && ob_valid(link)) {  // transfer in progress
+        } else if (GET_FLAG(link->link_flags, LF_FULL)
+               &&  GET_FLAG(link->user_flags, UF_VALD)) {  // AIT in progress
 
             // clear link state
-            ob_clr_valid(link);
+            CLR_FLAG(link->user_flags, UF_VALD);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure

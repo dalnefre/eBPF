@@ -11,7 +11,7 @@
 #include "../include/code.h"
 #include "../include/link.h"
 
-#define PERMISSIVE   0  // allow non-protocol frames to pass through
+#define PERMISSIVE   1  // allow non-protocol frames to pass through
 #define LOG_LEVEL    1  // log level (0=none, 1=info, 2=debug, 3=trace)
 
 #ifndef __inline
@@ -105,14 +105,8 @@ mac_is_bcast(void *mac)
     return ((b[0] & b[1] & b[2] & b[3] & b[4] & b[5]) == 0xFF);
 }
 
-#define ob_valid(link)         GET_FLAG(link->user_flags, UF_VALD)
-#define ob_set_full(link)      SET_FLAG(link->link_flags, LF_FULL)
-#define ob_clr_full(link)      CLR_FLAG(link->link_flags, LF_FULL)
 #define copy_payload(dst,src)  memcpy((dst), (src), MAX_PAYLOAD)
 #define clear_payload(dst)     memset((dst), null, MAX_PAYLOAD)
-#define ib_full(link)          GET_FLAG(link->user_flags, UF_FULL)
-#define ib_set_valid(link)     SET_FLAG(link->link_flags, LF_VALD)
-#define ib_clr_valid(link)     CLR_FLAG(link->link_flags, LF_VALD)
 
 static int
 outbound_AIT(link_state_t *link)
@@ -123,9 +117,10 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if (!GET_FLAG(link->link_flags, LF_SEND) && ob_valid(link)) {
+    if (!GET_FLAG(link->link_flags, LF_SEND)
+    &&  GET_FLAG(link->user_flags, UF_VALD)) {
         SET_FLAG(link->link_flags, LF_SEND);
-        ob_set_full(link);
+        SET_FLAG(link->link_flags, LF_FULL);
         copy_payload(link->frame + ETH_HLEN + 2, link->outbound);
         link->len = MAX_PAYLOAD;
         LOG_INFO("outbound_AIT (%u octets)\n", link->len);
@@ -143,7 +138,7 @@ clear_AIT(link_state_t *link)
     and clear AIT-in-progress flags
 */
     CLR_FLAG(link->link_flags, LF_SEND);
-    if (ob_valid(link)) {
+    if (GET_FLAG(link->user_flags, UF_VALD)) {
         LOG_WARN("clear_AIT: outbound VALID still set!\n");
     }
     LOG_INFO("clear_AIT (%u octets)\n", link->len);
@@ -179,10 +174,10 @@ release_AIT(link_state_t *link)
     copy the data from the link buffer
     and clear AIT-in-progress flags
 */
-    if (!ib_full(link)) {
+    if (!GET_FLAG(link->user_flags, UF_FULL)) {
         CLR_FLAG(link->link_flags, LF_RECV);
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
-        ib_set_valid(link);
+        SET_FLAG(link->link_flags, LF_VALD);
         LOG_INFO("release_AIT (%u octets)\n", link->len);
         HEX_INFO(link->inbound, link->len);
         return 1;  // AIT released
@@ -382,12 +377,12 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 
     // update flags
     if (!GET_FLAG(link->link_flags, LF_SEND)
-    &&  !ob_valid(link)) {
-        ob_clr_full(link);
+    &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+        CLR_FLAG(link->link_flags, LF_FULL);
         LOG_TRACE("outbound FULL cleared.\n");
     }
-    if (ib_full(link)) {
-        ib_clr_valid(link);
+    if (GET_FLAG(link->user_flags, UF_FULL)) {
+        CLR_FLAG(link->link_flags, LF_VALD);
         LOG_TRACE("inbound VALD cleared.\n");
     }
 
