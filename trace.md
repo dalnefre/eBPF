@@ -218,3 +218,114 @@ recv: proto=0xda1e len=60 rc=3
 0030:  ff ff ff ff ff ff ff ff  ff ff ff ff              |............    |
 frame 8 exceeded limit
 ```
+
+## Basic AIT
+
+### Steady State
+
+In the steady state,
+the endpoints are exchanging
+empty frames (_Ping_/_Pong_).
+All `VALD`/`FULL` flags are `false`.
+
+```javascript
+{
+  "outbound":"...",
+  "user_flags":{ ..., "VALD":false, "FULL":false },
+  "inbound":"...",
+  "link_flags":{ ..., "VALD":false, "FULL":false, ... },
+  "frame":[ ..., 218, 30, 138, 128, ... ],
+  "i":1, "u":2, "len":0,
+  "seq":1002
+}
+```
+
+### Outbound AIT
+
+When `link_flags.FULL == false`
+and the user has data to send,
+it fills the `outbound` buffer
+and sets `user_flags.VALD = true`.
+
+```javascript
+{
+  "outbound":"\u0008\u0083Hi\n...",
+  "user_flags":{ ..., "VALD":true, ... },
+  "inbound":"...",
+  "link_flags":{ ..., "FULL":false, ... },
+  ...
+}
+```
+
+When the sending endpoint receives an empty frame
+and `user_flags.VALD == true`,
+it sets `link_flags.FULL = true`
+and starts the AIT handshake with _GotAIT_.
+
+```javascript
+{
+  "outbound":"\u0008\u0083Hi\n...",
+  "user_flags":{ ..., "VALD":true, ... },
+  "inbound":"...",
+  "link_flags":{ ..., "FULL":true, ... },
+  "frame":[ ... ],
+  "i":1, "u":3, "len":>0,
+  "seq":1003
+}
+```
+
+After the AIT handshake (_GotAIT_, _AckAIT_, _AckAck_),
+if the receiving endpoint has room
+(i.e.: `(user_flags.FULL == false) && (link_flags.VALD == false)`),
+if fills the `inbound` buffer
+and sets `link_flags.VALD = true`,
+completing the AIT handshake with _Proceed_.
+
+```javascript
+{
+  "outbound":"...",
+  "user_flags":{ ..., "FULL":false },
+  "inbound":"\u0008\u0083Hi\n...",
+  "link_flags":{ ..., "VALD":true, ... },
+  "frame":[ ... ],
+  "i":5, "u":6, "len":>0,
+  "seq":1005
+}
+```
+
+When the sending endpoint receives _Proceed_,
+the AIT transfer is complete.
+If `user_flags.VALD == false`,
+then it sets `link_flags.FULL = false`.
+Otherwise we note that the transfer is complete,
+and wait for the user to set `user_flags.VALD = false`.
+
+```javascript
+{
+  "outbound":"...",
+  "user_flags":{ ..., "VALD":false, ... },
+  "inbound":"...",
+  "link_flags":{ ..., "FULL":false, ... },
+  "frame":[ ... ],
+  "i":6, "u":2, "len":0,
+  "seq":1007
+}
+```
+
+When the receiving user sees `link_flags.VALD == true`,
+it copies the data from `inbound`
+and sets `user_flags.FULL = true`.
+
+```javascript
+{
+  "outbound":"...",
+  "user_flags":{ ..., "FULL":true },
+  "inbound":"\u0008\u0083Hi\n...",
+  "link_flags":{ ..., "VALD":true, ... },
+}
+```
+
+When the receiving endpoint sees
+the user has the data
+(i.e.: `(user_flags.FULL == true) && (link_flags.VALD == true)`),
+it sets `link_flags.VALD = false`.
