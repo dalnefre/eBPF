@@ -21,6 +21,9 @@ $(function () {
                 }
                 return true;
             },
+            get empty() {
+                return !this.full;
+            },
             set valid(set) {
                 if (link.data) {
                     if (set && !this.full) {
@@ -70,6 +73,12 @@ $(function () {
                     return link.data.link_state.user_flags.FULL;
                 }
                 return false;
+            },
+            set empty(set) {
+                this.full = !set;
+            },
+            get empty() {
+                return !this.full;
             },
             get data() {
                 if (link.data && this.valid) {
