@@ -732,7 +732,7 @@ json_content(int req_num)
     if ((link_map_fd < 0)
     ||  (read_link_map(if_index, link) < 0)) {
         printf(",");
-        printf("\"error\":\"%s\"", "Map Unavailable");
+        printf("\"error\":\"%s\"", "Failed Reading Link Map");
     } else {
 
         json_query(link, getenv("QUERY_STRING"));
@@ -743,8 +743,14 @@ json_content(int req_num)
 
     }
 
-    int new = (__s32)pkt_count;  // get new packet count
-    json_info(old, new);
+    // update link_state structure
+    if (write_link_map(if_index, link) < 0) {
+        printf(",");
+        printf("\"error\":\"%s\"", "Failed Writing Link Map");
+    } else {
+        int new = (__s32)pkt_count;  // get new packet count
+        json_info(old, new);
+    }
 
     printf("}\n");
 }

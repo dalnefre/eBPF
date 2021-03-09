@@ -1,5 +1,111 @@
 # Execution Traces
 
+## A=link_user/link_kern, B=link_fcgi/link_kern
+
+### Betty
+
+```
+$ sudo cat /sys/kernel/debug/tracing/trace_pipe
+           <...>-5071  [000] ..s. 3378959.089444: 0: outbound_AIT: setting LF_SEND + LF_FULL
+           <...>-5071  [000] ..s. 3378959.089461: 0: outbound_AIT (44 octets)
+           <...>-5071  [000] ..s. 3378959.089466: 0: [44] 88141ffffffffff ffffffffffffffff
+           <...>-16888 [000] ..s. 3378959.089651: 0: on_frame_recv: (Got_AIT, Ack_AIT) len=44
+           <...>-16835 [000] ..s. 3378959.089845: 0: on_frame_recv: (Ack_Ack, Proceed) len=44
+            sshd-16835 [000] ..s. 3378959.089855: 0: clear_AIT: setting !LF_SEND
+            sshd-16835 [000] ..s. 3378959.089914: 0: clear_AIT: outbound VALID still set!
+           nginx-5071  [000] ..s. 3378977.800926: 0: on_frame_recv: setting !LF_FULL
+           nginx-5071  [000] ..s. 3378979.808480: 0: outbound_AIT: setting LF_SEND + LF_FULL
+           nginx-5071  [000] ..s. 3378979.808498: 0: outbound_AIT (44 octets)
+           nginx-5071  [000] ..s. 3378979.808503: 0: [44] 88149ffffffffff ffffffffffffffff
+       link_fcgi-16888 [000] ..s. 3378979.808686: 0: on_frame_recv: (Got_AIT, Ack_AIT) len=44
+           nginx-5071  [000] .ns. 3378979.808869: 0: on_frame_recv: (Ack_Ack, Proceed) len=44
+           nginx-5071  [000] .ns. 3378979.808877: 0: clear_AIT: setting !LF_SEND
+           nginx-5071  [000] .ns. 3378979.808880: 0: clear_AIT: outbound VALID still set!
+           nginx-5071  [000] ..s. 3378981.806033: 0: on_frame_recv: setting !LF_FULL
+       link_fcgi-16888 [000] ..s. 3378983.810656: 0: outbound_AIT: setting LF_SEND + LF_FULL
+       link_fcgi-16888 [000] ..s. 3378983.810673: 0: outbound_AIT (44 octets)
+       link_fcgi-16888 [000] ..s. 3378983.810677: 0: [44] 88154ffffffffff ffffffffffffffff
+       link_fcgi-16888 [000] ..s. 3378983.810864: 0: on_frame_recv: (Got_AIT, Ack_AIT) len=44
+           nginx-5071  [000] ..s1 3378983.811063: 0: on_frame_recv: (Ack_Ack, Proceed) len=44
+           nginx-5071  [000] ..s1 3378983.811066: 0: clear_AIT: setting !LF_SEND
+           nginx-5071  [000] ..s1 3378983.811069: 0: clear_AIT: outbound VALID still set!
+           nginx-5071  [000] ..s. 3378985.807118: 0: on_frame_recv: setting !LF_FULL
+```
+
+### Archie
+
+```
+$ sudo XDP/link_user eth0
+LINK_STATE [2]
+outbound[44] =
+0000:  08 8c 41 6d 20 49 20 41  6c 69 63 65 3f 0a 00 ff  |..Am I Alice?...|
+0010:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0020:  ff ff ff ff ff ff ff ff  ff ff ff ff              |............    |
+user_flags = 0x00000000 (-s-e)
+inbound[44] =
+0000:  08 82 3f 0a 00 ff ff ff  ff ff ff ff ff ff ff ff  |..?.............|
+0010:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0020:  ff ff ff ff ff ff ff ff  ff ff ff ff              |............    |
+link_flags = 0x00000005 (----e&-A)
+frame[64] =
+0000:  dc a6 32 67 7e a7 b8 27  eb f3 5a d2 da 1e 8a 80  |..2g~..'..Z.....|
+0010:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0020:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0030:  ff ff ff ff ff ff ff ff  ff ff ff ff 00 00 00 00  |................|
+i,u = (1,2)
+len = 0
+seq = 0x7afb5419
+monitor pid=5801
+reader pid=5802
+writer pid=5803
+inbound FULL set.
+inbound AIT:
+0000:  08 81 41 ff ff ff ff ff  ff ff ff ff ff ff ff ff  |..A.............|
+0010:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0020:  ff ff ff ff ff ff ff ff  ff ff ff ff              |............    |
+inbound FULL cleared.
+inbound FULL set.
+inbound AIT:
+0000:  08 81 49 ff ff ff ff ff  ff ff ff ff ff ff ff ff  |..I.............|
+0010:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0020:  ff ff ff ff ff ff ff ff  ff ff ff ff              |............    |
+inbound FULL cleared.
+inbound FULL set.
+inbound AIT:
+0000:  08 81 54 ff ff ff ff ff  ff ff ff ff ff ff ff ff  |..T.............|
+0010:  ff ff ff ff ff ff ff ff  ff ff ff ff ff ff ff ff  |................|
+0020:  ff ff ff ff ff ff ff ff  ff ff ff ff              |............    |
+inbound FULL cleared.
+^Cparent exit.
+
+$ sudo cat /sys/kernel/debug/tracing/trace_pipe
+          <idle>-0     [000] ..s. 3378928.964093: 0: on_frame_recv: (Pong, Got_AIT) len=44
+          <idle>-0     [000] ..s. 3378928.964104: 0: inbound_AIT (44 octets)
+          <idle>-0     [000] ..s. 3378928.964106: 0: inbound_AIT: setting LF_RECV
+          <idle>-0     [000] ..s. 3378928.964277: 0: on_frame_recv: (Ack_AIT, Ack_Ack) len=44
+          <idle>-0     [000] ..s. 3378928.964279: 0: release_AIT: setting !LF_RECV + LF_VALD
+          <idle>-0     [000] ..s. 3378928.964283: 0: release_AIT (44 octets)
+          <idle>-0     [000] ..s. 3378928.964287: 0: [44] 88141ffffffffff ffffffffffffffff
+          <idle>-0     [000] ..s. 3378928.964882: 0: on_frame_recv: setting !LF_VALD
+          <idle>-0     [000] ..s. 3378949.682879: 0: on_frame_recv: (Pong, Got_AIT) len=44
+          <idle>-0     [000] ..s. 3378949.682886: 0: inbound_AIT (44 octets)
+          <idle>-0     [000] ..s. 3378949.682889: 0: inbound_AIT: setting LF_RECV
+          <idle>-0     [000] ..s. 3378949.683064: 0: on_frame_recv: (Ack_AIT, Ack_Ack) len=44
+          <idle>-0     [000] ..s. 3378949.683066: 0: release_AIT: setting !LF_RECV + LF_VALD
+          <idle>-0     [000] ..s. 3378949.683070: 0: release_AIT (44 octets)
+          <idle>-0     [000] ..s. 3378949.683074: 0: [44] 88149ffffffffff ffffffffffffffff
+          <idle>-0     [000] ..s. 3378949.683938: 0: on_frame_recv: setting !LF_VALD
+          <idle>-0     [000] ..s. 3378953.685006: 0: on_frame_recv: (Pong, Got_AIT) len=44
+          <idle>-0     [000] ..s. 3378953.685012: 0: inbound_AIT (44 octets)
+          <idle>-0     [000] ..s. 3378953.685014: 0: inbound_AIT: setting LF_RECV
+          <idle>-0     [000] ..s. 3378953.685189: 0: on_frame_recv: (Ack_AIT, Ack_Ack) len=44
+          <idle>-0     [000] ..s. 3378953.685191: 0: release_AIT: setting !LF_RECV + LF_VALD
+          <idle>-0     [000] ..s. 3378953.685195: 0: release_AIT (44 octets)
+          <idle>-0     [000] ..s. 3378953.685199: 0: [44] 88154ffffffffff ffffffffffffffff
+          <idle>-0     [000] ..s. 3378953.695035: 0: on_frame_recv: setting !LF_VALD
+```
+
+
 ## A=XDP, B=proto
 
 ### Alice
