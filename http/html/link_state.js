@@ -111,6 +111,7 @@ $(function () {
     let jqXHRfail = function (jqXHR, textStatus, errorThrown) {
        console.log('jqXHRfail!', textStatus, errorThrown);
     };
+    var message = '';  // outbound message buffer
     let update = function (data) {
         $raw_data.text(JSON.stringify(data, null, 2));
         link.data = data;
@@ -129,10 +130,11 @@ $(function () {
         }
         if (!link.snk.full && !link.snk.valid) {  // outbound AIT
             if ($send.prop('disabled')) {
-                var out = $outbound.val();
+                var out = message;
                 if ((typeof out === 'string') && (out.length > 0)) {
                     // there is data ready to send...
-                    $outbound.val(out.slice(1));  // remove first character
+                    message = out.slice(1);  // remove first character
+                    $outbound.val(message);
                     out = String.fromCodePoint(0x08)  // raw octets
                         + String.fromCodePoint(0x80 + 1)  // length = 1
                         + out.charAt(0);  // first character of output
@@ -212,9 +214,8 @@ $(function () {
     });
 
     $send.click(function (e) {
+        message = $outbound.val() + '\n';  // add newline to outbound message
         $send.prop('disabled', true);
-        var out = $outbound.val();
-        $outbound.val(out + '\n');  // add newline to outbound message
     });
 
     $('#debug').click(function (e) {
