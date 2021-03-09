@@ -25,6 +25,7 @@
 /* always print warnings and errors */
 #define LOG_WARN(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
+#define LOG_TEMP(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 
 #define LOG_PRINT(level, fmt, ...)  bpf_printk((fmt), ##__VA_ARGS__)
 #define MAC_PRINT(level, tag, mac)  /* FIXME: NOT IMPLEMENTED */
@@ -117,9 +118,15 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
+    if (!GET_FLAG(link->user_flags, UF_VALD)) {
+        return 0;  // no AIT (skip logging)
+    }
+//    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
+//        link->user_flags, link->link_flags);
     if (!GET_FLAG(link->link_flags, LF_SEND)
     &&  !GET_FLAG(link->link_flags, LF_FULL)
     &&  GET_FLAG(link->user_flags, UF_VALD)) {
+        LOG_TEMP("outbound_AIT: setting LF_SEND + LF_FULL\n");
         SET_FLAG(link->link_flags, LF_SEND);
         SET_FLAG(link->link_flags, LF_FULL);
         copy_payload(link->frame + ETH_HLEN + 2, link->outbound);
@@ -139,9 +146,11 @@ clear_AIT(link_state_t *link)
     and clear AIT-in-progress flags
 */
     if (GET_FLAG(link->link_flags, LF_SEND)) {
+        LOG_TEMP("clear_AIT: setting !LF_SEND\n");
         CLR_FLAG(link->link_flags, LF_SEND);
         if (GET_FLAG(link->link_flags, LF_FULL)
         &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+            LOG_TEMP("clear_AIT: setting !LF_FULL\n");
             CLR_FLAG(link->link_flags, LF_FULL);
             LOG_INFO("clear_AIT (%u octets)\n", link->len);
         } else {
@@ -166,6 +175,7 @@ inbound_AIT(link_state_t *link, __u8 *payload)
     LOG_INFO("inbound_AIT (%u octets)\n", link->len);
     if (!GET_FLAG(link->link_flags, LF_RECV)
     &&  (link->len > 0)) {
+        LOG_TEMP("inbound_AIT: setting LF_RECV\n");
         SET_FLAG(link->link_flags, LF_RECV);
         copy_payload(link->frame + ETH_HLEN + 2, payload);
         return 1;  // success
@@ -185,6 +195,7 @@ release_AIT(link_state_t *link)
     if (GET_FLAG(link->link_flags, LF_RECV)
     &&  !GET_FLAG(link->user_flags, UF_FULL)
     &&  !GET_FLAG(link->link_flags, LF_VALD)) {
+        LOG_TEMP("release_AIT: setting !LF_RECV + LF_VALD\n");
         CLR_FLAG(link->link_flags, LF_RECV);
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
         SET_FLAG(link->link_flags, LF_VALD);
@@ -232,6 +243,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                 return XDP_DROP;  // unexpected payload
             }
             link->seq = 0;
+            LOG_TEMP("on_frame_recv: clearing LF_* + UF_*\n");
             link->link_flags = 0;
             link->user_flags = 0;
             if (mac_is_bcast(dst)) {
@@ -316,6 +328,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         }
         case PROTO(Ping, Got_AIT) : {
             link->len = len;
+            LOG_TEMP("on_frame_recv: (Ping, Got_AIT) len=%d\n", len);
             if (inbound_AIT(link, data + ETH_HLEN + 2)) {
                 link->u = Ack_AIT;
             } else {
@@ -324,12 +337,14 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Ping) : {  // reverse
+            LOG_TEMP("on_frame_recv: clearing LF_SEND (rev Ping)\n");
             CLR_FLAG(link->link_flags, LF_SEND);
             link->u = Pong;  // give the other end a chance to send
             break;
         }
         case PROTO(Pong, Got_AIT) : {
             link->len = len;
+            LOG_TEMP("on_frame_recv: (Pong, Got_AIT) len=%d\n", len);
             if (inbound_AIT(link, data + ETH_HLEN + 2)) {
                 link->u = Ack_AIT;
             } else {
@@ -338,16 +353,19 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Pong) : {  // reverse
+            LOG_TEMP("on_frame_recv: clearing LF_SEND (rev Pong)\n");
             CLR_FLAG(link->link_flags, LF_SEND);
             link->u = Ping;  // give the other end a chance to send
             break;
         }
         case PROTO(Got_AIT, Ack_AIT) : {
             link->len = len;
+            LOG_TEMP("on_frame_recv: (Got_AIT, Ack_AIT) len=%d\n", len);
             link->u = Ack_Ack;
             break;
         }
         case PROTO(Ack_AIT, Got_AIT) : {  // reverse
+            LOG_TEMP("on_frame_recv: clearing LF_RECV (rev Got_AIT)\n");
             CLR_FLAG(link->link_flags, LF_RECV);
             if (GET_FLAG(link->link_flags, LF_ID_B)) {
                 link->u = Ping;
@@ -358,19 +376,23 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         }
         case PROTO(Ack_AIT, Ack_Ack) : {
             link->len = len;
+            LOG_TEMP("on_frame_recv: (Ack_AIT, Ack_Ack) len=%d\n", len);
             if (release_AIT(link)) {
                 link->u = Proceed;
             } else {
+                LOG_TEMP("on_frame_recv: release failed, reversing!\n");
                 link->u = Ack_AIT;  // reverse
             }
             break;
         }
         case PROTO(Ack_Ack, Ack_AIT) : {  // reverse
+            LOG_TEMP("on_frame_recv: reverse Ack_AIT\n");
             link->u = Got_AIT;
             break;
         }
         case PROTO(Ack_Ack, Proceed) : {
             link->len = len;
+            LOG_TEMP("on_frame_recv: (Ack_Ack, Proceed) len=%d\n", len);
             clear_AIT(link);
             if (GET_FLAG(link->link_flags, LF_ID_B)) {
                 link->u = Ping;
@@ -389,11 +411,13 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     if (!GET_FLAG(link->link_flags, LF_SEND)
     &&  GET_FLAG(link->link_flags, LF_FULL)
     &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+        LOG_TEMP("on_frame_recv: setting !LF_FULL\n");
         CLR_FLAG(link->link_flags, LF_FULL);
         LOG_TRACE("outbound FULL cleared.\n");
     }
     if (GET_FLAG(link->user_flags, UF_FULL)
     &&  GET_FLAG(link->link_flags, LF_VALD)) {
+        LOG_TEMP("on_frame_recv: setting !LF_VALD\n");
         CLR_FLAG(link->link_flags, LF_VALD);
         LOG_TRACE("inbound VALD cleared.\n");
     }
