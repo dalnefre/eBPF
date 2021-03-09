@@ -25,7 +25,8 @@
 /* always print warnings and errors */
 #define LOG_WARN(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
-#define LOG_TEMP(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
+//#define LOG_TEMP(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
+#define LOG_TEMP(fmt, ...)  /* REMOVED */
 
 #define LOG_PRINT(level, fmt, ...)  bpf_printk((fmt), ##__VA_ARGS__)
 #define MAC_PRINT(level, tag, mac)  /* FIXME: NOT IMPLEMENTED */
