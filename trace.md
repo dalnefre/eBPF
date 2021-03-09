@@ -242,7 +242,8 @@ All `VALD`/`FULL` flags are `false`.
 
 ### Outbound AIT
 
-When `link_flags.FULL == false`
+When the link is ready for more data
+(i.e.: `(link_flags.FULL == false) && (user_flags.VALD == false)`),
 and the user has data to send,
 it fills the `outbound` buffer
 and sets `user_flags.VALD = true`.
@@ -322,6 +323,7 @@ and sets `user_flags.FULL = true`.
   "user_flags":{ ..., "FULL":true },
   "inbound":"\u0008\u0083Hi\n...",
   "link_flags":{ ..., "VALD":true, ... },
+  ...
 }
 ```
 
