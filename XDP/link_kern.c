@@ -119,14 +119,10 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if (!GET_FLAG(link->user_flags, UF_VALD)) {
-        return 0;  // no AIT (skip logging)
-    }
+    if (GET_FLAG(link->user_flags, UF_VALD)
+    ||  GET_FLAG(link->link_flags, LF_FULL)) {
 //    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
 //        link->user_flags, link->link_flags);
-    if (!GET_FLAG(link->link_flags, LF_SEND)
-    &&  !GET_FLAG(link->link_flags, LF_FULL)
-    &&  GET_FLAG(link->user_flags, UF_VALD)) {
         LOG_TEMP("outbound_AIT: setting LF_SEND + LF_FULL\n");
         SET_FLAG(link->link_flags, LF_SEND);
         SET_FLAG(link->link_flags, LF_FULL);
@@ -137,32 +133,6 @@ outbound_AIT(link_state_t *link)
         return 1;  // send AIT
     }
     return 0;  // no AIT
-}
-
-static int
-clear_AIT(link_state_t *link)
-{
-/*
-    acknowlege successful AIT
-    and clear AIT-in-progress flags
-*/
-    if (GET_FLAG(link->link_flags, LF_SEND)) {
-        LOG_TEMP("clear_AIT: setting !LF_SEND\n");
-        CLR_FLAG(link->link_flags, LF_SEND);
-        if (GET_FLAG(link->link_flags, LF_FULL)
-        &&  !GET_FLAG(link->user_flags, UF_VALD)) {
-            LOG_TEMP("clear_AIT: setting !LF_FULL\n");
-            CLR_FLAG(link->link_flags, LF_FULL);
-            LOG_INFO("clear_AIT (%u octets)\n", link->len);
-        } else {
-            LOG_WARN("clear_AIT: outbound VALID still set!\n");
-        }
-    } else {
-        LOG_WARN("clear_AIT: outbound SEND not set!\n");
-    }
-    link->len = 0;
-    return 1;  // success
-//    return 0;  // failure
 }
 
 static int
@@ -208,6 +178,32 @@ release_AIT(link_state_t *link)
 }
 
 static int
+clear_AIT(link_state_t *link)
+{
+/*
+    acknowlege successful AIT
+    and clear AIT-in-progress flags
+*/
+    if (GET_FLAG(link->link_flags, LF_SEND)) {
+        LOG_TEMP("clear_AIT: setting !LF_SEND\n");
+        CLR_FLAG(link->link_flags, LF_SEND);
+        if (GET_FLAG(link->link_flags, LF_FULL)
+        &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+            LOG_TEMP("clear_AIT: setting !LF_FULL\n");
+            CLR_FLAG(link->link_flags, LF_FULL);
+            LOG_INFO("clear_AIT (%u octets)\n", link->len);
+        } else {
+            LOG_WARN("clear_AIT: outbound VALID still set!\n");
+        }
+    } else {
+        LOG_WARN("clear_AIT: outbound SEND not set!\n");
+    }
+    link->len = 0;
+    return 1;  // success
+//    return 0;  // failure
+}
+
+static int
 on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
 {
     protocol_t i;
@@ -235,6 +231,21 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     MAC_TRACE("src = ", src);
     LOG_TRACE("len = %d\n", len);
     link->len = 0;
+
+    // update async flags
+    if (!GET_FLAG(link->link_flags, LF_SEND)
+    &&  GET_FLAG(link->link_flags, LF_FULL)
+    &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+        LOG_TEMP("on_frame_recv: setting !LF_FULL\n");
+        CLR_FLAG(link->link_flags, LF_FULL);
+        LOG_TRACE("outbound FULL cleared.\n");
+    }
+    if (GET_FLAG(link->user_flags, UF_FULL)
+    &&  GET_FLAG(link->link_flags, LF_VALD)) {
+        LOG_TEMP("on_frame_recv: setting !LF_VALD\n");
+        CLR_FLAG(link->link_flags, LF_VALD);
+        LOG_TRACE("inbound VALD cleared.\n");
+    }
 
     // protocol state machine
     switch (proto) {
@@ -406,21 +417,6 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             LOG_ERROR("Bad state (%u,%u)\n", i, u);
             return XDP_DROP;  // bad state
         }
-    }
-
-    // update flags
-    if (!GET_FLAG(link->link_flags, LF_SEND)
-    &&  GET_FLAG(link->link_flags, LF_FULL)
-    &&  !GET_FLAG(link->user_flags, UF_VALD)) {
-        LOG_TEMP("on_frame_recv: setting !LF_FULL\n");
-        CLR_FLAG(link->link_flags, LF_FULL);
-        LOG_TRACE("outbound FULL cleared.\n");
-    }
-    if (GET_FLAG(link->user_flags, UF_FULL)
-    &&  GET_FLAG(link->link_flags, LF_VALD)) {
-        LOG_TEMP("on_frame_recv: setting !LF_VALD\n");
-        CLR_FLAG(link->link_flags, LF_VALD);
-        LOG_TRACE("inbound VALD cleared.\n");
     }
 
     // construct reply frame
