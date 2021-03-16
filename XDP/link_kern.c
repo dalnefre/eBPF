@@ -120,7 +120,7 @@ outbound_AIT(link_state_t *link)
     and set AIT-in-progress flags
 */
     if (GET_FLAG(link->user_flags, UF_VALD)
-    ||  GET_FLAG(link->link_flags, LF_FULL)) {
+    ||  GET_FLAG(link->link_flags, LF_SEND)) {
 //    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
 //        link->user_flags, link->link_flags);
         LOG_TEMP("outbound_AIT: setting LF_SEND + LF_FULL\n");
@@ -166,8 +166,7 @@ release_AIT(link_state_t *link)
     if (GET_FLAG(link->link_flags, LF_RECV)
     &&  !GET_FLAG(link->user_flags, UF_FULL)
     &&  !GET_FLAG(link->link_flags, LF_VALD)) {
-        LOG_TEMP("release_AIT: setting !LF_RECV + LF_VALD\n");
-        CLR_FLAG(link->link_flags, LF_RECV);
+        LOG_TEMP("release_AIT: setting LF_VALD\n");
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
         SET_FLAG(link->link_flags, LF_VALD);
         LOG_INFO("release_AIT (%u octets)\n", link->len);
@@ -241,10 +240,12 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         LOG_TRACE("outbound FULL cleared.\n");
     }
     if (GET_FLAG(link->user_flags, UF_FULL)
+    &&  GET_FLAG(link->link_flags, LF_RECV)
     &&  GET_FLAG(link->link_flags, LF_VALD)) {
-        LOG_TEMP("on_frame_recv: setting !LF_VALD\n");
+        LOG_TEMP("on_frame_recv: setting !LF_VALD + !LF_RECV\n");
         CLR_FLAG(link->link_flags, LF_VALD);
-        LOG_TRACE("inbound VALD cleared.\n");
+        CLR_FLAG(link->link_flags, LF_RECV);
+        LOG_TRACE("inbound VALD + RECV cleared.\n");
     }
 
     // protocol state machine
@@ -349,8 +350,6 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Ping) : {  // reverse
-            LOG_TEMP("on_frame_recv: clearing LF_SEND (rev Ping)\n");
-            CLR_FLAG(link->link_flags, LF_SEND);
             link->u = Pong;  // give the other end a chance to send
             break;
         }
@@ -365,8 +364,6 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             break;
         }
         case PROTO(Got_AIT, Pong) : {  // reverse
-            LOG_TEMP("on_frame_recv: clearing LF_SEND (rev Pong)\n");
-            CLR_FLAG(link->link_flags, LF_SEND);
             link->u = Ping;  // give the other end a chance to send
             break;
         }
@@ -379,6 +376,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         case PROTO(Ack_AIT, Got_AIT) : {  // reverse
             LOG_TEMP("on_frame_recv: clearing LF_RECV (rev Got_AIT)\n");
             CLR_FLAG(link->link_flags, LF_RECV);
+            // FIXME: consider sending AIT, if we have data to send
             if (GET_FLAG(link->link_flags, LF_ID_B)) {
                 link->u = Ping;
             } else {
