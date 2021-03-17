@@ -12,7 +12,7 @@
 #include "../include/link.h"
 
 #define PERMISSIVE   1  // allow non-protocol frames to pass through
-#define LOG_LEVEL    1  // log level (0=none, 1=info, 2=debug, 3=trace)
+#define LOG_LEVEL    2  // log level (0=none, 1=info, 2=debug, 3=trace)
 
 #ifndef __inline
 #define __inline  inline __attribute__((always_inline))
@@ -124,9 +124,13 @@ outbound_AIT(link_state_t *link)
     ||  GET_FLAG(link->link_flags, LF_SEND)) {
 //    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
 //        link->user_flags, link->link_flags);
-        LOG_TEMP("outbound_AIT: setting LF_SEND + LF_FULL\n");
-        SET_FLAG(link->link_flags, LF_SEND);
-        SET_FLAG(link->link_flags, LF_FULL);
+        if (GET_FLAG(link->link_flags, LF_FULL)) {
+            LOG_TEMP("outbound_AIT: resending (LF_FULL)\n");
+        } else {
+            LOG_TEMP("outbound_AIT: setting LF_SEND + LF_FULL\n");
+            SET_FLAG(link->link_flags, LF_SEND);
+            SET_FLAG(link->link_flags, LF_FULL);
+        }
         copy_payload(link->frame + ETH_HLEN + 2, link->outbound);
         link->len = MAX_PAYLOAD;
         LOG_INFO("outbound_AIT (%u octets)\n", link->len);
@@ -144,8 +148,7 @@ inbound_AIT(link_state_t *link, __u8 *payload)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    LOG_INFO("inbound_AIT [%u] %llx\n", link->len,
-        __builtin_bswap64(((__u64 *)(link->frame + ETH_HLEN + 2))[0]));
+    LOG_INFO("inbound_AIT (%u octets)\n", link->len);
     if (!GET_FLAG(link->link_flags, LF_RECV)
     &&  (link->len > 0)) {
         LOG_TEMP("inbound_AIT: setting LF_RECV\n");
@@ -217,7 +220,11 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         return XDP_DROP;  // bad format
     }
     PARSE_PROTO(i, u, proto);
-    LOG_DEBUG("  (%u,%u) <--\n", i, u);
+    if ((i < Got_AIT) && (u < Got_AIT)) {
+        LOG_TRACE("  (%u,%u) <--\n", i, u);
+    } else {
+        LOG_DEBUG("  (%u,%u) <--\n", i, u);
+    }
     link->i = u;
 
     // parse payload length
@@ -426,7 +433,11 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     if (link->len == 0) {
         clear_payload(link->frame + ETH_HLEN + 2);
     }
-    LOG_DEBUG("  (%u,%u) #%u -->\n", link->i, link->u, link->seq);
+    if ((link->i < Got_AIT) && (link->u < Got_AIT)) {
+        LOG_TRACE("  (%u,%u) #%u -->\n", link->i, link->u, link->seq);
+    } else {
+        LOG_DEBUG("  (%u,%u) #%u -->\n", link->i, link->u, link->seq);
+    }
 
     return XDP_TX;  // send updated frame out on same interface
 }
