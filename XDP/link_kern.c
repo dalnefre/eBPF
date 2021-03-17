@@ -25,8 +25,8 @@
 /* always print warnings and errors */
 #define LOG_WARN(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
-//#define LOG_TEMP(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
-#define LOG_TEMP(fmt, ...)  /* REMOVED */
+#define LOG_TEMP(fmt, ...)  LOG_PRINT(0, (fmt), ##__VA_ARGS__)
+//#define LOG_TEMP(fmt, ...)  /* REMOVED */
 
 #define LOG_PRINT(level, fmt, ...)  bpf_printk((fmt), ##__VA_ARGS__)
 #define MAC_PRINT(level, tag, mac)  /* FIXME: NOT IMPLEMENTED */
@@ -119,7 +119,8 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if (GET_FLAG(link->user_flags, UF_VALD)
+    if ((GET_FLAG(link->user_flags, UF_VALD)
+      && !GET_FLAG(link->link_flags, LF_FULL))
     ||  GET_FLAG(link->link_flags, LF_SEND)) {
 //    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
 //        link->user_flags, link->link_flags);
@@ -143,7 +144,8 @@ inbound_AIT(link_state_t *link, __u8 *payload)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    LOG_INFO("inbound_AIT (%u octets)\n", link->len);
+    LOG_INFO("inbound_AIT [%u] %llx\n", link->len,
+        __builtin_bswap64(((__u64 *)(link->frame + ETH_HLEN + 2))[0]));
     if (!GET_FLAG(link->link_flags, LF_RECV)
     &&  (link->len > 0)) {
         LOG_TEMP("inbound_AIT: setting LF_RECV\n");
