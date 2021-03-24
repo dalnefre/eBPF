@@ -32,13 +32,22 @@ static char if_name[] = IF_NAME;
 static int if_index = -1;
 static int if_sock = -1;
 
+static const char *user_map_filename = "/sys/fs/bpf/xdp/globals/user_map";
+static int user_map_fd = -1;  // default: map unavailable
 static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
 static int link_map_fd = -1;  // default: map unavailable
 
 int
-init_link_map()
+init_ebpf_maps()
 {
     int rv;
+
+    rv = bpf_obj_get(user_map_filename);
+    if (rv < 0) {
+        perror("bpf_obj_get() failed");
+        return -1;  // failure
+    }
+    user_map_fd = rv;
 
     rv = bpf_obj_get(link_map_filename);
     if (rv < 0) {
@@ -46,7 +55,20 @@ init_link_map()
         return -1;  // failure
     }
     link_map_fd = rv;
+
     return 0;  // success
+}
+
+int
+read_user_map(__u32 key, user_state_t *user)
+{
+    return bpf_map_lookup_elem(user_map_fd, &key, user);
+}
+
+int
+write_user_map(__u32 key, user_state_t *user)
+{
+    return bpf_map_update_elem(user_map_fd, &key, user, BPF_ANY);
 }
 
 int
@@ -176,6 +198,44 @@ send_init_msg()
 }
 
 int
+html_user_state()
+{
+    int rv = 0;  // success
+
+    if (user_map_fd < 0) return -1;  // failure
+
+    // get user_state structure for this interface
+    user_state_t user_state;
+    user_state_t *user = &user_state;
+    rv = read_user_map(if_index, user);
+    if (rv < 0) return rv;  // failure
+
+    printf("<table>\n");
+    printf("<tr>"
+           "<th>Field</th>"
+           "<th>Value</th>"
+           "</tr>\n");
+
+    printf("<tr><td>%s</td><td><pre>", "outbound");
+    hexdump(stdout, user->outbound, 44);
+    printf("</pre></td></tr>\n");
+
+    printf("<tr><td>%s</td><td><tt>", "user_flags");
+    __u32 uf = user->user_flags;
+    printf("0x%08x (%c%c%c%c)",
+        uf,
+        '-',
+        (GET_FLAG(uf, UF_STOP) ? 'R' : 's'),
+        (GET_FLAG(uf, UF_VALD) ? 'V' : '-'),
+        (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'));
+    printf("</tt></td></tr>\n");
+
+    printf("</table>\n");
+
+    return rv;
+}
+
+int
 html_link_state()
 {
     int rv = 0;  // success
@@ -193,20 +253,6 @@ html_link_state()
            "<th>Field</th>"
            "<th>Value</th>"
            "</tr>\n");
-
-    printf("<tr><td>%s</td><td><pre>", "outbound");
-    hexdump(stdout, link->outbound, 44);
-    printf("</pre></td></tr>\n");
-
-    printf("<tr><td>%s</td><td><tt>", "user_flags");
-    __u32 uf = link->user_flags;
-    printf("0x%08x (%c%c%c%c)",
-        uf,
-        '-',
-        (GET_FLAG(uf, UF_STOP) ? 'R' : 's'),
-        (GET_FLAG(uf, UF_VALD) ? 'V' : '-'),
-        (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'));
-    printf("</tt></td></tr>\n");
 
     printf("<tr><td>%s</td><td><pre>", "inbound");
     hexdump(stdout, link->inbound, 44);
@@ -284,7 +330,7 @@ json_string(char *s, int n)
 static __u32 pkt_count = -1;  // packet counter value
 
 int
-json_link_state(link_state_t *link)
+json_link_state(user_state_t *user, link_state_t *link)
 {
     __u8 *bp;
 
@@ -292,12 +338,12 @@ json_link_state(link_state_t *link)
     printf("\n");
 
     printf("  \"outbound\":");
-    json_string((char *)link->outbound, MAX_PAYLOAD);
+    json_string((char *)user->outbound, MAX_PAYLOAD);
     printf(",");
     printf("\n");
  
     printf("  \"user_flags\":");
-    __u32 uf = link->user_flags;
+    __u32 uf = user->user_flags;
     printf("{");
     printf("\"STOP\":%s", (GET_FLAG(uf, UF_STOP) ? "true" : "false"));
     printf(",");
@@ -505,8 +551,10 @@ int
 html_query(char *query_string)
 {
     static char *name[] = {
-        "fmt",
         "id",
+        "fmt",
+        "VALD",
+        "FULL",
         NULL
     };
     int rv = 0;  // success
@@ -538,7 +586,7 @@ html_query(char *query_string)
 }
 
 int
-json_query(link_state_t *link, char *query_string)
+json_query(user_state_t *user, char *query_string)
 {
     char value[256];
     char *q;
@@ -553,27 +601,27 @@ json_query(link_state_t *link, char *query_string)
     q = query_string;
     n = get_uri_param(value, sizeof(value) - 1, &q, "FULL");
     if ((n == 4) && (strncmp(value, "true", 4) == 0)) {
-        SET_FLAG(link->user_flags, UF_FULL);
+        SET_FLAG(user->user_flags, UF_FULL);
     }
     if ((n == 5) && (strncmp(value, "false", 5) == 0)) {
-        CLR_FLAG(link->user_flags, UF_FULL);
+        CLR_FLAG(user->user_flags, UF_FULL);
     }
 
     // check for outbound VALD flag
     q = query_string;
     n = get_uri_param(value, sizeof(value) - 1, &q, "VALD");
     if ((n == 4) && (strncmp(value, "true", 4) == 0)) {
-        memset((char *)link->outbound, null, MAX_PAYLOAD);
+        memset((char *)user->outbound, null, MAX_PAYLOAD);
         q = query_string;
         n = get_uri_param(value, sizeof(value) - 1, &q, "DATA");
         if (n < 0) return -1;  // failure!
-        n = hex_to_octets((char *)link->outbound, MAX_PAYLOAD, value, n);
+        n = hex_to_octets((char *)user->outbound, MAX_PAYLOAD, value, n);
         if (n < 0) return -1;  // failure!
-        SET_FLAG(link->user_flags, UF_VALD);
+        SET_FLAG(user->user_flags, UF_VALD);
     }
     if ((n == 5) && (strncmp(value, "false", 5) == 0)) {
-        CLR_FLAG(link->user_flags, UF_VALD);
-        memset((char *)link->outbound, null, MAX_PAYLOAD);
+        CLR_FLAG(user->user_flags, UF_VALD);
+        memset((char *)user->outbound, null, MAX_PAYLOAD);
     }
 
     return 0;  // success
@@ -654,6 +702,11 @@ html_content(int req_num)
 
     printf("<p>Request #%d</p>\n", req_num);
 
+    printf("<h2>User State</h2>\n");
+    if (html_user_state() < 0) {
+        printf("<i>Map Unavailable</i>\n");
+    }
+
     printf("<h2>Link State</h2>\n");
     if (html_link_state() < 0) {
         printf("<i>Map Unavailable</i>\n");
@@ -726,30 +779,36 @@ json_content(int req_num)
 
     int old = (__s32)pkt_count;  // save old packet count
 
-    // get link_state structure for this interface
+    // get user_state and link_state structures for this interface
+    user_state_t user_state;
+    user_state_t *user = &user_state;
     link_state_t link_state;
     link_state_t *link = &link_state;
-    if ((link_map_fd < 0)
+    if ((user_map_fd < 0)
+    ||  (read_user_map(if_index, user) < 0)) {
+        printf(",");
+        printf("\"error\":\"%s\"", "Failed Reading User Map");
+    } else if ((link_map_fd < 0)
     ||  (read_link_map(if_index, link) < 0)) {
         printf(",");
         printf("\"error\":\"%s\"", "Failed Reading Link Map");
     } else {
 
-        json_query(link, getenv("QUERY_STRING"));
+        json_query(user, getenv("QUERY_STRING"));
 
         printf("\"link_state\":");
-        json_link_state(link);
+        json_link_state(user, link);
         pkt_count = link->seq;  // update packet count
 
-    }
+        // update user_state structure
+        if (write_user_map(if_index, user) < 0) {
+            printf(",");
+            printf("\"error\":\"%s\"", "Failed Writing User Map");
+        } else {
+            int new = (__s32)pkt_count;  // get new packet count
+            json_info(old, new);
+        }
 
-    // update link_state structure
-    if (write_link_map(if_index, link) < 0) {
-        printf(",");
-        printf("\"error\":\"%s\"", "Failed Writing Link Map");
-    } else {
-        int new = (__s32)pkt_count;  // get new packet count
-        json_info(old, new);
     }
 
     printf("}\n");
@@ -775,6 +834,11 @@ init_src_mac()
     rv = read_link_map(if_index, link);
     if (rv < 0) return rv;  // failure
 
+    // FIXME:
+    //    We should not be writing directly to the link_map.
+    //    Maybe write src_mac to user_map, and
+    //    let the XDP driver copy it to link_map?
+
     // copy src_mac and eth_proto into link_map
     struct ethhdr *eth = (struct ethhdr *)link->frame;
     eth->h_proto = htons(ETH_P_DALE);
@@ -791,7 +855,7 @@ main(void)
     char buf[256];
     int count = 0;
 
-    init_link_map();
+    init_ebpf_maps();
     init_host_if();
     init_src_mac();
 

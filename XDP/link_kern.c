@@ -64,6 +64,20 @@
 
 #include <iproute2/bpf_elf.h>
 
+struct bpf_elf_map user_map SEC("maps") = {
+    .type       = BPF_MAP_TYPE_ARRAY,
+    .size_key   = sizeof(__u32),
+    .size_value = sizeof(user_state_t),
+    .pinning    = PIN_GLOBAL_NS,
+    .max_elem   = 16,
+};
+
+user_state_t *
+get_user_state(__u32 if_index)
+{
+    return bpf_map_lookup_elem(&user_map, &if_index);
+}
+
 struct bpf_elf_map link_map SEC("maps") = {
     .type       = BPF_MAP_TYPE_ARRAY,
     .size_key   = sizeof(__u32),
@@ -111,7 +125,7 @@ mac_is_bcast(void *mac)
 #define clear_payload(dst)     memset((dst), null, MAX_PAYLOAD)
 
 static int
-outbound_AIT(link_state_t *link)
+outbound_AIT(user_state_t *user, link_state_t *link)
 {
 /*
     if there is not AIT in progress already
@@ -119,11 +133,11 @@ outbound_AIT(link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if ((GET_FLAG(link->user_flags, UF_VALD)
+    if ((GET_FLAG(user->user_flags, UF_VALD)
       && !GET_FLAG(link->link_flags, LF_FULL))
     ||  GET_FLAG(link->link_flags, LF_SEND)) {
 //    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
-//        link->user_flags, link->link_flags);
+//        user->user_flags, link->link_flags);
         if (GET_FLAG(link->link_flags, LF_FULL)) {
             LOG_TEMP("outbound_AIT: resending (LF_FULL)\n");
         } else {
@@ -131,17 +145,17 @@ outbound_AIT(link_state_t *link)
             SET_FLAG(link->link_flags, LF_SEND);
             SET_FLAG(link->link_flags, LF_FULL);
         }
-        copy_payload(link->frame + ETH_HLEN + 2, link->outbound);
+        copy_payload(link->frame + ETH_HLEN + 2, user->outbound);
         link->len = MAX_PAYLOAD;
         LOG_INFO("outbound_AIT (%u octets)\n", link->len);
-        HEX_INFO(link->outbound, link->len);
+        HEX_INFO(user->outbound, link->len);
         return 1;  // send AIT
     }
     return 0;  // no AIT
 }
 
 static int
-inbound_AIT(link_state_t *link, __u8 *payload)
+inbound_AIT(user_state_t *user, link_state_t *link, __u8 *payload)
 {
 /*
     if there is not AIT in progress already
@@ -161,7 +175,7 @@ inbound_AIT(link_state_t *link, __u8 *payload)
 }
 
 static int
-release_AIT(link_state_t *link)
+release_AIT(user_state_t *user, link_state_t *link)
 {
 /*
     if the client has room to accept the AIT
@@ -169,7 +183,7 @@ release_AIT(link_state_t *link)
     and clear AIT-in-progress flags
 */
     if (GET_FLAG(link->link_flags, LF_RECV)
-    &&  !GET_FLAG(link->user_flags, UF_FULL)
+    &&  !GET_FLAG(user->user_flags, UF_FULL)
     &&  !GET_FLAG(link->link_flags, LF_VALD)) {
         LOG_TEMP("release_AIT: setting LF_VALD\n");
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
@@ -182,7 +196,7 @@ release_AIT(link_state_t *link)
 }
 
 static int
-clear_AIT(link_state_t *link)
+clear_AIT(user_state_t *user, link_state_t *link)
 {
 /*
     acknowlege successful AIT
@@ -192,7 +206,7 @@ clear_AIT(link_state_t *link)
         LOG_TEMP("clear_AIT: setting !LF_SEND\n");
         CLR_FLAG(link->link_flags, LF_SEND);
         if (GET_FLAG(link->link_flags, LF_FULL)
-        &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+        &&  !GET_FLAG(user->user_flags, UF_VALD)) {
             LOG_TEMP("clear_AIT: setting !LF_FULL\n");
             CLR_FLAG(link->link_flags, LF_FULL);
             LOG_INFO("clear_AIT (%u octets)\n", link->len);
@@ -208,7 +222,7 @@ clear_AIT(link_state_t *link)
 }
 
 static int
-on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
+on_frame_recv(__u8 *data, __u8 *end, user_state_t *user, link_state_t *link)
 {
     protocol_t i;
     protocol_t u;
@@ -243,12 +257,12 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
     // update async flags
     if (!GET_FLAG(link->link_flags, LF_SEND)
     &&  GET_FLAG(link->link_flags, LF_FULL)
-    &&  !GET_FLAG(link->user_flags, UF_VALD)) {
+    &&  !GET_FLAG(user->user_flags, UF_VALD)) {
         LOG_TEMP("on_frame_recv: setting !LF_FULL\n");
         CLR_FLAG(link->link_flags, LF_FULL);
         LOG_TRACE("outbound FULL cleared.\n");
     }
-    if (GET_FLAG(link->user_flags, UF_FULL)
+    if (GET_FLAG(user->user_flags, UF_FULL)
     &&  GET_FLAG(link->link_flags, LF_RECV)
     &&  GET_FLAG(link->link_flags, LF_VALD)) {
         LOG_TEMP("on_frame_recv: setting !LF_VALD + !LF_RECV\n");
@@ -267,7 +281,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
             link->seq = 0;
             LOG_TEMP("on_frame_recv: clearing LF_* + UF_*\n");
             link->link_flags = 0;
-            link->user_flags = 0;
+//            user->user_flags = 0;  // FIXME: can't write to user_state?
             if (mac_is_bcast(dst)) {
                 LOG_INFO("Init: dst mac is bcast\n");
                 link->u = Init;
@@ -322,7 +336,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                 LOG_INFO("Ping is for Alice!\n");
                 return XDP_DROP;  // wrong role for ping
             }
-            if (outbound_AIT(link)) {
+            if (outbound_AIT(user, link)) {
                 link->u = Got_AIT;
             } else {
                 link->u = Pong;
@@ -341,7 +355,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
                 LOG_INFO("Pong is for Bob!\n");
                 return XDP_DROP;  // wrong role for pong
             }
-            if (outbound_AIT(link)) {
+            if (outbound_AIT(user, link)) {
                 link->u = Got_AIT;
             } else {
                 link->u = Ping;
@@ -351,7 +365,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         case PROTO(Ping, Got_AIT) : {
             link->len = len;
             LOG_TEMP("on_frame_recv: (Ping, Got_AIT) len=%d\n", len);
-            if (inbound_AIT(link, data + ETH_HLEN + 2)) {
+            if (inbound_AIT(user, link, data + ETH_HLEN + 2)) {
                 link->u = Ack_AIT;
             } else {
                 link->u = Ping;
@@ -365,7 +379,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         case PROTO(Pong, Got_AIT) : {
             link->len = len;
             LOG_TEMP("on_frame_recv: (Pong, Got_AIT) len=%d\n", len);
-            if (inbound_AIT(link, data + ETH_HLEN + 2)) {
+            if (inbound_AIT(user, link, data + ETH_HLEN + 2)) {
                 link->u = Ack_AIT;
             } else {
                 link->u = Pong;
@@ -396,7 +410,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         case PROTO(Ack_AIT, Ack_Ack) : {
             link->len = len;
             LOG_TEMP("on_frame_recv: (Ack_AIT, Ack_Ack) len=%d\n", len);
-            if (release_AIT(link)) {
+            if (release_AIT(user, link)) {
                 link->u = Proceed;
             } else {
                 LOG_TEMP("on_frame_recv: release failed, reversing!\n");
@@ -412,7 +426,7 @@ on_frame_recv(__u8 *data, __u8 *end, link_state_t *link)
         case PROTO(Ack_Ack, Proceed) : {
             link->len = len;
             LOG_TEMP("on_frame_recv: (Ack_Ack, Proceed) len=%d\n", len);
-            clear_AIT(link);
+            clear_AIT(user, link);
             if (GET_FLAG(link->link_flags, LF_ID_B)) {
                 link->u = Ping;
             } else {
@@ -468,13 +482,19 @@ xdp_filter(struct xdp_md *ctx)
 #endif
     }
 
+    user_state_t *user = get_user_state(if_index);
+    if (!user) {
+        LOG_ERROR("failed loading if=%u user_state\n", if_index);
+        return XDP_DROP;  // BPF Map failure
+    }
+
     link_state_t *link = get_link_state(if_index);
     if (!link) {
         LOG_ERROR("failed loading if=%u link_state\n", if_index);
         return XDP_DROP;  // BPF Map failure
     }
 
-    int rc = on_frame_recv(data, end, link);
+    int rc = on_frame_recv(data, end, user, link);
     LOG_TRACE("recv: proto=0x%x len=%u rc=%d\n", eth_proto, data_len, rc);
 
     if (rc == XDP_TX) {
