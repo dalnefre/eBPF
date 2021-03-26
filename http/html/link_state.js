@@ -131,9 +131,11 @@ $(function () {
             &&  (s.charCodeAt(1) > 0x80)) {  // smol length
                 let n = s.charCodeAt(1) - 0x80;
                 s = s.slice(2, 2 + n);
-                //$inbound.text($inbound.text() + s);
-                $inbound.append(document.createTextNode(s));
+            } else {
+                s = 'ERROR:' + JSON.stringify(s);
             }
+            //$inbound.text($inbound.text() + s);
+            $inbound.append(document.createTextNode(s));
         } else if (link.src.full && !link.src.valid) {
             link.src.full = false;  // clear inbound full flag
         }

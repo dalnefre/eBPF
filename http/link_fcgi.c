@@ -621,7 +621,11 @@ json_query(user_state_t *user, char *query_string)
     }
     if ((n == 5) && (strncmp(value, "false", 5) == 0)) {
         CLR_FLAG(user->user_flags, UF_VALD);
-        memset((char *)user->outbound, null, MAX_PAYLOAD);
+// FIXME: the XDP driver needs this data for reversal/retry!
+//        memset((char *)user->outbound, null, MAX_PAYLOAD);
+// FIXME: according to the interface contract,
+//        if !VALD then DATA is undefined,
+//        therefore clearing the buffer should be correct.
     }
 
     return 0;  // success
