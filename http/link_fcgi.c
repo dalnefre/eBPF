@@ -887,7 +887,8 @@ json_if_data(int req_num)
             char *s;
 
             if ((ifa->ifa_addr) && (ifa->ifa_addr->sa_family == AF_PACKET)) {
-                if (i > 0) {
+                ++i;
+                if (i > 1) {
                     printf(",");
                 }
                 printf("{");
@@ -895,6 +896,9 @@ json_if_data(int req_num)
                 printf("\"name\":");
                 s = ifa->ifa_name;
                 json_string(s, strlen(s));
+
+                printf(",");
+                printf("\"i\":%d", i);
 
                 printf(",");
                 printf("\"IFF\":");
@@ -931,7 +935,6 @@ json_if_data(int req_num)
             }
 
             ifa = ifa->ifa_next;
-            ++i;
         }
 
         freeifaddrs(ifaddr);

@@ -34,6 +34,24 @@ $(function () {
         $raw_data.text(JSON.stringify(data, null, 2));
         if (typeof data.host === 'string') {
             $host.text(' ('+data.host+')');
+            $('#cell_0 text').text(data.host);
+        }
+        var i = 0;
+        while (i < data.if_data.length) {
+            let cell = data.if_data[i];
+            let elem = $('#cell_' + cell.i);
+            elem.children('text').text(cell.name);
+            if (cell.IFF.LOOPBACK) {
+                elem.children('circle').attr('fill', '#EEE');
+            } else if (cell.IFF.RUNNING) {
+                elem.children('circle').attr('fill', '#CFC');
+            } else if (cell.IFF.UP) {
+                elem.children('circle').attr('fill', '#FCC');
+            } else {
+                elem.children('circle').attr('fill', '#CCC');
+            }
+            elem.removeClass('hidden');
+            ++i;
         }
 //        $fast_hand.attr('transform', 'rotate(' + fast_rot + ')');
         waiting = false;
