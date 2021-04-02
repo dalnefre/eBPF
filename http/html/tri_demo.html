@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Triangle Demo</title>
+<link rel="stylesheet" href="style.css">
+<script src="jquery-3.5.1.js"></script>
+<script src="tri_demo.js"></script>
+<style>
+body {
+  background-color: #FFE;
+}
+#gui {
+  margin-right: 1em;
+  margin-bottom: 1ex;
+  background-color: #FFF;
+}
+#play_pause {
+  display: inline-block;
+  position: relative;
+  top: 0.35em;
+  width: 1.5em;
+  height: 1.5em;
+  margin: 0 1em;
+  border: 1px solid #777;
+  border-radius: 2px;
+  background-color: #EAEAEA;
+}
+#play_pause:hover {
+  border: 1px solid #555;
+  background-color: #E1E1E1;
+}
+#play {
+  display: none;
+}
+#refresh_rate {
+  margin-left: 1ex;
+  margin-right: 0;
+}
+#info {
+  color: #999;
+}
+</style>
+</head>
+<body>
+<h1>Triangle Demo<span id="host"></span></h1>
+
+<div id="ctrl">
+  <span id="play_pause">
+    <svg id="play" height="1.5em" width="1.5em" viewBox="-256 0 1024 1024">
+      <path d="M 0 192 l 512 320 L 0 832 V 192 z" />
+    </svg>
+    <svg id="pause" height="1.5em" width="1.5em" viewBox="-256 0 1024 1024">
+      <path d="M 0 832 h 192 V 192 H 0 V 832 z" />
+      <path d="M 320 192 v 640 h 192 V 192 H 320 z" />
+    </svg>
+  </span>
+  <span>
+    <label>
+      updates @
+      <input type="text" id="refresh_rate" size="2" value="6">
+      / second.
+    </label>
+  </span>
+</div>
+
+<div id="model" style="font-size:125%">
+  <svg id="gui" id="net" width="400" height="400" viewBox="-256 -256 512 512">
+    <g id="cell_1">
+      <line id="link_1" x1="0" y1="0" x2="0" y2="200"
+        stroke="#CCC" stroke-width="9" stroke-linecap="round" />
+      <circle cx="0" cy="200" r="40" fill="#CFC" />
+      <text x="0" y="200" text-anchor="middle" dominant-baseline="middle">
+          eth0
+      </text>
+    </g>
+    <g id="cell_2">
+      <line id="link_1" x1="0" y1="0" x2="141" y2="-141"
+        stroke="#CCC" stroke-width="9" stroke-linecap="round" />
+      <circle cx="141" cy="-141" r="40" fill="#CFC" />
+      <text x="141" y="-141" text-anchor="middle" dominant-baseline="middle">
+          eth1
+      </text>
+    </g>
+    <g id="cell_3">
+      <line id="link_1" x1="0" y1="0" x2="-200" y2="0"
+        stroke="#CCC" stroke-width="9" stroke-linecap="round" />
+      <circle cx="-200" cy="0" r="40" fill="#FCC" />
+      <text x="-200" y="0" text-anchor="middle" dominant-baseline="middle">
+          wlan0
+      </text>
+    </g>
+    <g id="cell_0" style="font-weight:bold">
+      <circle cx="0" cy="0" r="70" fill="#CCF" stroke="#006" />
+      <text x="0" y="0" text-anchor="middle" dominant-baseline="middle">
+          hostname
+      </text>
+    </g>
+  </svg>
+</div>
+
+<p>
+  <button id="debug">Debug</button>
+</p>
+<div id="info">
+  <pre id="raw_data" class="hidden"></pre>
+</div>
+
+</body>
+</html>

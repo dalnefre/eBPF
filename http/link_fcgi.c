@@ -853,6 +853,94 @@ init_src_mac()
     return 0;  // success
 }
 
+#define json_bool(b) ((b) ? "true" : "false")
+
+#include <ifaddrs.h>
+
+void
+json_if_data(int req_num)
+{
+    printf("{");
+
+    // write hostname
+    printf("\"host\":");
+    json_string(hostname, strlen(hostname));
+    printf(",");
+
+    // write request number
+    printf("\"req_num\":%d", req_num);
+    printf(",");
+
+    // get data on each interface
+    struct ifaddrs *ifaddr = NULL;
+    if (getifaddrs(&ifaddr) < 0) {
+        printf("\"error\":\"%s\"", "getifaddrs() failed");
+    } else {
+        struct ifaddrs *ifa = ifaddr;
+
+        printf("\"if_data\":");
+        printf("[");
+        printf("\n");
+
+        int i = 0;
+        while (ifa != NULL) {
+            char *s;
+
+            if ((ifa->ifa_addr) && (ifa->ifa_addr->sa_family == AF_PACKET)) {
+                if (i > 0) {
+                    printf(",");
+                }
+                printf("{");
+
+                printf("\"name\":");
+                s = ifa->ifa_name;
+                json_string(s, strlen(s));
+
+                printf(",");
+                printf("\"IFF\":");
+                printf("{");
+
+                printf("\"UP\":%s",
+                    json_bool(ifa->ifa_flags & IFF_UP));
+
+                printf(",");
+                printf("\"LOOPBACK\":%s",
+                    json_bool(ifa->ifa_flags & IFF_LOOPBACK));
+
+                printf(",");
+                printf("\"RUNNING\":%s",
+                    json_bool(ifa->ifa_flags & IFF_RUNNING));
+
+                printf(",");
+                printf("\"PROMISC\":%s",
+                    json_bool(ifa->ifa_flags & IFF_PROMISC));
+
+#if 0
+                printf(",");
+                printf("\"LOWER_UP\":%s",
+                    json_bool(ifa->ifa_flags & IFF_LOWER_UP));
+
+                printf(",");
+                printf("\"DORMANT\":%s",
+                    json_bool(ifa->ifa_flags & IFF_DORMANT));
+#endif
+
+                printf("}");
+
+                printf("}");
+            }
+
+            ifa = ifa->ifa_next;
+            ++i;
+        }
+
+        freeifaddrs(ifaddr);
+        printf("\n");
+        printf("]");
+    }
+
+    printf("}\n");
+}
 int
 main(void)
 {
@@ -878,6 +966,12 @@ main(void)
             if ((n == 19) && (strncmp(buf, "/link_map/link.json", n) == 0)) {
                 http_header("application/json");
                 json_content(count);
+                continue;  // next request...
+            }
+
+            if ((n == 22) && (strncmp(buf, "/link_map/if_data.json", n) == 0)) {
+                http_header("application/json");
+                json_if_data(count);
                 continue;  // next request...
             }
 
