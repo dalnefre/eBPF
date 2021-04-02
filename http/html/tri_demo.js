@@ -43,12 +43,16 @@ $(function () {
             elem.children('text').text(cell.name);
             if (cell.IFF.LOOPBACK) {
                 elem.children('circle').attr('fill', '#EEE');
+                elem.children('line').attr('stroke', '#CCC');
             } else if (cell.IFF.RUNNING) {
                 elem.children('circle').attr('fill', '#CFC');
+                elem.children('line').attr('stroke', '#CFC');
             } else if (cell.IFF.UP) {
                 elem.children('circle').attr('fill', '#FCC');
+                elem.children('line').attr('stroke', '#FCC');
             } else {
                 elem.children('circle').attr('fill', '#CCC');
+                elem.children('line').attr('stroke', '#CCC');
             }
             elem.removeClass('hidden');
             ++i;
