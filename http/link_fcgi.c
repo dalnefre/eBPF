@@ -900,6 +900,12 @@ json_if_data(int req_num)
                 printf(",");
                 printf("\"i\":%d", i);
 
+                int if_index = if_nametoindex(s);
+                if (if_index > 0) {
+                    printf(",");
+                    printf("\"index\":%d", if_index);
+                }
+
                 printf(",");
                 printf("\"IFF\":");
                 printf("{");
