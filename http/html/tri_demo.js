@@ -46,12 +46,12 @@ $(function () {
                 elem.children('line').attr('stroke', '#CCC');
             } else if (cell.IFF.RUNNING) {
                 elem.children('circle').attr('fill', '#CFC');
-                elem.children('line').attr('stroke', '#CFC');
+                elem.children('line').attr('stroke', '#9C9');
             } else if (cell.IFF.UP) {
                 elem.children('circle').attr('fill', '#FCC');
-                elem.children('line').attr('stroke', '#FCC');
+                elem.children('line').attr('stroke', '#C99');
             } else {
-                elem.children('circle').attr('fill', '#CCC');
+                elem.children('circle').attr('fill', '#999');
                 elem.children('line').attr('stroke', '#CCC');
             }
             elem.removeClass('hidden');
