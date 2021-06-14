@@ -92,6 +92,8 @@ get_link_state(__u32 if_index)
     return bpf_map_lookup_elem(&link_map, &if_index);
 }
 
+/*** <sync from="../XDP/link_kern.c" to="../proto/link.c"> ***/
+
 static __inline int
 cmp_mac_addr(void *dst, void *src)
 {
@@ -455,6 +457,8 @@ on_frame_recv(__u8 *data, __u8 *end, user_state_t *user, link_state_t *link)
 
     return XDP_TX;  // send updated frame out on same interface
 }
+
+/*** </sync> ***/
 
 SEC("prog") int
 xdp_filter(struct xdp_md *ctx)
