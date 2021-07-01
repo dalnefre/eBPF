@@ -135,17 +135,17 @@ outbound_AIT(user_state_t *user, link_state_t *link)
     copy the data into the link buffer
     and set AIT-in-progress flags
 */
-    if ((GET_FLAG(user->user_flags, UF_VALD)
-      && !GET_FLAG(link->link_flags, LF_FULL))
+    if ((GET_FLAG(user->user_flags, UF_FULL)
+      && !GET_FLAG(link->link_flags, LF_BUSY))
     ||  GET_FLAG(link->link_flags, LF_SEND)) {
 //    LOG_TEMP("outbound_AIT: user_flags=0x%x link_flags=0x%x\n",
 //        user->user_flags, link->link_flags);
-        if (GET_FLAG(link->link_flags, LF_FULL)) {
-            LOG_TEMP("outbound_AIT: resending (LF_FULL)\n");
+        if (GET_FLAG(link->link_flags, LF_BUSY)) {
+            LOG_TEMP("outbound_AIT: resending (LF_BUSY)\n");
         } else {
-            LOG_TEMP("outbound_AIT: setting LF_SEND + LF_FULL\n");
+            LOG_TEMP("outbound_AIT: setting LF_SEND + LF_BUSY\n");
             SET_FLAG(link->link_flags, LF_SEND);
-            SET_FLAG(link->link_flags, LF_FULL);
+            SET_FLAG(link->link_flags, LF_BUSY);
         }
         copy_payload(link->frame + ETH_HLEN + 2, user->outbound);
         link->len = MAX_PAYLOAD;
@@ -185,11 +185,11 @@ release_AIT(user_state_t *user, link_state_t *link)
     and clear AIT-in-progress flags
 */
     if (GET_FLAG(link->link_flags, LF_RECV)
-    &&  !GET_FLAG(user->user_flags, UF_FULL)
-    &&  !GET_FLAG(link->link_flags, LF_VALD)) {
-        LOG_TEMP("release_AIT: setting LF_VALD\n");
+    &&  !GET_FLAG(user->user_flags, UF_BUSY)
+    &&  !GET_FLAG(link->link_flags, LF_FULL)) {
+        LOG_TEMP("release_AIT: setting LF_FULL\n");
         copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
-        SET_FLAG(link->link_flags, LF_VALD);
+        SET_FLAG(link->link_flags, LF_FULL);
         LOG_INFO("release_AIT (%u octets)\n", link->len);
         HEX_INFO(link->inbound, link->len);
         return 1;  // AIT released
@@ -207,10 +207,10 @@ clear_AIT(user_state_t *user, link_state_t *link)
     if (GET_FLAG(link->link_flags, LF_SEND)) {
         LOG_TEMP("clear_AIT: setting !LF_SEND\n");
         CLR_FLAG(link->link_flags, LF_SEND);
-        if (GET_FLAG(link->link_flags, LF_FULL)
-        &&  !GET_FLAG(user->user_flags, UF_VALD)) {
-            LOG_TEMP("clear_AIT: setting !LF_FULL\n");
-            CLR_FLAG(link->link_flags, LF_FULL);
+        if (GET_FLAG(link->link_flags, LF_BUSY)
+        &&  !GET_FLAG(user->user_flags, UF_FULL)) {
+            LOG_TEMP("clear_AIT: setting !LF_BUSY\n");
+            CLR_FLAG(link->link_flags, LF_BUSY);
             LOG_INFO("clear_AIT (%u octets)\n", link->len);
         } else {
             LOG_WARN("clear_AIT: outbound VALID still set!\n");
@@ -258,19 +258,19 @@ on_frame_recv(__u8 *data, __u8 *end, user_state_t *user, link_state_t *link)
 
     // update async flags
     if (!GET_FLAG(link->link_flags, LF_SEND)
-    &&  GET_FLAG(link->link_flags, LF_FULL)
-    &&  !GET_FLAG(user->user_flags, UF_VALD)) {
-        LOG_TEMP("on_frame_recv: setting !LF_FULL\n");
-        CLR_FLAG(link->link_flags, LF_FULL);
-        LOG_TRACE("outbound FULL cleared.\n");
+    &&  GET_FLAG(link->link_flags, LF_BUSY)
+    &&  !GET_FLAG(user->user_flags, UF_FULL)) {
+        LOG_TEMP("on_frame_recv: setting !LF_BUSY\n");
+        CLR_FLAG(link->link_flags, LF_BUSY);
+        LOG_TRACE("outbound BUSY cleared.\n");
     }
-    if (GET_FLAG(user->user_flags, UF_FULL)
+    if (GET_FLAG(user->user_flags, UF_BUSY)
     &&  GET_FLAG(link->link_flags, LF_RECV)
-    &&  GET_FLAG(link->link_flags, LF_VALD)) {
-        LOG_TEMP("on_frame_recv: setting !LF_VALD + !LF_RECV\n");
-        CLR_FLAG(link->link_flags, LF_VALD);
+    &&  GET_FLAG(link->link_flags, LF_FULL)) {
+        LOG_TEMP("on_frame_recv: setting !LF_FULL + !LF_RECV\n");
+        CLR_FLAG(link->link_flags, LF_FULL);
         CLR_FLAG(link->link_flags, LF_RECV);
-        LOG_TRACE("inbound VALD + RECV cleared.\n");
+        LOG_TRACE("inbound FULL + RECV cleared.\n");
     }
 
     // protocol state machine

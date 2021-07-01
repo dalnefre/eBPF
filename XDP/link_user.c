@@ -98,8 +98,8 @@ dump_link_state(FILE *f, link_state_t *link)
         (unsigned long)uf,
         '-',
         (GET_FLAG(uf, UF_STOP) ? 'R' : 's'),
-        (GET_FLAG(uf, UF_VALD) ? 'V' : '-'),
-        (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'));
+        (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'),
+        (GET_FLAG(uf, UF_BUSY) ? 'B' : 'r'));
 
     fprintf(stderr, "inbound[44] =\n");
     hexdump(stderr, link->inbound, 44);
@@ -110,8 +110,8 @@ dump_link_state(FILE *f, link_state_t *link)
         '-',
         (GET_FLAG(lf, LF_RECV) ? 'R' : '-'),
         (GET_FLAG(lf, LF_SEND) ? 'S' : '-'),
-        (GET_FLAG(lf, LF_VALD) ? 'V' : '-'),
         (GET_FLAG(lf, LF_FULL) ? 'F' : 'e'),
+        (GET_FLAG(lf, LF_BUSY) ? 'B' : 'r'),
         (GET_FLAG(lf, LF_ENTL) ? '&' : '-'),
         (GET_FLAG(lf, LF_ID_B) ? 'B' : '-'),
         (GET_FLAG(lf, LF_ID_A) ? 'A' : '-'));
@@ -321,31 +321,31 @@ reader(int if_index)  // read AIT data (and display it)
             return -1;  // failure
         }
 
-        if (GET_FLAG(link->link_flags, LF_VALD)
-        &&  !GET_FLAG(link->user_flags, UF_FULL)) {  // ait available
+        if (GET_FLAG(link->link_flags, LF_FULL)
+        &&  !GET_FLAG(link->user_flags, UF_BUSY)) {  // ait available
 
             // update link state
-            SET_FLAG(link->user_flags, UF_FULL);
+            SET_FLAG(link->user_flags, UF_BUSY);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
-            DEBUG(fprintf(stderr, "inbound FULL set.\n"));
+            DEBUG(fprintf(stderr, "inbound BUSY set.\n"));
 
             // display AIT received
             fprintf(stderr, "inbound AIT:\n");
             hexdump(stderr, link->inbound, MAX_PAYLOAD);
 
-        } else if (!GET_FLAG(link->link_flags, LF_VALD)
-               &&  GET_FLAG(link->user_flags, UF_FULL)) {
+        } else if (!GET_FLAG(link->link_flags, LF_FULL)
+               &&  GET_FLAG(link->user_flags, UF_BUSY)) {
 
             // clear link state
-            CLR_FLAG(link->user_flags, UF_FULL);
+            CLR_FLAG(link->user_flags, UF_BUSY);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
-            DEBUG(fprintf(stderr, "inbound FULL cleared.\n"));
+            DEBUG(fprintf(stderr, "inbound BUSY cleared.\n"));
 
         }
 
@@ -370,8 +370,8 @@ writer(int if_index)  // write AIT data (from console)
             return -1;  // failure
         }
 
-        if (!GET_FLAG(link->link_flags, LF_FULL)
-        &&  !GET_FLAG(link->user_flags, UF_VALD)) {  // space available
+        if (!GET_FLAG(link->link_flags, LF_BUSY)
+        &&  !GET_FLAG(link->user_flags, UF_FULL)) {  // space available
 
             // get data from console
             clear_payload(link->outbound);
@@ -388,23 +388,23 @@ writer(int if_index)  // write AIT data (from console)
             hexdump(stderr, link->outbound, MAX_PAYLOAD);
 
             // send AIT
-            SET_FLAG(link->user_flags, UF_VALD);
+            SET_FLAG(link->user_flags, UF_FULL);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
-            DEBUG(fprintf(stderr, "outbound VALD set.\n"));
+            DEBUG(fprintf(stderr, "outbound FULL set.\n"));
 
-        } else if (GET_FLAG(link->link_flags, LF_FULL)
-               &&  GET_FLAG(link->user_flags, UF_VALD)) {  // AIT in progress
+        } else if (GET_FLAG(link->link_flags, LF_BUSY)
+               &&  GET_FLAG(link->user_flags, UF_FULL)) {  // AIT in progress
 
             // clear link state
-            CLR_FLAG(link->user_flags, UF_VALD);
+            CLR_FLAG(link->user_flags, UF_FULL);
             if (write_link_map(if_index, link) < 0) {
                 perror("write_link_map() failed");
                 return -1;  // failure
             }
-            DEBUG(fprintf(stderr, "outbound VALD cleared.\n"));
+            DEBUG(fprintf(stderr, "outbound FULL cleared.\n"));
 
         }
 

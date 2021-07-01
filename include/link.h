@@ -51,13 +51,13 @@ typedef struct link_state {
 #define LF_ID_A (((__u32)1)<<0) // endpoint role Alice
 #define LF_ID_B (((__u32)1)<<1) // endpoint role Bob
 #define LF_ENTL (((__u32)1)<<2) // link entangled
-#define LF_FULL (((__u32)1)<<3) // outbound AIT full
-#define LF_VALD (((__u32)1)<<4) // inbound AIT valid
+#define LF_BUSY (((__u32)1)<<3) // outbound AIT busy/_ready
+#define LF_FULL (((__u32)1)<<4) // inbound AIT full/_empty
 #define LF_SEND (((__u32)1)<<5) // link sending AIT
 #define LF_RECV (((__u32)1)<<6) // link receiving AIT
 
-#define UF_FULL (((__u32)1)<<0) // inbound AIT full
-#define UF_VALD (((__u32)1)<<1) // outbound AIT valid
+#define UF_BUSY (((__u32)1)<<0) // inbound AIT busy/_ready
+#define UF_FULL (((__u32)1)<<1) // outbound AIT full/_empty
 #define UF_STOP (((__u32)1)<<2) // run=1, stop=0
 
 #endif /* _LINK_H_ */
