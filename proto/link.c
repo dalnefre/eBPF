@@ -59,6 +59,7 @@ static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
 #define LOG_INFO(fmt, ...)   LOG_PRINT(1, (fmt), ##__VA_ARGS__)
 #define LOG_DEBUG(fmt, ...)  LOG_PRINT(2, (fmt), ##__VA_ARGS__)
 #define LOG_TRACE(fmt, ...)  LOG_PRINT(3, (fmt), ##__VA_ARGS__)
+#define LOG_EXTRA(fmt, ...)  LOG_PRINT(4, (fmt), ##__VA_ARGS__)
 
 #define MAC_PRINT(level, tag, mac)  ({        \
     if (proto_opt.log >= (level)) {           \
@@ -66,6 +67,7 @@ static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
     }                                         \
 })
 #define MAC_TRACE(tag, mac)  MAC_PRINT(3, (tag), (mac))
+#define MAC_EXTRA(tag, mac)  MAC_PRINT(4, (tag), (mac))
 
 #define HEX_DUMP(level, buf, len) ({   \
     if (proto_opt.log >= (level)) {    \
@@ -75,6 +77,7 @@ static octet_t *eth_local = &proto_init[1 * ETH_ALEN];
 #define HEX_INFO(buf, len)   HEX_DUMP(1, (buf), (len))
 #define HEX_DEBUG(buf, len)  HEX_DUMP(2, (buf), (len))
 #define HEX_TRACE(buf, len)  HEX_DUMP(3, (buf), (len))
+#define HEX_EXTRA(buf, len)  HEX_DUMP(4, (buf), (len))
 
 
 user_state_t user_state[16];    // user state by if_index
@@ -118,9 +121,9 @@ send_message(int fd, void *data, size_t size, struct timespec *ts)
 
     DEBUG(dump_sockaddr(stderr, addr, addr_len));
 
-    LOG_TRACE("%zu.%09ld Message[%d] --> \n",
+    LOG_EXTRA("%zu.%09ld Message[%d] --> \n",
         (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
-    HEX_TRACE(data, size);
+    HEX_EXTRA(data, size);
 
     return n;
 }
@@ -140,9 +143,9 @@ recv_message(int fd, void *data, size_t limit, struct timespec *ts)
 
     DEBUG(dump_sockaddr(stderr, addr, addr_len));
 
-    LOG_TRACE("%zu.%09ld Message[%d] <-- \n",
+    LOG_EXTRA("%zu.%09ld Message[%d] <-- \n",
         (size_t)ts->tv_sec, (long)ts->tv_nsec, n);
-    HEX_TRACE(data, (n < 0 ? limit : n));
+    HEX_EXTRA(data, (n < 0 ? limit : n));
 
     return n;
 }
@@ -538,7 +541,7 @@ xdp_filter(void *data, void *end, user_state_t *user, link_state_t *link)
     }
 
     int rc = on_frame_recv(data, end, user, link);
-    LOG_TRACE("recv: proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
+    LOG_EXTRA("recv: proto=0x%x len=%zu rc=%d\n", eth_proto, data_len, rc);
 
     if (rc == XDP_TX) {
         memcpy(data, link->frame, ETH_ZLEN);  // copy frame to i/o buffer
@@ -632,13 +635,22 @@ main(int argc, char *argv[])
         return 1;
     }
 
+#if 1
+    // demonstrate log levels
+    LOG_WARN("LOG_WARN: log=%d\n", proto_opt.log);
+    LOG_INFO("LOG_INFO: log=%d\n", proto_opt.log);
+    LOG_DEBUG("LOG_DEBUG: log=%d\n", proto_opt.log);
+    LOG_TRACE("LOG_TRACE: log=%d\n", proto_opt.log);
+    LOG_EXTRA("LOG_EXTRA: log=%d\n", proto_opt.log);
+#endif
+
     // determine real-time resolution
     struct timespec ts;
     if (clock_getres(CLOCK_REALTIME, &ts) < 0) {
         perror("clock_getres() failed");
         return -1;
     }
-    LOG_TRACE("CLOCK_REALTIME resolution %zu.%09ld\n",
+    LOG_EXTRA("CLOCK_REALTIME resolution %zu.%09ld\n",
         (size_t)ts.tv_sec, (long)ts.tv_nsec);
 
     fd = create_socket();

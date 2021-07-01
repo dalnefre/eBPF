@@ -2,7 +2,9 @@
 # Makefile
 #
 
-CFLAGS = -O2 -Wall -g
+#CFLAGS = -O2 -Wall -g
+#CFLAGS = -O2 -Wall -g -std=c99 -D_GNU_SOURCE
+CFLAGS = -O2 -Wall -g -std=c99 -D_GNU_SOURCE
 #CFLAGS = -O2 -Wall -march=armv8-a -mtune=cortex-a72
 #CFLAGS = -O2 -g
 #CFLAGS = -g
