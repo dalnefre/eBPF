@@ -550,6 +550,133 @@ xdp_filter(void *data, void *end, user_state_t *user, link_state_t *link)
     return rc;
 }
 
+static int
+simulate_userspace(user_state_t *user, link_state_t *link)
+{
+    /*
+     * outbound AIT
+     */
+    if (proto_opt.ait
+     && !GET_FLAG(user->user_flags, UF_FULL)
+     && !GET_FLAG(link->link_flags, LF_BUSY)) {
+        // initiate outbound transfer
+        //size_t n = strlen(proto_opt.ait);
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+	strncpy((char*)user->outbound, proto_opt.ait, MAX_PAYLOAD);
+#pragma GCC diagnostic pop
+        SET_FLAG(user->user_flags, UF_FULL);
+        LOG_INFO("userspace: outbound AIT (%u octets)\n", MAX_PAYLOAD);
+        HEX_INFO(user->outbound, MAX_PAYLOAD);
+    }
+    if (GET_FLAG(user->user_flags, UF_FULL)
+     && GET_FLAG(link->link_flags, LF_BUSY)) {
+        // acknowlege outbound transfer
+        size_t n = strlen(proto_opt.ait);
+        if (n >= MAX_PAYLOAD) {
+            proto_opt.ait += MAX_PAYLOAD;
+        } else {
+            proto_opt.ait = NULL;
+        }
+        CLR_FLAG(user->user_flags, UF_FULL);
+    }
+
+    /*
+     * inbound AIT
+     */
+    if (!GET_FLAG(user->user_flags, UF_BUSY)
+     && GET_FLAG(link->link_flags, LF_FULL)) {
+        // receive inbound transfer
+        SET_FLAG(user->user_flags, UF_BUSY);
+        LOG_INFO("userspace: inbound AIT (%u octets)\n", MAX_PAYLOAD);
+        HEX_INFO(link->inbound, MAX_PAYLOAD);
+    }
+    if (GET_FLAG(user->user_flags, UF_BUSY)
+     && !GET_FLAG(link->link_flags, LF_FULL)) {
+        // acknowlege inbound transfer
+        CLR_FLAG(user->user_flags, UF_BUSY);
+    }
+
+    return 1;  // success
+//    return 0;  // failure
+}
+
+#if 0
+static int
+outbound_AIT(user_state_t *user, link_state_t *link)
+{
+    if ((GET_FLAG(user->user_flags, UF_FULL)
+      && !GET_FLAG(link->link_flags, LF_BUSY))
+    ||  GET_FLAG(link->link_flags, LF_SEND)) {
+        if (GET_FLAG(link->link_flags, LF_BUSY)) {
+            LOG_TEMP("outbound_AIT: resending (LF_BUSY)\n");
+        } else {
+            LOG_TEMP("outbound_AIT: setting LF_SEND + LF_BUSY\n");
+            SET_FLAG(link->link_flags, LF_SEND);
+            SET_FLAG(link->link_flags, LF_BUSY);
+        }
+        copy_payload(link->frame + ETH_HLEN + 2, user->outbound);
+        link->len = MAX_PAYLOAD;
+        LOG_INFO("outbound_AIT (%u octets)\n", link->len);
+        HEX_INFO(user->outbound, link->len);
+        return 1;  // send AIT
+    }
+    return 0;  // no AIT
+}
+
+static int
+inbound_AIT(user_state_t *user, link_state_t *link, __u8 *payload)
+{
+    LOG_INFO("inbound_AIT (%u octets)\n", link->len);
+    if (!GET_FLAG(link->link_flags, LF_RECV)
+    &&  (link->len > 0)) {
+        LOG_TEMP("inbound_AIT: setting LF_RECV\n");
+        SET_FLAG(link->link_flags, LF_RECV);
+        copy_payload(link->frame + ETH_HLEN + 2, payload);
+        return 1;  // success
+    }
+    link->len = 0;
+    return 0;  // failure
+}
+
+static int
+release_AIT(user_state_t *user, link_state_t *link)
+{
+    if (GET_FLAG(link->link_flags, LF_RECV)
+    &&  !GET_FLAG(user->user_flags, UF_BUSY)
+    &&  !GET_FLAG(link->link_flags, LF_FULL)) {
+        LOG_TEMP("release_AIT: setting LF_FULL\n");
+        copy_payload(link->inbound, link->frame + ETH_HLEN + 2);
+        SET_FLAG(link->link_flags, LF_FULL);
+        LOG_INFO("release_AIT (%u octets)\n", link->len);
+        HEX_INFO(link->inbound, link->len);
+        return 1;  // AIT released
+    }
+    return 0;  // reject AIT
+}
+
+static int
+clear_AIT(user_state_t *user, link_state_t *link)
+{
+    if (GET_FLAG(link->link_flags, LF_SEND)) {
+        LOG_TEMP("clear_AIT: setting !LF_SEND\n");
+        CLR_FLAG(link->link_flags, LF_SEND);
+        if (GET_FLAG(link->link_flags, LF_BUSY)
+        &&  !GET_FLAG(user->user_flags, UF_FULL)) {
+            LOG_TEMP("clear_AIT: setting !LF_BUSY\n");
+            CLR_FLAG(link->link_flags, LF_BUSY);
+            LOG_INFO("clear_AIT (%u octets)\n", link->len);
+        } else {
+            LOG_WARN("clear_AIT: outbound VALID still set!\n");
+        }
+    } else {
+        LOG_WARN("clear_AIT: outbound SEND not set!\n");
+    }
+    link->len = 0;
+    return 1;  // success
+//    return 0;  // failure
+}
+#endif
+
 int
 send_init(int fd, user_state_t *user, link_state_t *link)
 {
@@ -602,6 +729,8 @@ server(int fd, user_state_t *user, link_state_t *link)
                 return -1;  // failure
             }
         }
+
+        simulate_userspace(user, link);
 
 #if FRAME_LIMIT
         if (link->seq > FRAME_LIMIT) {
