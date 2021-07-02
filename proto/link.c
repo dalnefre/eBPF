@@ -566,7 +566,7 @@ simulate_userspace(user_state_t *user, link_state_t *link)
 #pragma GCC diagnostic pop
         SET_FLAG(user->user_flags, UF_FULL);
         LOG_INFO("userspace: outbound AIT (%u octets)\n", MAX_PAYLOAD);
-        HEX_INFO(user->outbound, MAX_PAYLOAD);
+        HEX_DEBUG(user->outbound, MAX_PAYLOAD);
     }
     if (GET_FLAG(user->user_flags, UF_FULL)
      && GET_FLAG(link->link_flags, LF_BUSY)) {
@@ -588,7 +588,7 @@ simulate_userspace(user_state_t *user, link_state_t *link)
         // receive inbound transfer
         SET_FLAG(user->user_flags, UF_BUSY);
         LOG_INFO("userspace: inbound AIT (%u octets)\n", MAX_PAYLOAD);
-        HEX_INFO(link->inbound, MAX_PAYLOAD);
+        HEX_DEBUG(link->inbound, MAX_PAYLOAD);
     }
     if (GET_FLAG(user->user_flags, UF_BUSY)
      && !GET_FLAG(link->link_flags, LF_FULL)) {
