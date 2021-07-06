@@ -21,6 +21,7 @@ ALL =	client \
 	ait \
 	link \
 	getmacs \
+	hello_uv \
 	$(TEST)
 
 all: $(ALL)
@@ -61,4 +62,7 @@ util: util.c
 	cc $(CFLAGS) -DTEST_MAIN -o util util.c
 
 getmacs: getmacs.c
+
+hello_uv: hello_uv.c
+	cc $(CFLAGS) -luv -o hello_uv hello_uv.c
 
