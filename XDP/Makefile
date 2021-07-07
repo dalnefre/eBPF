@@ -62,7 +62,7 @@ ait_kern.o: ait_kern.c code.c
 ait_user: ait_user.c
 	cc $(CFLAGS) -o ait_user ait_user.c $(LIBBPF)
 
-link_kern.o: link_kern.c code.c
+link_kern.o: link_kern.c code.c ../include/link_ssm.c
 	clang $(CLANG_FLAGS) -c -o link_kern.o link_kern.c
 
 link_user: link_user.c

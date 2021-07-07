@@ -15,19 +15,20 @@ TEST =	code \
 	link_test \
 	util
 
+EXTRA =	hello_uv
+
 ALL =	client \
 	server \
 	live \
 	ait \
 	link \
 	getmacs \
-	hello_uv \
 	$(TEST)
 
 all: $(ALL)
 
 clean:
-	rm -f $(ALL) *.o
+	rm -f $(ALL) $(EXTRA) *.o
 
 test: $(TEST)
 	./code
@@ -44,7 +45,8 @@ live: live.o proto.o json.o bstr.o code.o util.o
 
 ait: ait.o proto.o code.o util.o
 
-link: link.o proto.o code.o util.o
+link: link.o proto.o code.o util.o ../include/link_ssm.c
+	cc $(CFLAGS) -o link link.c proto.o code.o util.o
 
 link_test: link.c proto.o code.o util.o
 	cc $(CFLAGS) -DTEST_MAIN -o link_test link.c proto.o code.o util.o
