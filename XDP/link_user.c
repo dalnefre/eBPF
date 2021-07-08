@@ -26,11 +26,25 @@
 
 #define DEBUG(x) x /**/
 
+static const char *user_map_filename = "/sys/fs/bpf/xdp/globals/user_map";
+static int user_map_fd;
 static const char *link_map_filename = "/sys/fs/bpf/xdp/globals/link_map";
 static int link_map_fd;
 
 #define copy_payload(dst,src)  memcpy((dst), (src), MAX_PAYLOAD)
 #define clear_payload(dst)     memset((dst), null, MAX_PAYLOAD)
+
+int
+read_user_map(__u32 key, user_state_t *user)
+{
+    return bpf_map_lookup_elem(user_map_fd, &key, user);
+}
+
+int
+write_user_map(__u32 key, user_state_t *user)
+{
+    return bpf_map_update_elem(user_map_fd, &key, user, BPF_ANY);
+}
 
 int
 read_link_map(__u32 key, link_state_t *link)
@@ -88,12 +102,12 @@ hexdump(FILE *f, void *data, size_t size)
 }
 
 void
-dump_link_state(FILE *f, link_state_t *link)
+dump_link_state(FILE *f, user_state_t *user, link_state_t *link)
 {
     fprintf(stderr, "outbound[44] =\n");
-    hexdump(stderr, link->outbound, 44);
+    hexdump(stderr, user->outbound, 44);
 
-    __u32 uf = link->user_flags;
+    __u32 uf = user->user_flags;
     fprintf(stderr, "user_flags = 0x%08lx (%c%c%c%c)\n",
         (unsigned long)uf,
         '-',
@@ -127,12 +141,18 @@ dump_link_state(FILE *f, link_state_t *link)
 int
 init_link_map(int if_index)
 {
+    user_state_t user_state;
+    user_state_t *user = &user_state;
     link_state_t link_state;
     link_state_t *link = &link_state;
     int fd;
     struct ifreq ifr;
     int rv;
 
+    if (read_user_map(if_index, user) < 0) {
+        perror("read_user_map() failed");
+        return -1;  // failure
+    }
     if (read_link_map(if_index, link) < 0) {
         perror("read_link_map() failed");
         return -1;  // failure
@@ -171,7 +191,7 @@ init_link_map(int if_index)
     }
 
     DEBUG(fprintf(stderr, "LINK_STATE [%d]\n", if_index));
-    DEBUG(dump_link_state(stderr, link));
+    DEBUG(dump_link_state(stderr, user, link));
 
     rv = close(fd);
     return rv;
@@ -307,6 +327,8 @@ monitor(int if_index)  // monitor and maintain liveness
 int
 reader(int if_index)  // read AIT data (and display it)
 {
+    user_state_t user_state;
+    user_state_t *user = &user_state;
     link_state_t link_state;
     link_state_t *link = &link_state;
 
@@ -316,18 +338,22 @@ reader(int if_index)  // read AIT data (and display it)
         usleep(10000);  // 0.01 second = 10,000 microseconds
 
         // get link state
+        if (read_user_map(if_index, user) < 0) {
+            perror("read_user_map() failed");
+            return -1;  // failure
+        }
         if (read_link_map(if_index, link) < 0) {
             perror("read_link_map() failed");
             return -1;  // failure
         }
 
         if (GET_FLAG(link->link_flags, LF_FULL)
-        &&  !GET_FLAG(link->user_flags, UF_BUSY)) {  // ait available
+        &&  !GET_FLAG(user->user_flags, UF_BUSY)) {  // ait available
 
             // update link state
-            SET_FLAG(link->user_flags, UF_BUSY);
-            if (write_link_map(if_index, link) < 0) {
-                perror("write_link_map() failed");
+            SET_FLAG(user->user_flags, UF_BUSY);
+            if (write_user_map(if_index, user) < 0) {
+                perror("write_user_map() failed");
                 return -1;  // failure
             }
             DEBUG(fprintf(stderr, "inbound BUSY set.\n"));
@@ -337,12 +363,12 @@ reader(int if_index)  // read AIT data (and display it)
             hexdump(stderr, link->inbound, MAX_PAYLOAD);
 
         } else if (!GET_FLAG(link->link_flags, LF_FULL)
-               &&  GET_FLAG(link->user_flags, UF_BUSY)) {
+               &&  GET_FLAG(user->user_flags, UF_BUSY)) {
 
             // clear link state
-            CLR_FLAG(link->user_flags, UF_BUSY);
-            if (write_link_map(if_index, link) < 0) {
-                perror("write_link_map() failed");
+            CLR_FLAG(user->user_flags, UF_BUSY);
+            if (write_user_map(if_index, user) < 0) {
+                perror("write_user_map() failed");
                 return -1;  // failure
             }
             DEBUG(fprintf(stderr, "inbound BUSY cleared.\n"));
@@ -356,6 +382,8 @@ reader(int if_index)  // read AIT data (and display it)
 int
 writer(int if_index)  // write AIT data (from console)
 {
+    user_state_t user_state;
+    user_state_t *user = &user_state;
     link_state_t link_state;
     link_state_t *link = &link_state;
 
@@ -365,43 +393,47 @@ writer(int if_index)  // write AIT data (from console)
         usleep(10000);  // 0.01 second = 10,000 microseconds
 
         // get link state
+        if (read_user_map(if_index, user) < 0) {
+            perror("read_user_map() failed");
+            return -1;  // failure
+        }
         if (read_link_map(if_index, link) < 0) {
             perror("read_link_map() failed");
             return -1;  // failure
         }
 
         if (!GET_FLAG(link->link_flags, LF_BUSY)
-        &&  !GET_FLAG(link->user_flags, UF_FULL)) {  // space available
+        &&  !GET_FLAG(user->user_flags, UF_FULL)) {  // space available
 
             // get data from console
-            clear_payload(link->outbound);
-            char *str = (char *)link->outbound + 2;
+            clear_payload(user->outbound);
+            char *str = (char *)user->outbound + 2;
             if (!fgets(str, MAX_PAYLOAD - 2, stdin)) {
                 return 1;  // EOF (or error)
             }
             int len = strlen(str);
-            link->outbound[0] = octets;
-            link->outbound[1] = INT2SMOL(len);
+            user->outbound[0] = octets;
+            user->outbound[1] = INT2SMOL(len);
 
             // display AIT to be sent
             fprintf(stderr, "outbound AIT:\n");
-            hexdump(stderr, link->outbound, MAX_PAYLOAD);
+            hexdump(stderr, user->outbound, MAX_PAYLOAD);
 
             // send AIT
-            SET_FLAG(link->user_flags, UF_FULL);
-            if (write_link_map(if_index, link) < 0) {
-                perror("write_link_map() failed");
+            SET_FLAG(user->user_flags, UF_FULL);
+            if (write_user_map(if_index, user) < 0) {
+                perror("write_user_map() failed");
                 return -1;  // failure
             }
             DEBUG(fprintf(stderr, "outbound FULL set.\n"));
 
         } else if (GET_FLAG(link->link_flags, LF_BUSY)
-               &&  GET_FLAG(link->user_flags, UF_FULL)) {  // AIT in progress
+               &&  GET_FLAG(user->user_flags, UF_FULL)) {  // AIT in progress
 
             // clear link state
-            CLR_FLAG(link->user_flags, UF_FULL);
-            if (write_link_map(if_index, link) < 0) {
-                perror("write_link_map() failed");
+            CLR_FLAG(user->user_flags, UF_FULL);
+            if (write_user_map(if_index, user) < 0) {
+                perror("write_user_map() failed");
                 return -1;  // failure
             }
             DEBUG(fprintf(stderr, "outbound FULL cleared.\n"));
@@ -435,10 +467,18 @@ main(int argc, char *argv[])
         return 1;  // exit
     }
 
+    // get access to User map
+    rv = bpf_obj_get(user_map_filename);
+    if (rv < 0) {
+        perror("bpf_obj_get(user_map) failed");
+        return -1;  // failure
+    }
+    user_map_fd = rv;
+
     // get access to Link map
     rv = bpf_obj_get(link_map_filename);
     if (rv < 0) {
-        perror("bpf_obj_get() failed");
+        perror("bpf_obj_get(link_map) failed");
         return -1;  // failure
     }
     link_map_fd = rv;
