@@ -22,6 +22,8 @@ ALL =	client \
 	live \
 	ait \
 	link \
+	link_srv \
+	link_cli \
 	getmacs \
 	$(TEST)
 
@@ -50,6 +52,10 @@ link: link.o proto.o code.o util.o ../include/link_ssm.c
 
 link_test: link.c proto.o code.o util.o
 	cc $(CFLAGS) -DTEST_MAIN -o link_test link.c proto.o code.o util.o
+
+link_cli: link_cli.o proto.o code.o util.o
+
+link_srv: link_srv.c proto.o util.o
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o
