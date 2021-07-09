@@ -60,18 +60,30 @@ client(void *buffer, size_t limit)
         return -1;  // failure
     }
 
-    struct sockaddr *addr = set_sockaddr(&address, &addr_len); 
-    DEBUG(dump_sockaddr(stdout, addr, addr_len));
+    struct sockaddr *to_addr = set_sockaddr(&address, &addr_len); 
+    DEBUG(dump_sockaddr(stdout, to_addr, addr_len));
 
-    n = sendto(fd, buffer, n, 0, addr, addr_len);
+    n = sendto(fd, buffer, n, 0, to_addr, addr_len);
     if (n < 0) {
         perror("sendto() failed");
         return -1;  // failure
     }
 
-    DEBUG(dump_sockaddr(stdout, addr, addr_len));
-
+//    DEBUG(dump_sockaddr(stdout, to_addr, addr_len));
     fputs("Message: \n", stdout);
+    hexdump(stdout, buffer, n);
+
+    fputs("Awaiting reply...\n", stdout);
+    memset(buffer, 0, limit);  // clear buffer
+    struct sockaddr *from_addr = clr_sockaddr(&address, &addr_len); 
+    n = recvfrom(fd, buffer, limit, 0, from_addr, &addr_len);
+    if (n < 0) {
+        perror("recvfrom() failed");
+        return -1;  // failure
+    }
+
+    DEBUG(dump_sockaddr(stdout, to_addr, addr_len));
+    fputs("Reply: \n", stdout);
     hexdump(stdout, buffer, n);
 
     rv = close(fd);

@@ -33,6 +33,7 @@ server(void *buffer, size_t limit)
     }
 
     while (true) {
+        memset(buffer, 0, limit);  // clear buffer
         struct sockaddr *addr = clr_sockaddr(&address, &addr_len); 
         n = recvfrom(fd, buffer, limit, 0, addr, &addr_len);
         if (n < 0) {
@@ -47,6 +48,17 @@ server(void *buffer, size_t limit)
         DEBUG(dump_sockaddr(stdout, addr, addr_len));
 
         fputs("Message: \n", stdout);
+        hexdump(stdout, buffer, n);
+
+        *((char *)buffer) = 0xEC;  // patch reply
+        n = sendto(fd, buffer, n, 0, addr, addr_len);
+        if (n < 0) {
+            perror("sendto() failed");
+            return -1;  // failure
+        }
+
+//        DEBUG(dump_sockaddr(stdout, addr, addr_len));
+        fputs("Reply: \n", stdout);
         hexdump(stdout, buffer, n);
     }
 
