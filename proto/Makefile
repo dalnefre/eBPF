@@ -41,7 +41,7 @@ test: $(TEST)
 
 client: client.o proto.o code.o util.o
 
-server: server.c proto.o util.o
+server: server.o proto.o util.o
 
 live: live.o proto.o json.o bstr.o code.o util.o
 
@@ -55,7 +55,7 @@ link_test: link.c proto.o code.o util.o
 
 link_cli: link_cli.o proto.o code.o util.o
 
-link_srv: link_srv.c proto.o util.o
+link_srv: link_srv.o proto.o util.o
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o

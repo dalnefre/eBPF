@@ -8,10 +8,36 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include "link_msg.h"
 
 #define DEBUG(x) x /**/
 
 static octet_t proto_buf[1024];  // message-transfer buffer
+
+int
+transform(void *buffer, int n)
+{
+    if (n < sizeof(msg_hdr_t)) return -1;  // fail!
+    msg_hdr_t *hdr = buffer;
+    if (hdr->magic != MSG_MAGIC) return -1;  // fail!
+    switch (hdr->op_code) {
+        case OP_NONE: {
+            break;
+        }
+        case OP_READ: {
+            break;
+        }
+        case OP_WRITE: {
+            break;
+        }
+        default: {
+            hdr->magic = -1;
+//            n = 1;
+            break;
+        }
+    }
+    return n;  // success -- number of characters in reply
+}
 
 int
 server(void *buffer, size_t limit)
@@ -41,16 +67,16 @@ server(void *buffer, size_t limit)
             return -1;  // failure
         }
 
-        if (filter_message(addr, buffer, n)) {
-            continue;  // early (succesful) exit
-        }
-
         DEBUG(dump_sockaddr(stdout, addr, addr_len));
-
         fputs("Message: \n", stdout);
         hexdump(stdout, buffer, n);
 
-        *((char *)buffer) = 0xEC;  // patch reply
+        n = transform(buffer, n);
+        if (n < 0) {
+            fputs("Fail!\n", stdout);
+            continue;  // skip reply on error
+        }
+
         n = sendto(fd, buffer, n, 0, addr, addr_len);
         if (n < 0) {
             perror("sendto() failed");

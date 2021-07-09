@@ -8,8 +8,14 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include "link_msg.h"
 
 #define DEBUG(x) x /**/
+
+typedef struct req_none {
+    msg_hdr_t   hdr;            // message header
+    char        text[14];       // message text
+} req_none_t;
 
 #if 0
 static octet_t message[] = {
@@ -17,13 +23,9 @@ static octet_t message[] = {
     'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', '\n',
 };
 #else
-static octet_t message[] = {
-//    array, n_6,
-//    0x04, 0x86,
-    octets, n_12,
-//    n_1, n_2, p_int_0, n_2, 0x81, 0x00,
-//    0x81, 0x82, 0x10, 0x82, 0x81, 0x00,
-    0xAB, 0xCD, 0xEF, 0x23, 0x81, 0x00, 0xFF, 0xEE, 0x45, 0x67, 0x81, 0x00
+static req_none_t message = {
+    { MSG_MAGIC, OP_NONE, 0, 0 },
+    { 'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', '\n' }
 };
 #endif
 
@@ -34,7 +36,7 @@ create_message(void *buffer, size_t size)
     size_t offset = 0;
 
     size_t n = sizeof(message);
-    memcpy(buffer + offset, message, n);
+    memcpy(buffer + offset, (void *)&message, n);
     offset += n;
     return offset;
 }
