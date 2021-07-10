@@ -13,25 +13,27 @@
 
 #define DEBUG(x) x /**/
 
-static user_state_t user_state[16];    // user state by if_index
+#define IF_INDEX_MAX (16)
+
+static user_state_t user_state[IF_INDEX_MAX];  // user state by if_index
 
 user_state_t *
 get_user_state(int if_index)
 {
     if ((if_index > 0)
-    &&  (if_index < (sizeof(user_state) / sizeof(user_state_t)))) {
+    &&  (if_index < IF_INDEX_MAX)) {
         return &user_state[if_index];
     }
     return NULL;
 }
 
-static link_state_t link_state[16];    // link state by if_index
+static link_state_t link_state[IF_INDEX_MAX];  // link state by if_index
 
 link_state_t *
 get_link_state(int if_index)
 {
     if ((if_index > 0)
-    &&  (if_index < (sizeof(link_state) / sizeof(link_state_t)))) {
+    &&  (if_index < IF_INDEX_MAX)) {
         return &link_state[if_index];
     }
     return NULL;
@@ -54,7 +56,7 @@ transform(void *buffer, int n)
             user_state_t *user = get_user_state(hdr->if_index);
             if (!user) return -1;  // fail!
             link_state_t *link = get_link_state(hdr->if_index);
-            if (!user) return -1;  // fail!
+            if (!link) return -1;  // fail!
 
             msg_read_t *reply = buffer;
             reply->user = *user;
@@ -67,7 +69,7 @@ transform(void *buffer, int n)
             user_state_t *user = get_user_state(hdr->if_index);
             if (!user) return -1;  // fail!
             link_state_t *link = get_link_state(hdr->if_index);
-            if (!user) return -1;  // fail!
+            if (!link) return -1;  // fail!
 
             msg_write_t *msg = buffer;
             *user = msg->user;
@@ -141,6 +143,55 @@ server(void *buffer, size_t limit)
     return rv;
 }
 
+static int
+simulate_transfer(int if_index, __u8 *payload)
+{
+    user_state_t *user = get_user_state(if_index);
+    if (!user) return -1;  // fail!
+    link_state_t *link = get_link_state(if_index);
+    if (!link) return -1;  // fail!
+
+    if (!GET_FLAG(user->user_flags, UF_BUSY)
+    &&  !GET_FLAG(link->link_flags, LF_FULL)) {
+        memcpy(link->inbound, payload, MAX_PAYLOAD);
+        SET_FLAG(link->link_flags, LF_FULL);
+        return 0;  // success
+    }
+
+    return 1;  // try again later
+}
+
+int
+simulated_network()
+{
+    int rv;
+
+    while (usleep(1000) == 0) {  // 0.001 second = 1,000 microseconds
+        for (int if_index = 1; if_index < IF_INDEX_MAX; ++if_index) {
+            user_state_t *user = get_user_state(if_index);
+            if (!user) return -1;  // fail!
+            link_state_t *link = get_link_state(if_index);
+            if (!link) return -1;  // fail!
+
+            if (GET_FLAG(user->user_flags, UF_FULL)
+            &&  !GET_FLAG(link->link_flags, LF_BUSY)) {
+                int dst = (if_index ^ 0xF);  // calculate destination
+                rv = simulate_transfer(dst, user->outbound);
+                if (rv < 0) return -1;  // fail!
+                if (rv == 0) {
+                    SET_FLAG(link->link_flags, LF_BUSY);
+                }
+            }
+
+            if (!GET_FLAG(user->user_flags, UF_FULL)
+            &&  GET_FLAG(link->link_flags, LF_BUSY)) {
+                CLR_FLAG(link->link_flags, LF_BUSY);
+            }
+        }
+    }
+    return 0;  // success
+}
+
 #include <errno.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -172,6 +223,17 @@ main(int argc, char *argv[])
         exit(rv);
     }
     fprintf(stderr, "server pid=%d\n", pid);
+
+    // create simulated network process
+    pid = fork();
+    if (pid < 0) {
+        perror("fork() failed");
+        return -1;  // failure
+    } else if (pid == 0) {  // child process
+        rv = simulated_network();
+        exit(rv);
+    }
+    fprintf(stderr, "network pid=%d\n", pid);
 
     // ignore termination signals so we can clean up children
     signal(SIGHUP, SIG_IGN);
