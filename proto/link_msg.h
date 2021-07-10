@@ -24,7 +24,6 @@ typedef struct msg_hdr {
 
 typedef struct msg_none {
     msg_hdr_t       hdr;            // message header
-    char            text[16];       // message text
 } msg_none_t;
 
 typedef struct msg_read {
