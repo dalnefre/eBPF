@@ -12,19 +12,15 @@
 
 #define DEBUG(x) x /**/
 
-typedef struct req_none {
-    msg_hdr_t   hdr;            // message header
-    char        text[14];       // message text
-} req_none_t;
-
 #if 0
 static octet_t message[] = {
     utf8, n_14,
     'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', '\n',
 };
 #else
-static req_none_t message = {
-    { MSG_MAGIC, OP_NONE, 0, 0 },
+static msg_none_t message = {
+//    { MSG_MAGIC, OP_NONE, -1, -1 },
+    { MSG_MAGIC, OP_READ, 3, -1 },
     { 'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!', '\n' }
 };
 #endif

@@ -12,6 +12,30 @@
 
 #define DEBUG(x) x /**/
 
+static user_state_t user_state[16];    // user state by if_index
+
+user_state_t *
+get_user_state(int if_index)
+{
+    if ((if_index > 0)
+    &&  (if_index < (sizeof(user_state) / sizeof(user_state_t)))) {
+        return &user_state[if_index];
+    }
+    return NULL;
+}
+
+static link_state_t link_state[16];    // link state by if_index
+
+link_state_t *
+get_link_state(int if_index)
+{
+    if ((if_index > 0)
+    &&  (if_index < (sizeof(link_state) / sizeof(link_state_t)))) {
+        return &link_state[if_index];
+    }
+    return NULL;
+}
+
 static octet_t proto_buf[1024];  // message-transfer buffer
 
 int
@@ -22,12 +46,36 @@ transform(void *buffer, int n)
     if (hdr->magic != MSG_MAGIC) return -1;  // fail!
     switch (hdr->op_code) {
         case OP_NONE: {
+            // echo message as reply
             break;
         }
         case OP_READ: {
+            user_state_t *user = get_user_state(hdr->if_index);
+            if (!user) return -1;  // fail!
+            link_state_t *link = get_link_state(hdr->if_index);
+            if (!user) return -1;  // fail!
+
+            msg_read_t *reply = buffer;
+            reply->user = *user;
+            reply->link = *link;
+            n = sizeof(msg_read_t);
+
             break;
         }
         case OP_WRITE: {
+            user_state_t *user = get_user_state(hdr->if_index);
+            if (!user) return -1;  // fail!
+            link_state_t *link = get_link_state(hdr->if_index);
+            if (!user) return -1;  // fail!
+
+            msg_write_t *msg = buffer;
+            *user = msg->user;
+
+            msg_read_t *reply = buffer;
+            reply->user = *user;
+            reply->link = *link;
+            n = sizeof(msg_read_t);
+
             break;
         }
         default: {
