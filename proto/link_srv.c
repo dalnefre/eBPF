@@ -5,6 +5,7 @@
 #include "util.h"
 #include "code.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
@@ -140,21 +141,55 @@ server(void *buffer, size_t limit)
     return rv;
 }
 
+#include <errno.h>
+#include <signal.h>
+#include <sys/wait.h>
+
 int
 main(int argc, char *argv[])
 {
+    int rv;
+    pid_t pid;
+
     // set new default protocol options
     proto_opt.family = AF_INET;
     proto_opt.sock_type = SOCK_DGRAM;
     proto_opt.ip_proto = IPPROTO_UDP;
 
-    int rv = parse_args(&argc, argv);
+    rv = parse_args(&argc, argv);
     if (rv != 0) return rv;
 
     fputs(argv[0], stdout);
     print_proto_opt(stdout);
 
-    rv = server(proto_buf, sizeof(proto_buf));
+    // create API server process
+    pid = fork();
+    if (pid < 0) {
+        perror("fork() failed");
+        return -1;  // failure
+    } else if (pid == 0) {  // child process
+        rv = server(proto_buf, sizeof(proto_buf));
+        exit(rv);
+    }
+    fprintf(stderr, "server pid=%d\n", pid);
 
-    return rv;
+    // ignore termination signals so we can clean up children
+    signal(SIGHUP, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
+    signal(SIGTERM, SIG_IGN);
+
+    // wait for child processes to exit
+    fflush(stdout);
+    for (;;) {
+        rv = wait(NULL);
+        if (rv < 0) {
+            if (errno != ECHILD) {
+                perror("wait() failed");
+            }
+            break;
+        }
+    }
+    fputs("parent exit.\n", stderr);
+
+    return 0;  // success
 }

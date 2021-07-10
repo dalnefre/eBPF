@@ -11,6 +11,7 @@
 #include "link_msg.h"
 
 #define DEBUG(x) x /**/
+#define TRACE(x)   /**/
 
 void
 dump_link_state(FILE *f, user_state_t *user, link_state_t *link)
@@ -110,7 +111,7 @@ client(void *buffer, size_t limit)
         return -1;  // failure
     }
 
-//    DEBUG(dump_sockaddr(stdout, to_addr, addr_len));
+    TRACE(dump_sockaddr(stdout, to_addr, addr_len));
     fputs("Message: \n", stdout);
     hexdump(stdout, buffer, n);
 
@@ -125,7 +126,7 @@ client(void *buffer, size_t limit)
 
     DEBUG(dump_sockaddr(stdout, to_addr, addr_len));
     fputs("Reply: \n", stdout);
-    hexdump(stdout, buffer, n);
+    TRACE(hexdump(stdout, buffer, n));
 
     msg_read_t *msg = buffer;
     user_state_t *user = &msg->user;
