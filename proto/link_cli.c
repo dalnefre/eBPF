@@ -54,7 +54,6 @@ int
 prep_read(int if_index, void *buffer, size_t limit)
 {
     if (limit < sizeof(msg_read_t)) return -1;  // too small
-    memset(buffer, 0, limit);  // clear buffer
     msg_read_t *msg = buffer;
     msg->hdr.magic = MSG_MAGIC;
     msg->hdr.op_code = OP_READ;
@@ -63,15 +62,13 @@ prep_read(int if_index, void *buffer, size_t limit)
 }
 
 int
-prep_write(int if_index, void *buffer, size_t limit, user_state_t *user)
+prep_write(int if_index, void *buffer, size_t limit)
 {
     if (limit < sizeof(msg_read_t)) return -1;  // too small
-    memset(buffer, 0, limit);  // clear buffer
     msg_read_t *msg = buffer;
     msg->hdr.magic = MSG_MAGIC;
     msg->hdr.op_code = OP_WRITE;
     msg->hdr.if_index = if_index;
-    msg->user = *user;
     return (sizeof(msg_write_t));
 }
 
@@ -131,12 +128,41 @@ client(int if_index, void *buffer, size_t limit)
     int n;
 
     n = prep_read(if_index, buffer, limit);
-    if (n <= 0) {
-        fprintf(stderr, "exceeded message buffer size of %zu\n", limit);
-        return -1;  // failure
-    }
+    if (n <= 0) return -1;  // failure
     n = do_transaction(buffer, n, limit);
     if (n < 0) return -1;  // failure
+    msg_read_t *msg = buffer;
+    user_state_t *user = &msg->user;
+    link_state_t *link = &msg->link;
+
+    if (proto_opt.ait
+     && !GET_FLAG(user->user_flags, UF_FULL)
+     && !GET_FLAG(link->link_flags, LF_BUSY)) {
+        // initiate outbound transfer
+#pragma GCC diagnostic ignored "-Wstringop-truncation"
+	strncpy((char*)user->outbound, proto_opt.ait, MAX_PAYLOAD);
+#pragma GCC diagnostic pop
+        SET_FLAG(user->user_flags, UF_FULL);
+        n = prep_write(if_index, buffer, limit);
+        if (n <= 0) return -1;  // failure
+        n = do_transaction(buffer, n, limit);
+        if (n < 0) return -1;  // failure
+    }
+    if (GET_FLAG(user->user_flags, UF_FULL)
+     && GET_FLAG(link->link_flags, LF_BUSY)) {
+        // acknowlege outbound transfer
+        n = strlen(proto_opt.ait);
+        if (n >= MAX_PAYLOAD) {
+            proto_opt.ait += MAX_PAYLOAD;
+        } else {
+            proto_opt.ait = NULL;
+        }
+        CLR_FLAG(user->user_flags, UF_FULL);
+        n = prep_write(if_index, buffer, limit);
+        if (n <= 0) return -1;  // failure
+        n = do_transaction(buffer, n, limit);
+        if (n < 0) return -1;  // failure
+    }
 
     return 0;  // success
 }
