@@ -51,40 +51,34 @@ dump_link_state(FILE *f, user_state_t *user, link_state_t *link)
 }
 
 int
-create_message(void *buffer, size_t size,
-    op_code_t op_code, int if_index, user_state_t *user)
+prep_read(int if_index, void *buffer, size_t limit)
 {
-    if (size < sizeof(msg_hdr_t)) return -1;  // too small
-    memset(buffer, 0, size);  // clear buffer
-    msg_hdr_t *hdr = buffer;
-    hdr->magic = MSG_MAGIC;
-    hdr->op_code = op_code;
-    switch (op_code) {
-        case OP_READ: {
-            msg_none_t *msg = buffer;
-            msg->hdr.if_index = if_index;
-            size = sizeof(msg_none_t);
-            break;
-        }
-        case OP_WRITE: {
-            msg_write_t *msg = buffer;
-            msg->hdr.if_index = if_index;
-            msg->user = *user;
-            size = sizeof(msg_none_t);
-            break;
-        }
-        default: {
-            size = sizeof(msg_none_t);
-            break;
-        }
-    }
-    return size;
+    if (limit < sizeof(msg_read_t)) return -1;  // too small
+    memset(buffer, 0, limit);  // clear buffer
+    msg_read_t *msg = buffer;
+    msg->hdr.magic = MSG_MAGIC;
+    msg->hdr.op_code = OP_READ;
+    msg->hdr.if_index = if_index;
+    return (sizeof(msg_none_t));
+}
+
+int
+prep_write(int if_index, void *buffer, size_t limit, user_state_t *user)
+{
+    if (limit < sizeof(msg_read_t)) return -1;  // too small
+    memset(buffer, 0, limit);  // clear buffer
+    msg_read_t *msg = buffer;
+    msg->hdr.magic = MSG_MAGIC;
+    msg->hdr.op_code = OP_WRITE;
+    msg->hdr.if_index = if_index;
+    msg->user = *user;
+    return (sizeof(msg_write_t));
 }
 
 static octet_t proto_buf[1024];  // message-transfer buffer
 
 int
-client(void *buffer, size_t limit)
+do_transaction(void *buffer, int size, size_t limit)
 {
     int fd, rv, n; 
     struct sockaddr_storage address;
@@ -96,16 +90,10 @@ client(void *buffer, size_t limit)
         return -1;  // failure
     }
 
-    n = create_message(buffer, limit, OP_READ, 3, NULL);
-    if (n <= 0) {
-        fprintf(stderr, "exceeded message buffer size of %zu\n", limit);
-        return -1;  // failure
-    }
-
     struct sockaddr *to_addr = set_sockaddr(&address, &addr_len); 
     DEBUG(dump_sockaddr(stdout, to_addr, addr_len));
 
-    n = sendto(fd, buffer, n, 0, to_addr, addr_len);
+    n = sendto(fd, buffer, size, 0, to_addr, addr_len);
     if (n < 0) {
         perror("sendto() failed");
         return -1;  // failure
@@ -138,6 +126,22 @@ client(void *buffer, size_t limit)
 }
 
 int
+client(int if_index, void *buffer, size_t limit)
+{
+    int n;
+
+    n = prep_read(if_index, buffer, limit);
+    if (n <= 0) {
+        fprintf(stderr, "exceeded message buffer size of %zu\n", limit);
+        return -1;  // failure
+    }
+    n = do_transaction(buffer, n, limit);
+    if (n < 0) return -1;  // failure
+
+    return 0;  // success
+}
+
+int
 main(int argc, char *argv[])
 {
     // set new default protocol options
@@ -151,7 +155,12 @@ main(int argc, char *argv[])
     fputs(argv[0], stdout);
     print_proto_opt(stdout);
 
-    rv = client(proto_buf, sizeof(proto_buf));
+    if (proto_opt.if_index <= 0) {
+        fprintf(stderr, "usage: %s if=<interface>\n", argv[0]);
+        return 1;
+    }
+
+    rv = client(proto_opt.if_index, proto_buf, sizeof(proto_buf));
 
     return rv;
 }
