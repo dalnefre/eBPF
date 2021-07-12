@@ -12,8 +12,33 @@
 #include "link_msg.h"
 
 #define DEBUG(x) x /**/
+#define TRACE(x)   /**/
 
 #define IF_INDEX_MAX (16)
+
+void
+dump_state(FILE *f, int if_index, user_state_t *user, link_state_t *link)
+{
+    fprintf(f, "[%d] ", if_index);
+    __u32 uf = user->user_flags;
+    fprintf(f, "user@%p: %c%c%c%c ",
+        user,
+        '-',
+        (GET_FLAG(uf, UF_STOP) ? 'R' : 's'),
+        (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'),
+        (GET_FLAG(uf, UF_BUSY) ? 'B' : 'r'));
+    __u32 lf = link->link_flags;
+    fprintf(f, "link@%p: %c%c%c%c%c%c%c%c\n",
+        link,
+        '-',
+        (GET_FLAG(lf, LF_RECV) ? 'R' : '-'),
+        (GET_FLAG(lf, LF_SEND) ? 'S' : '-'),
+        (GET_FLAG(lf, LF_FULL) ? 'F' : 'e'),
+        (GET_FLAG(lf, LF_BUSY) ? 'B' : 'r'),
+        (GET_FLAG(lf, LF_ENTL) ? '&' : '-'),
+        (GET_FLAG(lf, LF_ID_B) ? 'B' : '-'),
+        (GET_FLAG(lf, LF_ID_A) ? 'A' : '-'));
+}
 
 static user_state_t user_state[IF_INDEX_MAX];  // user state by if_index
 
@@ -24,6 +49,7 @@ get_user_state(int if_index)
     &&  (if_index < IF_INDEX_MAX)) {
         return &user_state[if_index];
     }
+    DEBUG(fprintf(stderr, "get_user_state(%d) FAIL!\n", if_index));
     return NULL;
 }
 
@@ -36,7 +62,19 @@ get_link_state(int if_index)
     &&  (if_index < IF_INDEX_MAX)) {
         return &link_state[if_index];
     }
+    DEBUG(fprintf(stderr, "get_link_state(%d) FAIL!\n", if_index));
     return NULL;
+}
+
+int
+get_state(int if_index, user_state_t **uptr, link_state_t **lptr)
+{
+    *uptr = get_user_state(if_index);
+    if (!*uptr) return -1;  // fail!
+    *lptr = get_link_state(if_index);
+    if (!*lptr) return -1;  // fail!
+    DEBUG(dump_state(stdout, if_index, *uptr, *lptr));
+    return 0;  // success
 }
 
 static octet_t proto_buf[1024];  // message-transfer buffer
@@ -44,6 +82,9 @@ static octet_t proto_buf[1024];  // message-transfer buffer
 int
 transform(void *buffer, int n)
 {
+    user_state_t *user;
+    link_state_t *link;
+
     if (n < sizeof(msg_hdr_t)) return -1;  // fail!
     msg_hdr_t *hdr = buffer;
     if (hdr->magic != MSG_MAGIC) return -1;  // fail!
@@ -53,10 +94,7 @@ transform(void *buffer, int n)
             break;
         }
         case OP_READ: {
-            user_state_t *user = get_user_state(hdr->if_index);
-            if (!user) return -1;  // fail!
-            link_state_t *link = get_link_state(hdr->if_index);
-            if (!link) return -1;  // fail!
+            if (get_state(hdr->if_index, &user, &link) < 0) return -1;
 
             msg_read_t *reply = buffer;
             reply->user = *user;
@@ -66,11 +104,9 @@ transform(void *buffer, int n)
             break;
         }
         case OP_WRITE: {
-            user_state_t *user = get_user_state(hdr->if_index);
-            if (!user) return -1;  // fail!
-            link_state_t *link = get_link_state(hdr->if_index);
-            if (!link) return -1;  // fail!
+            if (get_state(hdr->if_index, &user, &link) < 0) return -1;
 
+            if (n < sizeof(msg_write_t)) return -1;  // fail!
             msg_write_t *msg = buffer;
             *user = msg->user;
 
@@ -134,7 +170,7 @@ server(void *buffer, size_t limit)
             return -1;  // failure
         }
 
-//        DEBUG(dump_sockaddr(stdout, addr, addr_len));
+        TRACE(dump_sockaddr(stdout, addr, addr_len));
         fputs("Reply: \n", stdout);
         hexdump(stdout, buffer, n);
     }
@@ -146,13 +182,16 @@ server(void *buffer, size_t limit)
 static int
 simulate_transfer(int if_index, __u8 *payload)
 {
-    user_state_t *user = get_user_state(if_index);
-    if (!user) return -1;  // fail!
-    link_state_t *link = get_link_state(if_index);
-    if (!link) return -1;  // fail!
+    user_state_t *user;
+    link_state_t *link;
 
+    if (get_state(if_index, &user, &link) < 0) {
+        return -1;  // fail!
+    }
     if (!GET_FLAG(user->user_flags, UF_BUSY)
     &&  !GET_FLAG(link->link_flags, LF_FULL)) {
+        DEBUG(fputs("Transfer: \n", stdout));
+        DEBUG(hexdump(stdout, payload, MAX_PAYLOAD));
         memcpy(link->inbound, payload, MAX_PAYLOAD);
         SET_FLAG(link->link_flags, LF_FULL);
         return 0;  // success
@@ -161,34 +200,44 @@ simulate_transfer(int if_index, __u8 *payload)
     return 1;  // try again later
 }
 
+//#define NETWORK_PERIOD 1000  // 0.001 seconds = 1,000 microseconds
+#define NETWORK_PERIOD 3000000  // 3 second = 3,000,000 microseconds
+
 int
 simulated_network()
 {
-    int rv;
+    int rv, if_index;
 
-    while (usleep(1000) == 0) {  // 0.001 second = 1,000 microseconds
-        for (int if_index = 1; if_index < IF_INDEX_MAX; ++if_index) {
-            user_state_t *user = get_user_state(if_index);
-            if (!user) return -1;  // fail!
-            link_state_t *link = get_link_state(if_index);
-            if (!link) return -1;  // fail!
+    while (usleep(NETWORK_PERIOD) == 0) {
+        DEBUG(fputs("IF scan...\n", stdout));
+        for (if_index = 1; if_index < IF_INDEX_MAX; ++if_index) {
+            user_state_t *user;
+            link_state_t *link;
+
+            if (get_state(if_index, &user, &link) < 0) {
+                return -1;  // fail!
+            }
 
             if (GET_FLAG(user->user_flags, UF_FULL)
             &&  !GET_FLAG(link->link_flags, LF_BUSY)) {
                 int dst = (if_index ^ 0xF);  // calculate destination
+                DEBUG(printf("AIT %d->%d\n", if_index, dst));
                 rv = simulate_transfer(dst, user->outbound);
                 if (rv < 0) return -1;  // fail!
                 if (rv == 0) {
+                    DEBUG(printf("(%d) SET LF_BUSY\n", if_index));
                     SET_FLAG(link->link_flags, LF_BUSY);
                 }
             }
 
             if (!GET_FLAG(user->user_flags, UF_FULL)
             &&  GET_FLAG(link->link_flags, LF_BUSY)) {
+                DEBUG(printf("(%d) CLR LF_BUSY\n", if_index));
                 CLR_FLAG(link->link_flags, LF_BUSY);
             }
         }
     }
+    DEBUG(fputs("timer fail!\n", stderr));
     return 0;  // success
 }
 
@@ -220,6 +269,7 @@ main(int argc, char *argv[])
         return -1;  // failure
     } else if (pid == 0) {  // child process
         rv = server(proto_buf, sizeof(proto_buf));
+        fprintf(stderr, "server exit=%d\n", rv);
         exit(rv);
     }
     fprintf(stderr, "server pid=%d\n", pid);
@@ -231,6 +281,7 @@ main(int argc, char *argv[])
         return -1;  // failure
     } else if (pid == 0) {  // child process
         rv = simulated_network();
+        fprintf(stderr, "network exit=%d\n", rv);
         exit(rv);
     }
     fprintf(stderr, "network pid=%d\n", pid);
