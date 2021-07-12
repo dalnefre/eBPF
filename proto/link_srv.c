@@ -217,7 +217,8 @@ simulate_transfer(int if_index, __u8 *payload)
 }
 
 //#define NETWORK_PERIOD 1000  // 0.001 seconds = 1,000 microseconds
-#define NETWORK_PERIOD 3000000  // 3 second = 3,000,000 microseconds
+#define NETWORK_PERIOD 500000  // 0.5 second = 500,000 microseconds
+//#define NETWORK_PERIOD 3000000  // 3 second = 3,000,000 microseconds
 
 int
 simulated_network()
@@ -233,6 +234,10 @@ simulated_network()
             if (get_state(if_index, &user, &link) < 0) {
                 return -1;  // fail!
             }
+
+            /*
+             * outbound AIT
+             */
 
             if (GET_FLAG(user->user_flags, UF_FULL)
             &&  !GET_FLAG(link->link_flags, LF_BUSY)) {
@@ -251,6 +256,17 @@ simulated_network()
                 DEBUG(printf("(%d) CLR LF_BUSY\n", if_index));
                 CLR_FLAG(link->link_flags, LF_BUSY);
             }
+
+            /*
+             * inbound AIT
+             */
+
+            if (GET_FLAG(user->user_flags, UF_BUSY)
+            &&  GET_FLAG(link->link_flags, LF_FULL)) {
+                DEBUG(printf("(%d) CLR LF_FULL\n", if_index));
+                CLR_FLAG(link->link_flags, LF_FULL);
+            }
+
         }
     }
     DEBUG(fputs("timer fail!\n", stderr));

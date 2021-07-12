@@ -135,6 +135,9 @@ client(int if_index, void *buffer, size_t limit)
     user_state_t *user = &msg->user;
     link_state_t *link = &msg->link;
 
+    /*
+     * outbound AIT
+     */
     if (proto_opt.ait
      && !GET_FLAG(user->user_flags, UF_FULL)
      && !GET_FLAG(link->link_flags, LF_BUSY)) {
@@ -142,22 +145,54 @@ client(int if_index, void *buffer, size_t limit)
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
 	strncpy((char*)user->outbound, proto_opt.ait, MAX_PAYLOAD);
 #pragma GCC diagnostic pop
+        DEBUG(printf("(%d) SET UF_FULL\n", if_index));
         SET_FLAG(user->user_flags, UF_FULL);
         n = prep_write(if_index, buffer, limit);
         if (n <= 0) return -1;  // failure
         n = do_transaction(buffer, n, limit);
         if (n < 0) return -1;  // failure
+        DEBUG(fputs("Outbound: \n", stdout));
+        DEBUG(hexdump(stdout, user->outbound, MAX_PAYLOAD));
     }
     if (GET_FLAG(user->user_flags, UF_FULL)
      && GET_FLAG(link->link_flags, LF_BUSY)) {
         // acknowlege outbound transfer
+#if 0
         n = strlen(proto_opt.ait);
         if (n >= MAX_PAYLOAD) {
             proto_opt.ait += MAX_PAYLOAD;
         } else {
             proto_opt.ait = NULL;
         }
+#endif
+        DEBUG(printf("(%d) CLR UF_FULL\n", if_index));
         CLR_FLAG(user->user_flags, UF_FULL);
+        n = prep_write(if_index, buffer, limit);
+        if (n <= 0) return -1;  // failure
+        n = do_transaction(buffer, n, limit);
+        if (n < 0) return -1;  // failure
+    }
+
+    /*
+     * inbound AIT
+     */
+    if (!GET_FLAG(user->user_flags, UF_BUSY)
+     && GET_FLAG(link->link_flags, LF_FULL)) {
+        // receive inbound transfer
+        DEBUG(printf("(%d) SET UF_BUSY\n", if_index));
+        SET_FLAG(user->user_flags, UF_BUSY);
+        n = prep_write(if_index, buffer, limit);
+        if (n <= 0) return -1;  // failure
+        n = do_transaction(buffer, n, limit);
+        if (n < 0) return -1;  // failure
+        DEBUG(fputs("Inbound: \n", stdout));
+        DEBUG(hexdump(stdout, link->inbound, MAX_PAYLOAD));
+    }
+    if (GET_FLAG(user->user_flags, UF_BUSY)
+     && !GET_FLAG(link->link_flags, LF_FULL)) {
+        // acknowlege inbound transfer
+        DEBUG(printf("(%d) CLR UF_BUSY\n", if_index));
+        CLR_FLAG(user->user_flags, UF_BUSY);
         n = prep_write(if_index, buffer, limit);
         if (n <= 0) return -1;  // failure
         n = do_transaction(buffer, n, limit);
