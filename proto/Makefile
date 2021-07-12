@@ -55,7 +55,8 @@ link_test: link.c proto.o code.o util.o
 
 link_cli: link_cli.o proto.o code.o util.o
 
-link_srv: link_srv.o proto.o util.o
+link_srv: link_srv.c proto.o util.o
+	cc $(CFLAGS) -lpthread -o link_srv link_srv.c proto.o util.o
 
 code: code.c util.o
 	cc $(CFLAGS) -DTEST_MAIN -o code code.c util.o

@@ -9,6 +9,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "link_msg.h"
 
 #define DEBUG(x) x /**/
@@ -21,15 +22,13 @@ dump_state(FILE *f, int if_index, user_state_t *user, link_state_t *link)
 {
     fprintf(f, "[%d] ", if_index);
     __u32 uf = user->user_flags;
-    fprintf(f, "user@%p: %c%c%c%c ",
-        user,
+    fprintf(f, "user: %c%c%c%c ",
         '-',
         (GET_FLAG(uf, UF_STOP) ? 'R' : 's'),
         (GET_FLAG(uf, UF_FULL) ? 'F' : 'e'),
         (GET_FLAG(uf, UF_BUSY) ? 'B' : 'r'));
     __u32 lf = link->link_flags;
-    fprintf(f, "link@%p: %c%c%c%c%c%c%c%c\n",
-        link,
+    fprintf(f, "link: %c%c%c%c%c%c%c%c\n",
         '-',
         (GET_FLAG(lf, LF_RECV) ? 'R' : '-'),
         (GET_FLAG(lf, LF_SEND) ? 'S' : '-'),
@@ -73,9 +72,13 @@ get_state(int if_index, user_state_t **uptr, link_state_t **lptr)
     if (!*uptr) return -1;  // fail!
     *lptr = get_link_state(if_index);
     if (!*lptr) return -1;  // fail!
-    DEBUG(dump_state(stdout, if_index, *uptr, *lptr));
+    TRACE(dump_state(stdout, if_index, *uptr, *lptr));
     return 0;  // success
 }
+
+/*
+ * server thread
+ */
 
 static octet_t proto_buf[1024];  // message-transfer buffer
 
@@ -179,6 +182,18 @@ server(void *buffer, size_t limit)
     return rv;
 }
 
+void *
+run_server(void *ctx)
+{
+    int rv = server(proto_buf, sizeof(proto_buf));
+    fprintf(stderr, "server exit=%d\n", rv);
+    pthread_exit(NULL);
+}
+
+/*
+ * network thread
+ */
+
 static int
 simulate_transfer(int if_index, __u8 *payload)
 {
@@ -193,6 +208,7 @@ simulate_transfer(int if_index, __u8 *payload)
         DEBUG(fputs("Transfer: \n", stdout));
         DEBUG(hexdump(stdout, payload, MAX_PAYLOAD));
         memcpy(link->inbound, payload, MAX_PAYLOAD);
+        DEBUG(printf("(%d) SET LF_FULL\n", if_index));
         SET_FLAG(link->link_flags, LF_FULL);
         return 0;  // success
     }
@@ -209,7 +225,7 @@ simulated_network()
     int rv, if_index;
 
     while (usleep(NETWORK_PERIOD) == 0) {
-        DEBUG(fputs("IF scan...\n", stdout));
+        TRACE(fputs("IF scan...\n", stdout));
         for (if_index = 1; if_index < IF_INDEX_MAX; ++if_index) {
             user_state_t *user;
             link_state_t *link;
@@ -241,6 +257,14 @@ simulated_network()
     return 0;  // success
 }
 
+void *
+run_network(void *ctx)
+{
+    int rv = simulated_network();
+    fprintf(stderr, "network exit=%d\n", rv);
+    pthread_exit(NULL);
+}
+
 #include <errno.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -249,7 +273,8 @@ int
 main(int argc, char *argv[])
 {
     int rv;
-    pid_t pid;
+    pthread_t server_thread;
+    pthread_t network_thread;
 
     // set new default protocol options
     proto_opt.family = AF_INET;
@@ -262,47 +287,26 @@ main(int argc, char *argv[])
     fputs(argv[0], stdout);
     print_proto_opt(stdout);
 
-    // create API server process
-    pid = fork();
-    if (pid < 0) {
-        perror("fork() failed");
+    // create API server thread
+    rv = pthread_create(&server_thread, NULL, run_server, NULL);
+    if (rv != 0) {
+        perror("pthread_create(server) failed");
         return -1;  // failure
-    } else if (pid == 0) {  // child process
-        rv = server(proto_buf, sizeof(proto_buf));
-        fprintf(stderr, "server exit=%d\n", rv);
-        exit(rv);
     }
-    fprintf(stderr, "server pid=%d\n", pid);
 
-    // create simulated network process
-    pid = fork();
-    if (pid < 0) {
-        perror("fork() failed");
+    // create simulated network thread
+    rv = pthread_create(&network_thread, NULL, run_network, NULL);
+    if (rv != 0) {
+        perror("pthread_create(network) failed");
         return -1;  // failure
-    } else if (pid == 0) {  // child process
-        rv = simulated_network();
-        fprintf(stderr, "network exit=%d\n", rv);
-        exit(rv);
     }
-    fprintf(stderr, "network pid=%d\n", pid);
 
-    // ignore termination signals so we can clean up children
-    signal(SIGHUP, SIG_IGN);
-    signal(SIGINT, SIG_IGN);
-    signal(SIGTERM, SIG_IGN);
-
-    // wait for child processes to exit
+    // wait for child threads to exit
     fflush(stdout);
-    for (;;) {
-        rv = wait(NULL);
-        if (rv < 0) {
-            if (errno != ECHILD) {
-                perror("wait() failed");
-            }
-            break;
-        }
-    }
+    pthread_join(server_thread, NULL);
+    pthread_join(network_thread, NULL);
     fputs("parent exit.\n", stderr);
 
+    pthread_exit(NULL);
     return 0;  // success
 }
