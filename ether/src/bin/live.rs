@@ -50,10 +50,12 @@ mod wire {
         self, Channel::Ethernet, DataLinkReceiver, DataLinkSender, NetworkInterface,
     };
     use pretty_hex::pretty_hex;
+    use std::io::{Error, ErrorKind};
 
     pub struct Wire {
         tx: Box<dyn DataLinkSender>,
         rx: Box<dyn DataLinkReceiver>,
+        cnt: u16,
     }
 
     impl Wire {
@@ -79,7 +81,8 @@ mod wire {
                     e
                 ),
             };
-            Wire { tx, rx }
+            let cnt = 0;
+            Wire { tx, rx, cnt }
         }
 
         pub fn send_reset_frame(&mut self, nonce: u32) {
@@ -112,8 +115,13 @@ mod wire {
             self.tx.send_to(&buffer, None);
         }
 
-        pub fn recv_frame(&mut self) -> Result<&[u8], std::io::Error> {
-            self.rx.next()
+        pub fn recv_frame(&mut self) -> Result<&[u8], Error> {
+            self.cnt += 1;
+            if self.cnt > 5 {
+                Err(Error::new(ErrorKind::Other, "Recv limit reached"))
+            } else {
+                self.rx.next()
+            }
         }
     }
 }
@@ -169,19 +177,37 @@ mod link {
                 panic!("Expected ethertype 0x88B5");
             }
             let reset = (frame[6] & 0x80) == 0x00;
-            if reset {
-                // init/reset protocol
-                println!("init/reset protocol {}", reset);
+            if reset { // init/reset protocol
+
+                println!("init/reset = {}", reset);
                 let mut tree_id = [0; 4];
                 tree_id.copy_from_slice(&frame[8..12]);
                 let other = u32::from_be_bytes(tree_id);
                 println!("nonce {}, other {}", self.nonce, other);
-            } else {
-                // entangled protocol
+
+                if self.nonce < other {
+                    println!("waiting...");
+                } else if self.nonce > other {
+                    println!("entangle...");
+                    self.send_proto(0xF0, 0x00);  // send TICK
+                } else {
+                    println!("collision...");
+                    self.nonce = rand::thread_rng().gen();
+                    self.send_reset();  // re-key and send INIT
+                }
+
+            } else { // entangled protocol
+
                 let i_state = frame[14];
                 let u_state = frame[15];
-                println!("entangled protocol {}, i={}, u={}", reset, i_state, u_state);
-                self.send_proto(u_state, i_state);
+                println!("entangled (i,u)=({},{})", i_state, u_state);
+
+                if i_state == 0xF0 {  // TICK recv'd
+                    self.send_proto(0xF0, i_state);  // send TICK
+                } else {
+                    println!("freeze...");
+                }
+
             }
         }
     }
