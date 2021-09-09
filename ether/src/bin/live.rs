@@ -137,7 +137,7 @@ mod link {
 
         pub fn recv_frame(&mut self) -> &[u8] {
             match self.wire.recv_frame() {
-                Ok(frame) => { frame }
+                Ok(frame) => frame,
                 Err(e) => {
                     // If an error occurs, we can handle it here
                     panic!("An error occurred while reading: {}", e);
@@ -154,31 +154,33 @@ mod link {
         }
 
         pub fn event_loop(&mut self) {
-            self.send_reset();  // Start protocol
+            self.send_reset(); // Start protocol
             loop {
                 println!("LOOP");
-                let frame = self.recv_frame();
-                self.on_recv(frame);
+                let mut frame = [0; 60];
+                frame.copy_from_slice(self.recv_frame());
+                self.on_recv(&frame);
             }
         }
 
-        pub fn on_recv(&self, frame: &[u8]) {
+        pub fn on_recv(&mut self, frame: &[u8]) {
             println!("LINK_RECV {}", pretty_hex(&frame));
             if (frame[12] != 0x88) || (frame[13] != 0xB5) {
                 panic!("Expected ethertype 0x88B5");
             }
             let reset = (frame[6] & 0x80) == 0x00;
-            if reset {  // init/reset protocol
+            if reset {
+                // init/reset protocol
                 println!("init/reset protocol {}", reset);
                 let mut tree_id = [0; 4];
                 tree_id.copy_from_slice(&frame[8..12]);
                 let other = u32::from_be_bytes(tree_id);
                 println!("nonce {}, other {}", self.nonce, other);
-            } else {  // entangled protocol
+            } else {
+                // entangled protocol
                 let i_state = frame[14];
                 let u_state = frame[15];
-                println!("entangled protocol {}, i={}, u={}",
-                    reset, i_state, u_state);
+                println!("entangled protocol {}, i={}, u={}", reset, i_state, u_state);
                 self.send_proto(u_state, i_state);
             }
         }
@@ -291,7 +293,7 @@ fn main() {
         Some(name) => name,
     };
     let wire = Wire::new(&interface_name);
-    let link = Link::new(wire);
+    let mut link = Link::new(wire);
 
     // Listen loop...
     link.event_loop();
