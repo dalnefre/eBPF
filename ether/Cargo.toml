@@ -10,3 +10,7 @@ pnet = "0.28.0"
 pretty-hex = "0.2.1"
 rand = "0.8.4"
 
+[features]
+api-old = []
+simulator = []
+webserver = []

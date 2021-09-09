@@ -313,8 +313,8 @@ fn main() {
     println!("LIVE");
     let interface_name = match env::args().nth(1) {
         None => {
-            println!("usage: server interface");
-            std::process::exit(1);
+            println!("usage: live interface");
+            return ()
         }
         Some(name) => name,
     };

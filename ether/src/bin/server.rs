@@ -12,7 +12,7 @@ fn main() {
     let interface_name = match env::args().nth(1) {
         None => {
             println!("usage: server interface");
-            std::process::exit(1);
+            return ()
         }
         Some(name) => name,
     };

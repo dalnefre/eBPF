@@ -11,8 +11,8 @@ fn main() {
     println!("CLIENT");
     let interface_name = match env::args().nth(1) {
         None => {
-            println!("usage: server interface");
-            std::process::exit(1);
+            println!("usage: client interface");
+            return ()
         }
         Some(name) => name,
     };
