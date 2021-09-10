@@ -74,6 +74,10 @@ pub enum Message {
     //    Struct(BTreeMap<String, Message>),
     Pair(Box<Message>, Box<Message>),
     Addr(Rc<Actor>),
+    Req(Rc<Actor>, &'static str, Box<Message>), // (cust, selector, payload)
+    Frame([u8; 60]),                            // a raw Ethernet (minimal) frame
+    Read(Rc<Actor>),                            // (cust, #read)
+    Write(Rc<Actor>, Box<Message>),             // (cust, #write, payload)
 }
 
 pub struct Effect {
