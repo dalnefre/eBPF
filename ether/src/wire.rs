@@ -54,15 +54,15 @@ pub struct Wire {
 }
 
 impl Wire {
-    pub fn new(interface_name: &str) -> Wire {
-        let interface_names_match = |iface: &NetworkInterface| iface.name == interface_name;
+    pub fn new(if_name: &str) -> Wire {
+        let if_names_match = |iface: &NetworkInterface| iface.name == if_name;
 
         // Find the network interface with the provided name
-        println!("INTERFACE {}", interface_name);
+        println!("INTERFACE {}", if_name);
         let interfaces = datalink::interfaces();
         let interface = interfaces
             .into_iter()
-            .filter(interface_names_match)
+            .filter(if_names_match)
             .next()
             .unwrap();
 

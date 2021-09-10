@@ -70,8 +70,8 @@ pub enum Message {
     Int(isize),
     Num(isize, isize, isize), // num = int * base ^ exp
     Sym(&'static str),
-    //    List(&'static [Message]),
-    //    Struct(BTreeMap<String, Message>),
+    //List(&'static [Message]),
+    //Struct(BTreeMap<String, Message>),
     Pair(Box<Message>, Box<Message>),
     Addr(Rc<Actor>),
     Req(Rc<Actor>, &'static str, Box<Message>), // (cust, selector, payload)
