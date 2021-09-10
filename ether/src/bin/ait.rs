@@ -1,7 +1,7 @@
 use std::env;
 
-use ether::wire::Wire;
 use ether::link::Link;
+use ether::wire::Wire;
 
 // Implement link liveness and AIT protocols
 //
@@ -11,7 +11,7 @@ fn main() {
     let interface_name = match env::args().nth(1) {
         None => {
             println!("usage: ait interface");
-            return ()
+            return ();
         }
         Some(name) => name,
     };

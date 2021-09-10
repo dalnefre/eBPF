@@ -12,7 +12,7 @@ fn main() {
     let interface_name = match env::args().nth(1) {
         None => {
             println!("usage: client interface");
-            return ()
+            return ();
         }
         Some(name) => name,
     };

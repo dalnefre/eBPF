@@ -177,7 +177,8 @@ mod link {
                 panic!("Expected ethertype 0x88B5");
             }
             let reset = (frame[6] & 0x80) == 0x00;
-            if reset { // init/reset protocol
+            if reset {
+                // init/reset protocol
 
                 println!("init/reset = {}", reset);
                 let mut tree_id = [0; 4];
@@ -189,25 +190,25 @@ mod link {
                     println!("waiting...");
                 } else if self.nonce > other {
                     println!("entangle...");
-                    self.send_proto(0xF0, 0x00);  // send TICK
+                    self.send_proto(0xF0, 0x00); // send TICK
                 } else {
                     println!("collision...");
                     self.nonce = rand::thread_rng().gen();
-                    self.send_reset();  // re-key and send INIT
+                    self.send_reset(); // re-key and send INIT
                 }
-
-            } else { // entangled protocol
+            } else {
+                // entangled protocol
 
                 let i_state = frame[14];
                 let u_state = frame[15];
                 println!("entangled (i,u)=({},{})", i_state, u_state);
 
-                if i_state == 0xF0 {  // TICK recv'd
-                    self.send_proto(0xF0, i_state);  // send TICK
+                if i_state == 0xF0 {
+                    // TICK recv'd
+                    self.send_proto(0xF0, i_state); // send TICK
                 } else {
                     println!("freeze...");
                 }
-
             }
         }
     }
@@ -314,7 +315,7 @@ fn main() {
     let interface_name = match env::args().nth(1) {
         None => {
             println!("usage: live interface");
-            return ()
+            return ();
         }
         Some(name) => name,
     };

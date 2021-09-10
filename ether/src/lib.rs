@@ -1,3 +1,3 @@
 pub mod link;
-pub mod wire;
 pub mod reactor;
+pub mod wire;
