@@ -93,7 +93,7 @@ pub struct LinkBeh {
     nonce: u32,
 }
 
-use crate::frame::Frame;
+use crate::frame::{self, Frame};
 
 impl LinkBeh {
     pub fn new(wire: &Rc<Actor>, nonce: u32) -> Box<dyn Behavior> {
@@ -117,14 +117,14 @@ impl Behavior for LinkBeh {
                 match Frame::new(&data[..]) {
                     Ok(frame) => {
                         if frame.is_reset() {
-                            let tree_id = frame.get_tree_id();
-                            if self.nonce < tree_id {
+                            let nonce = frame.get_tree_id();
+                            if self.nonce < nonce {
                                 println!("waiting...");
                                 Ok(effect)
-                            } else if self.nonce > tree_id {
+                            } else if self.nonce > nonce {
                                 println!("entangle...");
                                 let mut reply = Frame::default();
-                                reply.set_i_state(0xF0);  // send TICK
+                                reply.set_i_state(frame::TICK);  // send TICK
                                 reply.set_tree_id(self.nonce);
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
@@ -140,10 +140,11 @@ impl Behavior for LinkBeh {
                             }
                         } else if frame.is_entangled() {
                             let i_state = frame.get_i_state();
-                            if i_state == 0xF0 { // TICK recv'd
+                            println!("entangled i={}...", i_state);
+                            if i_state == frame::TICK { // TICK recv'd
                                 let mut reply = Frame::default();
                                 reply.set_u_state(i_state);
-                                reply.set_i_state(0xF0);  // send TICK
+                                reply.set_i_state(frame::TICK);  // send TICK
                                 reply.set_tree_id(self.nonce);
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
