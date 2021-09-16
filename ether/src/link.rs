@@ -83,6 +83,60 @@ impl Link {
     }
 }
 
+use crate::reactor::*;
+extern crate alloc;
+//use alloc::boxed::Box;
+use alloc::rc::Rc;
+
+pub struct LinkBeh {
+    wire: Rc<Actor>,
+    nonce: u32,
+}
+
+impl Behavior for LinkBeh {
+    fn react(&self, event: Event) -> Result<Effect, Error> {
+        let mut effect = Effect::new();
+        match event.message {
+            Message::Frame(data) => {
+                // Frame received from the wire
+                match Frame::new(&data[..]) {
+                    Ok(frame) => {
+                        if !frame.has_valid_ethertype() {
+                            Err("bad ethertype")
+                        } else if frame.is_reset() {
+                            Ok(effect)
+                        } else {
+                            let i_state = frame.get_i_state();
+                            if i_state == 0xF0 { // TICK recv'd
+                                let mut reply = Frame::default();
+                                reply.set_u_state(i_state);
+                                reply.set_i_state(0xFF);
+                                reply.set_tree_id(self.nonce);
+                                effect.send(&self.wire, Message::Frame(reply.data));
+                                Ok(effect)
+                            } else {
+                                Err("bad protocol state")
+                            }
+                        }
+                    },
+                    Err(_) => Err("bad frame data"),
+                }
+            }
+            _ => Err("unknown message"),
+            //_ => Err(format!("unknown message {:?}", event.message)),
+        }
+        //Ok(effect)
+    }
+}
+
+use crate::frame::Frame;
+
+impl LinkBeh {
+    pub fn check_for_frame(&mut self) -> Option<Frame> {
+        None
+    }
+}
+
 /*** Reference Implementation in Humus
 
 # The _link_ is modeled as two separate endpoints,
