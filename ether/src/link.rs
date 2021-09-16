@@ -93,6 +93,21 @@ pub struct LinkBeh {
     nonce: u32,
 }
 
+use crate::frame::Frame;
+
+impl LinkBeh {
+    pub fn new(wire: &Rc<Actor>, nonce: u32) -> Box<dyn Behavior> {
+        Box::new(LinkBeh {
+            wire: Rc::clone(&wire),
+            nonce,
+        })
+    }
+
+    pub fn check_for_frame(&mut self) -> Option<Frame> {
+        None
+    }
+}
+
 impl Behavior for LinkBeh {
     fn react(&self, event: Event) -> Result<Effect, Error> {
         let mut effect = Effect::new();
@@ -101,22 +116,42 @@ impl Behavior for LinkBeh {
                 // Frame received from the wire
                 match Frame::new(&data[..]) {
                     Ok(frame) => {
-                        if !frame.has_valid_ethertype() {
-                            Err("bad ethertype")
-                        } else if frame.is_reset() {
-                            Ok(effect)
-                        } else {
+                        if frame.is_reset() {
+                            let tree_id = frame.get_tree_id();
+                            if self.nonce < tree_id {
+                                println!("waiting...");
+                                Ok(effect)
+                            } else if self.nonce > tree_id {
+                                println!("entangle...");
+                                let mut reply = Frame::default();
+                                reply.set_i_state(0xF0);  // send TICK
+                                reply.set_tree_id(self.nonce);
+                                effect.send(&self.wire, Message::Frame(reply.data));
+                                Ok(effect)
+                            } else {
+                                println!("collision...");
+                                let nonce: u32 = rand::thread_rng().gen();
+                                effect.update(LinkBeh::new(&self.wire, nonce))?;
+                                let mut reply = Frame::default();
+                                reply.set_reset();  // send INIT
+                                reply.set_tree_id(self.nonce);
+                                effect.send(&self.wire, Message::Frame(reply.data));
+                                Ok(effect)
+                            }
+                        } else if frame.is_entangled() {
                             let i_state = frame.get_i_state();
                             if i_state == 0xF0 { // TICK recv'd
                                 let mut reply = Frame::default();
                                 reply.set_u_state(i_state);
-                                reply.set_i_state(0xFF);
+                                reply.set_i_state(0xF0);  // send TICK
                                 reply.set_tree_id(self.nonce);
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else {
                                 Err("bad protocol state")
                             }
+                        } else {
+                            Err("bad frame format")
                         }
                     },
                     Err(_) => Err("bad frame data"),
@@ -126,14 +161,6 @@ impl Behavior for LinkBeh {
             //_ => Err(format!("unknown message {:?}", event.message)),
         }
         //Ok(effect)
-    }
-}
-
-use crate::frame::Frame;
-
-impl LinkBeh {
-    pub fn check_for_frame(&mut self) -> Option<Frame> {
-        None
     }
 }
 
