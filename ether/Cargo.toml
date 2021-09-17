@@ -9,6 +9,8 @@ edition = "2018"
 pnet = "0.28.0"
 pretty-hex = "0.2.1"
 rand = "0.8.4"
+crossbeam = "0.7.1"
+crossbeam-channel = "0.4.4"
 
 [features]
 api-old = []
