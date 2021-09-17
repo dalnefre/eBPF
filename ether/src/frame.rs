@@ -64,7 +64,7 @@ impl Default for Frame {
                 \xFF\xFF\xFF\xFF\xFF\xFF\
                 \xFF\x00\x00\x00\x00\x00\
                 \x88\xB5\
-                \x00\x00";  // skeletal entangled frame
+                \x00\x00"; // skeletal entangled frame
         let mut data = [0x20_u8; 60];
         data[0..16].copy_from_slice(header);
         Frame { data }
@@ -76,11 +76,11 @@ impl Frame {
         let data = data.try_into()?;
         Ok(Frame { data })
     }
-/*
-    pub fn get_data(&self) -> &[u8] {
-        &self.data[..]
-    }
-*/
+    /*
+        pub fn get_data(&self) -> &[u8] {
+            &self.data[..]
+        }
+    */
     pub fn set_reset(&mut self) {
         self.data[0] = 0x7F;
         self.data[6] = 0x7F;

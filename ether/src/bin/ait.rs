@@ -1,8 +1,8 @@
+use crossbeam::crossbeam_channel::unbounded as channel;
+use crossbeam::crossbeam_channel::{Receiver, Sender};
 use std::convert::TryInto;
 use std::env;
 use std::thread;
-use crossbeam::crossbeam_channel::unbounded as channel;
-use crossbeam::crossbeam_channel::{Sender, Receiver};
 
 use ether::reactor::{Behavior, Config, Effect, Error, Event, Message};
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
@@ -13,6 +13,7 @@ use alloc::rc::Rc;
 
 use ether::link::{Link, LinkBeh};
 use ether::wire::{Wire, WireBeh};
+use ether::frame::Frame;
 
 fn async_io() {
     println!("AIT");
@@ -95,8 +96,8 @@ fn liveness(if_name: &str) {
             fn react(&self, _event: Event) -> Result<Effect, Error> {
                 let mut effect = Effect::new();
 
-                let wire = effect.create(WireBoot::new(self.tx.clone(), self.rx.clone()));
                 let nonce = rand::thread_rng().gen();
+                let wire = effect.create(WireBoot::new(nonce, self.tx.clone(), self.rx.clone()));
                 let link = effect.create(LinkBeh::new(&wire, nonce));
                 effect.send(&wire, Message::Addr(Rc::clone(&link)));
 
@@ -104,12 +105,17 @@ fn liveness(if_name: &str) {
             }
         }
         struct WireBoot {
+            nonce: u32,
             tx: Sender<[u8; 60]>,
             rx: Receiver<[u8; 60]>,
         }
         impl WireBoot {
-            pub fn new(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
-                Box::new(WireBoot { tx, rx })
+            pub fn new(
+                nonce: u32,
+                tx: Sender<[u8; 60]>,
+                rx: Receiver<[u8; 60]>,
+            ) -> Box<dyn Behavior> {
+                Box::new(WireBoot { nonce, tx, rx })
             }
         }
         impl Behavior for WireBoot {
@@ -118,7 +124,11 @@ fn liveness(if_name: &str) {
                 match event.message {
                     Message::Addr(link) => {
                         effect.update(WireBeh::new(&link, self.tx.clone(), self.rx.clone()))?;
-                        effect.send(&event.target, Message::Empty);  // start polling
+                        let mut reply = Frame::default();
+                        reply.set_reset(); // send INIT
+                        reply.set_tree_id(self.nonce);
+                        effect.send(&event.target, Message::Frame(reply.data));
+                        effect.send(&event.target, Message::Empty); // start polling
                         Ok(effect)
                     }
                     _ => Ok(effect),

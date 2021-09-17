@@ -124,7 +124,7 @@ impl Behavior for LinkBeh {
                             } else if self.nonce > nonce {
                                 println!("entangle...");
                                 let mut reply = Frame::default();
-                                reply.set_i_state(frame::TICK);  // send TICK
+                                reply.set_i_state(frame::TICK); // send TICK
                                 reply.set_tree_id(self.nonce);
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
@@ -133,7 +133,7 @@ impl Behavior for LinkBeh {
                                 let nonce: u32 = rand::thread_rng().gen();
                                 effect.update(LinkBeh::new(&self.wire, nonce))?;
                                 let mut reply = Frame::default();
-                                reply.set_reset();  // send INIT
+                                reply.set_reset(); // send INIT
                                 reply.set_tree_id(self.nonce);
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
@@ -141,10 +141,11 @@ impl Behavior for LinkBeh {
                         } else if frame.is_entangled() {
                             let i_state = frame.get_i_state();
                             println!("entangled i={}...", i_state);
-                            if i_state == frame::TICK { // TICK recv'd
+                            if i_state == frame::TICK {
+                                // TICK recv'd
                                 let mut reply = Frame::default();
                                 reply.set_u_state(i_state);
-                                reply.set_i_state(frame::TICK);  // send TICK
+                                reply.set_i_state(frame::TICK); // send TICK
                                 reply.set_tree_id(self.nonce);
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
@@ -154,7 +155,7 @@ impl Behavior for LinkBeh {
                         } else {
                             Err("bad frame format")
                         }
-                    },
+                    }
                     Err(_) => Err("bad frame data"),
                 }
             }
