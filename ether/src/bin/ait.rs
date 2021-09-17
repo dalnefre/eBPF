@@ -4,6 +4,7 @@ use std::convert::TryInto;
 use std::env;
 use std::thread;
 
+use pretty_hex::pretty_hex;
 use ether::reactor::{Behavior, Config, Effect, Error, Event, Message};
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
 use rand::Rng;
@@ -32,6 +33,8 @@ fn async_io() {
 }
 
 fn liveness(if_name: &str) {
+    println!("LIVE_AIT");
+
     let if_names_match = |iface: &NetworkInterface| iface.name == if_name;
     // Find the network interface with the provided name
     let interfaces = datalink::interfaces();
@@ -58,6 +61,7 @@ fn liveness(if_name: &str) {
             match ether_rx.next() {
                 Ok(raw_data) => {
                     let data = raw_data.try_into().expect("Bad frame size");
+                    println!("ETHER_RECV {}", pretty_hex(&data));
                     inbound_tx.send(data).expect("Send failed on channel");
                 }
                 Err(e) => {
@@ -72,6 +76,7 @@ fn liveness(if_name: &str) {
         loop {
             match outbound_rx.recv() {
                 Ok(data) => {
+                    println!("ETHER_SEND {}", pretty_hex(&data));
                     ether_tx.send_to(&data, None);
                 }
                 Err(e) => {
@@ -82,7 +87,8 @@ fn liveness(if_name: &str) {
         }
     });
 
-    thread::spawn(move || {
+    // FIXME: running ReActor in main thread...
+    //thread::spawn(move || {
         struct Boot {
             tx: Sender<[u8; 60]>,
             rx: Receiver<[u8; 60]>,
@@ -131,7 +137,7 @@ fn liveness(if_name: &str) {
                         effect.send(&event.target, Message::Empty); // start polling
                         Ok(effect)
                     }
-                    _ => Ok(effect),
+                    _ => Err("unknown message: expected Addr(link)"),
                 }
             }
         }
@@ -140,14 +146,15 @@ fn liveness(if_name: &str) {
         config.boot(Boot::new(outbound_tx, inbound_rx));
         loop {
             let _pending = config.dispatch(100);
+            //println!("ACTOR DISPATCH (100), pending={}", pending);
         }
-    });
+    //});
 }
 
 fn _liveness(if_name: &str) {
     // this version is just a refactor of `live.rs`
     // to be removed once the actor-based version works
-    println!("AIT");
+    println!("LIVENESS");
 
     let wire = Wire::new(&if_name);
     let mut link = Link::new(wire);

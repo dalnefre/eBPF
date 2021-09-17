@@ -75,6 +75,7 @@ impl Link {
 
             if i_state == 0xF0 {
                 // TICK recv'd
+                println!("TICK rcvd...");
                 self.send_proto(0xF0, i_state); // send TICK
             } else {
                 println!("freeze...");
@@ -143,6 +144,7 @@ impl Behavior for LinkBeh {
                             println!("entangled i={}...", i_state);
                             if i_state == frame::TICK {
                                 // TICK recv'd
+                                println!("TICK rcvd.");
                                 let mut reply = Frame::default();
                                 reply.set_u_state(i_state);
                                 reply.set_i_state(frame::TICK); // send TICK
@@ -150,9 +152,11 @@ impl Behavior for LinkBeh {
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else {
+                                println!("bad state.");
                                 Err("bad protocol state")
                             }
                         } else {
+                            println!("bad frame.");
                             Err("bad frame format")
                         }
                     }
