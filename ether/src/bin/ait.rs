@@ -104,7 +104,7 @@ fn liveness(if_name: &str) {
 
                 let nonce = rand::thread_rng().gen();
                 let wire = effect.create(WireBoot::new(nonce, self.tx.clone(), self.rx.clone()));
-                let link = effect.create(LinkBeh::new(&wire, nonce));
+                let link = effect.create(LinkBeh::new(&wire, nonce, 0));
                 effect.send(&wire, Message::Addr(Rc::clone(&link)));
 
                 Ok(effect)
