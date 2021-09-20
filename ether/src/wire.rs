@@ -151,16 +151,21 @@ impl Behavior for WireBeh {
     fn react(&self, event: Event) -> Result<Effect, Error> {
         let mut effect = Effect::new();
         match event.message {
-            Message::Frame(data) => match self.tx.send(data) {
-                Ok(_) => Ok(effect),
-                _ => Err("send failed"),
-            },
+            Message::Frame(data) => {
+                println!("Wire::outbound");
+                match self.tx.send(data) {
+                    Ok(_) => Ok(effect),
+                    _ => Err("send failed"),
+                }
+            }
             Message::Empty => {
                 // FIXME: this polling strategy is only needed
                 // until we can inject events directly into ReActor
                 match self.rx.try_recv() {
                     Ok(data) => {
+                        println!("Wire::inbound");
                         effect.send(&self.link, Message::Frame(data));
+                        effect.send(&event.target, Message::Empty); // keep polling
                         Ok(effect)
                     }
                     _ => {
