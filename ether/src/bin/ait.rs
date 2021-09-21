@@ -4,35 +4,34 @@ use std::convert::TryInto;
 use std::env;
 use std::thread;
 
-use pretty_hex::pretty_hex;
 use ether::reactor::{Behavior, Config, Effect, Error, Event, Message};
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
+use pretty_hex::pretty_hex;
 use rand::Rng;
 extern crate alloc;
 //use alloc::boxed::Box;
 use alloc::rc::Rc;
 
+use ether::frame::Frame;
 use ether::link::{Link, LinkBeh};
 use ether::wire::{Wire, WireBeh};
-use ether::frame::Frame;
 
-fn async_io() {
-    println!("AIT");
+fn sim_ait() {
+    println!("SIM_AIT");
 
-    // Create a simple streaming channel
-    let (inbound_tx, inbound_rx) = channel::<&[u8]>();
-    let (outbound_tx, outbound_rx) = channel::<&[u8]>();
+    let (inbound_tx, inbound_rx) = channel::<[u8; 60]>();
+    let (outbound_tx, outbound_rx) = channel::<[u8; 60]>();
+
     thread::spawn(move || {
-        let outbound_msg = "bar".as_bytes();
-        outbound_tx.send(outbound_msg).unwrap();
-        println!("inbound: {:?}", inbound_rx.recv().unwrap());
+        run_reactor(outbound_tx, inbound_rx);
     });
-    println!("outbound: {:?}", outbound_rx.recv().unwrap());
-    let inbound_msg = "foo".as_bytes();
-    inbound_tx.send(inbound_msg).unwrap();
+
+    thread::spawn(move || {
+        run_reactor(inbound_tx, outbound_rx);
+    });
 }
 
-fn liveness(if_name: &str) {
+fn live_ait(if_name: &str) {
     println!("LIVE_AIT");
 
     let if_names_match = |iface: &NetworkInterface| iface.name == if_name;
@@ -87,68 +86,67 @@ fn liveness(if_name: &str) {
         }
     });
 
-    // FIXME: running ReActor in main thread...
-    //thread::spawn(move || {
-        struct Boot {
-            tx: Sender<[u8; 60]>,
-            rx: Receiver<[u8; 60]>,
-        }
-        impl Boot {
-            pub fn new(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
-                Box::new(Boot { tx, rx })
-            }
-        }
-        impl Behavior for Boot {
-            fn react(&self, _event: Event) -> Result<Effect, Error> {
-                let mut effect = Effect::new();
+    thread::spawn(move || {
+        run_reactor(outbound_tx, inbound_rx);
+    });
+}
 
-                let nonce = rand::thread_rng().gen();
-                let wire = effect.create(WireBoot::new(nonce, self.tx.clone(), self.rx.clone()));
-                let link = effect.create(LinkBeh::new(&wire, nonce, 0));
-                effect.send(&wire, Message::Addr(Rc::clone(&link)));
+fn run_reactor(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
+    struct Boot {
+        tx: Sender<[u8; 60]>,
+        rx: Receiver<[u8; 60]>,
+    }
+    impl Boot {
+        pub fn new(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
+            Box::new(Boot { tx, rx })
+        }
+    }
+    impl Behavior for Boot {
+        fn react(&self, _event: Event) -> Result<Effect, Error> {
+            let mut effect = Effect::new();
 
-                Ok(effect)
-            }
+            let nonce = rand::thread_rng().gen();
+            let wire = effect.create(WireBoot::new(nonce, self.tx.clone(), self.rx.clone()));
+            let link = effect.create(LinkBeh::new(&wire, nonce, 0));
+            effect.send(&wire, Message::Addr(Rc::clone(&link)));
+
+            Ok(effect)
         }
-        struct WireBoot {
-            nonce: u32,
-            tx: Sender<[u8; 60]>,
-            rx: Receiver<[u8; 60]>,
+    }
+    struct WireBoot {
+        nonce: u32,
+        tx: Sender<[u8; 60]>,
+        rx: Receiver<[u8; 60]>,
+    }
+    impl WireBoot {
+        pub fn new(nonce: u32, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
+            Box::new(WireBoot { nonce, tx, rx })
         }
-        impl WireBoot {
-            pub fn new(
-                nonce: u32,
-                tx: Sender<[u8; 60]>,
-                rx: Receiver<[u8; 60]>,
-            ) -> Box<dyn Behavior> {
-                Box::new(WireBoot { nonce, tx, rx })
-            }
-        }
-        impl Behavior for WireBoot {
-            fn react(&self, event: Event) -> Result<Effect, Error> {
-                let mut effect = Effect::new();
-                match event.message {
-                    Message::Addr(link) => {
-                        effect.update(WireBeh::new(&link, self.tx.clone(), self.rx.clone()))?;
-                        let mut reply = Frame::default();
-                        reply.set_reset(); // send INIT
-                        reply.set_tree_id(self.nonce);
-                        effect.send(&event.target, Message::Frame(reply.data));
-                        effect.send(&event.target, Message::Empty); // start polling
-                        Ok(effect)
-                    }
-                    _ => Err("unknown message: expected Addr(link)"),
+    }
+    impl Behavior for WireBoot {
+        fn react(&self, event: Event) -> Result<Effect, Error> {
+            let mut effect = Effect::new();
+            match event.message {
+                Message::Addr(link) => {
+                    effect.update(WireBeh::new(&link, self.tx.clone(), self.rx.clone()))?;
+                    let mut reply = Frame::default();
+                    reply.set_reset(); // send INIT
+                    reply.set_tree_id(self.nonce);
+                    effect.send(&event.target, Message::Frame(reply.data));
+                    effect.send(&event.target, Message::Empty); // start polling
+                    Ok(effect)
                 }
+                _ => Err("unknown message: expected Addr(link)"),
             }
         }
+    }
 
-        let mut config = Config::new();
-        config.boot(Boot::new(outbound_tx, inbound_rx));
-        loop {
-            let _pending = config.dispatch(100);
-            //println!("ACTOR DISPATCH (100), pending={}", pending);
-        }
-    //});
+    let mut config = Config::new();
+    config.boot(Boot::new(tx, rx));
+    loop {
+        let _pending = config.dispatch(100);
+        //println!("ACTOR DISPATCH (100), pending={}", pending);
+    }
 }
 
 fn _liveness(if_name: &str) {
@@ -168,7 +166,14 @@ fn _liveness(if_name: &str) {
 // Invoke as: ait <interface name>
 fn main() {
     match env::args().nth(1) {
-        None => async_io(),
-        Some(name) => liveness(&name),
+        None => sim_ait(),
+        Some(name) => live_ait(&name),
     };
+
+    // MAIN THREAD
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .expect("read_line() failed");
+    println!("line={}", line);
 }
