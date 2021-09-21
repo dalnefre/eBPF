@@ -52,7 +52,6 @@ pub struct Wire {
     rx: Box<dyn DataLinkReceiver>,
     cnt: u16,
 }
-
 impl Wire {
     pub fn new(if_name: &str) -> Wire {
         let if_names_match = |iface: &NetworkInterface| iface.name == if_name;
@@ -152,7 +151,7 @@ impl Behavior for WireBeh {
         let mut effect = Effect::new();
         match event.message {
             Message::Frame(data) => {
-                println!("Wire::outbound");
+                //println!("Wire::outbound");
                 match self.tx.send(data) {
                     Ok(_) => Ok(effect),
                     _ => Err("send failed"),
@@ -163,7 +162,7 @@ impl Behavior for WireBeh {
                 // until we can inject events directly into ReActor
                 match self.rx.try_recv() {
                     Ok(data) => {
-                        println!("Wire::inbound");
+                        //println!("Wire::inbound");
                         effect.send(&self.link, Message::Frame(data));
                         effect.send(&event.target, Message::Empty); // keep polling
                         Ok(effect)

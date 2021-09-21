@@ -13,21 +13,29 @@ extern crate alloc;
 use alloc::rc::Rc;
 
 use ether::frame::Frame;
-use ether::link::{Link, LinkBeh};
+use ether::link::{Link, LinkBeh, Port};
 use ether::wire::{Wire, WireBeh};
 
 fn sim_ait() {
     println!("SIM_AIT");
 
-    let (inbound_tx, inbound_rx) = channel::<[u8; 60]>();
-    let (outbound_tx, outbound_rx) = channel::<[u8; 60]>();
+    let (in_wire_tx, in_wire_rx) = channel::<[u8; 60]>();
+    let (out_wire_tx, out_wire_rx) = channel::<[u8; 60]>();
 
     thread::spawn(move || {
-        run_reactor(outbound_tx, inbound_rx);
+        let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
+        let (_out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let port = Port::new(in_port_tx, out_port_rx);
+        run_reactor(port, out_wire_tx, in_wire_rx);
     });
 
     thread::spawn(move || {
-        run_reactor(inbound_tx, outbound_rx);
+        let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
+        let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let m0 = "Hello?".as_bytes().try_into().expect("Too long!");
+        out_port_tx.send(m0).expect("sim send failed.");
+        let port = Port::new(in_port_tx, out_port_rx);
+        run_reactor(port, in_wire_tx, out_wire_rx);
     });
 }
 
@@ -52,8 +60,8 @@ fn live_ait(if_name: &str) {
         ),
     };
 
-    let (inbound_tx, inbound_rx) = channel::<[u8; 60]>();
-    let (outbound_tx, outbound_rx) = channel::<[u8; 60]>();
+    let (in_wire_tx, in_wire_rx) = channel::<[u8; 60]>();
+    let (out_wire_tx, out_wire_rx) = channel::<[u8; 60]>();
 
     thread::spawn(move || {
         loop {
@@ -61,7 +69,7 @@ fn live_ait(if_name: &str) {
                 Ok(raw_data) => {
                     let data = raw_data.try_into().expect("Bad frame size");
                     println!("ETHER_RECV {}", pretty_hex(&data));
-                    inbound_tx.send(data).expect("Send failed on channel");
+                    in_wire_tx.send(data).expect("Send failed on channel");
                 }
                 Err(e) => {
                     // If an error occurs, we can handle it here
@@ -73,7 +81,7 @@ fn live_ait(if_name: &str) {
 
     thread::spawn(move || {
         loop {
-            match outbound_rx.recv() {
+            match out_wire_rx.recv() {
                 Ok(data) => {
                     println!("ETHER_SEND {}", pretty_hex(&data));
                     ether_tx.send_to(&data, None);
@@ -87,18 +95,22 @@ fn live_ait(if_name: &str) {
     });
 
     thread::spawn(move || {
-        run_reactor(outbound_tx, inbound_rx);
+        let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
+        let (_out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let port = Port::new(in_port_tx, out_port_rx);
+        run_reactor(port, out_wire_tx, in_wire_rx);
     });
 }
 
-fn run_reactor(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
+fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
     struct Boot {
+        port: Port,
         tx: Sender<[u8; 60]>,
         rx: Receiver<[u8; 60]>,
     }
     impl Boot {
-        pub fn new(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
-            Box::new(Boot { tx, rx })
+        pub fn new(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
+            Box::new(Boot { port, tx, rx })
         }
     }
     impl Behavior for Boot {
@@ -107,7 +119,7 @@ fn run_reactor(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
 
             let nonce = rand::thread_rng().gen();
             let wire = effect.create(WireBoot::new(nonce, self.tx.clone(), self.rx.clone()));
-            let link = effect.create(LinkBeh::new(&wire, nonce, 0));
+            let link = effect.create(LinkBeh::new(self.port.clone(), &wire, nonce, 0));
             effect.send(&wire, Message::Addr(Rc::clone(&link)));
 
             Ok(effect)
@@ -142,7 +154,7 @@ fn run_reactor(tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
     }
 
     let mut config = Config::new();
-    config.boot(Boot::new(tx, rx));
+    config.boot(Boot::new(port, tx, rx));
     loop {
         let _pending = config.dispatch(100);
         //println!("ACTOR DISPATCH (100), pending={}", pending);

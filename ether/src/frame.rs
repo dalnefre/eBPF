@@ -52,12 +52,11 @@ pub const TECK: u8 = 0xE1;
 pub const RTECK: u8 = 0xD2;
 pub const TACK: u8 = 0xC3;
 
+type Error = Box<dyn std::error::Error>;
+
 pub struct Frame {
     pub data: [u8; 60],
 }
-
-type Error = Box<dyn std::error::Error>;
-
 impl Default for Frame {
     fn default() -> Frame {
         let header = b"\
@@ -70,7 +69,6 @@ impl Default for Frame {
         Frame { data }
     }
 }
-
 impl Frame {
     pub fn new(data: &[u8]) -> Result<Frame, Error> {
         let data = data.try_into()?;
@@ -120,5 +118,13 @@ impl Frame {
 
     pub fn get_u_state(&self) -> u8 {
         self.data[15]
+    }
+
+    pub fn set_payload(&mut self, payload: [u8; 44]) {
+        self.data[16..60].copy_from_slice(&payload[..])
+    }
+
+    pub fn get_payload(&self) -> [u8; 44] {
+        self.data[16..60].try_into().expect("Bad payload size")
     }
 }
