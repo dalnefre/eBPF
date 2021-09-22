@@ -16,6 +16,13 @@ use ether::frame::Frame;
 use ether::link::{Link, LinkBeh, Port};
 use ether::wire::{Wire, WireBeh};
 
+fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
+    assert!(s.len() <= 44);
+    let mut buf = [0_u8; 44];
+    buf[..s.len()].copy_from_slice(&s.as_bytes());
+    tx.send(buf).expect("insert_payload failed");
+}
+
 fn sim_ait() {
     println!("SIM_AIT");
 
@@ -32,8 +39,8 @@ fn sim_ait() {
     thread::spawn(move || {
         let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
         let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
-        let m0 = "Hello?".as_bytes().try_into().expect("Too long!");
-        out_port_tx.send(m0).expect("sim send failed.");
+        insert_payload(&out_port_tx, "Hello, ");
+        insert_payload(&out_port_tx, "World!");
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, in_wire_tx, out_wire_rx);
     });
