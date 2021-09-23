@@ -56,7 +56,10 @@ fn sim_ait() {
 
     thread::spawn(move || {
         let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
-        let (_out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        insert_payload(&out_port_tx, "Uno");
+        insert_payload(&out_port_tx, "Dos");
+        insert_payload(&out_port_tx, "Tres");
         thread::spawn(move || {
             monitor_node_in(&in_port_rx);
         });
@@ -65,11 +68,16 @@ fn sim_ait() {
     });
 
     thread::spawn(move || {
-        let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
+        let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
         let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
         insert_payload(&out_port_tx, "One");
         insert_payload(&out_port_tx, "Two");
         insert_payload(&out_port_tx, "Three");
+        insert_payload(&out_port_tx, "Four");
+        insert_payload(&out_port_tx, "Five");
+        thread::spawn(move || {
+            monitor_node_in(&in_port_rx);
+        });
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, in_wire_tx, out_wire_rx);
     });
