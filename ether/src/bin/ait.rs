@@ -13,8 +13,8 @@ extern crate alloc;
 use alloc::rc::Rc;
 
 use ether::frame::Frame;
-use ether::link::{Link, LinkBeh, Port};
-use ether::wire::{Wire, WireBeh};
+use ether::link::{LinkBeh, Port};
+use ether::wire::{WireBeh};
 
 fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
     assert!(s.len() <= 44);
@@ -29,7 +29,7 @@ fn monitor_node_out(tx: &Sender<[u8; 44]>) {
         std::io::stdin()
             .read_line(&mut line)
             .expect("read_line() failed");
-        println!("line={}", line);
+        println!("line={:?}", line);
         insert_payload(tx, &line);
     }
 }
@@ -42,7 +42,7 @@ fn monitor_node_in(rx: &Receiver<[u8; 44]>) {
                 println!("Node::in {}", pretty_hex(&data));
             }
             Err(e) => {
-                println!("Node::in ERROR! {}", e);
+                panic!("Node::in ERROR! {}", e);
             }
         }
     }
@@ -81,6 +81,11 @@ fn sim_ait() {
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, in_wire_tx, out_wire_rx);
     });
+
+    // fail-safe exit after timeout
+    let delay = std::time::Duration::from_millis(3_000);
+    thread::sleep(delay);
+    println!("Time limit {:?} reached.", delay);
 }
 
 fn live_ait(if_name: &str) {
@@ -112,7 +117,7 @@ fn live_ait(if_name: &str) {
             match ether_rx.next() {
                 Ok(raw_data) => {
                     let data = raw_data.try_into().expect("Bad frame size");
-                    println!("ETHER_RECV {}", pretty_hex(&data));
+                    //println!("ETHER_RECV {}", pretty_hex(&data));
                     in_wire_tx.send(data).expect("Send failed on channel");
                 }
                 Err(e) => {
@@ -127,7 +132,7 @@ fn live_ait(if_name: &str) {
         loop {
             match out_wire_rx.recv() {
                 Ok(data) => {
-                    println!("ETHER_SEND {}", pretty_hex(&data));
+                    //println!("ETHER_SEND {}", pretty_hex(&data));
                     ether_tx.send_to(&data, None);
                 }
                 Err(e) => {
@@ -211,18 +216,6 @@ fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
     }
 }
 
-fn _liveness(if_name: &str) {
-    // this version is just a refactor of `live.rs`
-    // to be removed once the actor-based version works
-    println!("LIVENESS");
-
-    let wire = Wire::new(&if_name);
-    let mut link = Link::new(wire);
-
-    // Listen loop...
-    link.event_loop();
-}
-
 // Implement link liveness and AIT protocols
 //
 // Invoke as: ait <interface name>
@@ -231,9 +224,4 @@ fn main() {
         None => sim_ait(),
         Some(name) => live_ait(&name),
     };
-
-    // MAIN THREAD
-    let delay = std::time::Duration::from_millis(6000);
-    thread::sleep(delay);
-    println!("Time limit {:?} reached.", delay);
 }
