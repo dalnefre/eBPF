@@ -143,7 +143,8 @@ fn live_ait(if_name: &str) {
         }
     });
 
-    thread::spawn(move || {
+    // Run ReActor in Main thread...
+    //thread::spawn(move || {
         let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
         let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
         thread::spawn(move || {
@@ -154,7 +155,7 @@ fn live_ait(if_name: &str) {
         });
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, out_wire_tx, in_wire_rx);
-    });
+    //});
 }
 
 fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
