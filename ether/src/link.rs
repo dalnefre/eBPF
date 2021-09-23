@@ -27,7 +27,10 @@ impl Port {
     pub fn inbound(&self, data: [u8; 44]) -> Result<(), Error> {
         match self.tx.send(data) {
             Ok(_) => Ok(()),
-            Err(_) => Err("Port send failed"),
+            Err(e) => {
+                println!("Port::in ERROR! {}", e);
+                Err("Port send failed")
+            },
         }
     }
 

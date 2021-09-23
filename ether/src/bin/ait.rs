@@ -23,6 +23,31 @@ fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
     tx.send(buf).expect("insert_payload failed");
 }
 
+fn monitor_node_out(tx: &Sender<[u8; 44]>) {
+    loop {
+        let mut line = String::new();
+        std::io::stdin()
+            .read_line(&mut line)
+            .expect("read_line() failed");
+        println!("line={}", line);
+        insert_payload(tx, &line);
+    }
+}
+
+fn monitor_node_in(rx: &Receiver<[u8; 44]>) {
+    loop {
+        thread::sleep(std::time::Duration::from_micros(500));
+        match rx.recv() {
+            Ok(data) => {
+                println!("Node::in {}", pretty_hex(&data));
+            }
+            Err(e) => {
+                println!("Node::in ERROR! {}", e);
+            }
+        }
+    }
+}
+
 fn sim_ait() {
     println!("SIM_AIT");
 
@@ -30,8 +55,11 @@ fn sim_ait() {
     let (out_wire_tx, out_wire_rx) = channel::<[u8; 60]>();
 
     thread::spawn(move || {
-        let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
+        let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
         let (_out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        thread::spawn(move || {
+            monitor_node_in(&in_port_rx);
+        });
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, out_wire_tx, in_wire_rx);
     });
@@ -39,8 +67,9 @@ fn sim_ait() {
     thread::spawn(move || {
         let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
         let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
-        insert_payload(&out_port_tx, "Hello, ");
-        insert_payload(&out_port_tx, "World!");
+        insert_payload(&out_port_tx, "One");
+        insert_payload(&out_port_tx, "Two");
+        insert_payload(&out_port_tx, "Three");
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, in_wire_tx, out_wire_rx);
     });
@@ -102,8 +131,14 @@ fn live_ait(if_name: &str) {
     });
 
     thread::spawn(move || {
-        let (in_port_tx, _in_port_rx) = channel::<[u8; 44]>();
-        let (_out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
+        let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        thread::spawn(move || {
+            monitor_node_in(&in_port_rx);
+        });
+        thread::spawn(move || {
+            monitor_node_out(&out_port_tx);
+        });
         let port = Port::new(in_port_tx, out_port_rx);
         run_reactor(port, out_wire_tx, in_wire_rx);
     });
@@ -190,9 +225,7 @@ fn main() {
     };
 
     // MAIN THREAD
-    let mut line = String::new();
-    std::io::stdin()
-        .read_line(&mut line)
-        .expect("read_line() failed");
-    println!("line={}", line);
+    let delay = std::time::Duration::from_millis(6000);
+    thread::sleep(delay);
+    println!("Time limit {:?} reached.", delay);
 }
