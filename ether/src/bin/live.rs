@@ -1,56 +1,12 @@
 use std::env;
 
-/*** Ethernet Frame Format
-
-  0                   1                   2                   3
-  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+  32  64 128
- |R 1 1 1 1 1 X M 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1|   0   0   0
- +   MAC destination = 0xffffff  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- |1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1|S 1 1 1 1 1 Y N 0 0 0 0 0 0 0 0|   1   .   .
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+     MAC source = 0xf0????     +
- |                                         (Tree ID)             |   2   1   .
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- |      Ethertype = 0x88b5       |         Protocol Bits         |   3   .   .
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------------+---------------+
- |                                                               |   4   2   1
- +               +               +               +               +
- |                                                               |   5   .   .
- +               +               +               +               +
- |                                                               |   6   3   .
- +               +               +               +               +
- |                                                               |   7   .   .
- +               +               +               +               +
- |                                                               |   8   4   2
- +               +               +               +               +
- |                     Payload (44 octets)                       |   9   .   .
- +               +               +               +               +
- |                                                               |  10   5   .
- +               +               +               +               +
- |                                                               |  11   .   .
- +               +               +               +               +
- |                                                               |  12   6   3
- +               +               +               +               +
- |                                                               |  13   .   .
- +               +               +               +               +
- |                                                               |  14   7   .
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- |                     Frame check sequence                      |  15   .   .
- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-Protocol Bits: { 00 = TICK, 01 = TECK, 10 = ~TECK, 11 = TACK }
-R/S: { 0 = Reset, 1 = Entangled }
-X/Y: { 0 = Unicast, 1 = Broadcast }
-M/N: { 0 = Global, 1 = Local Admin }
-
-***/
-
 mod wire {
     use pnet::datalink::{
         self, Channel::Ethernet, DataLinkReceiver, DataLinkSender, NetworkInterface,
     };
     use pretty_hex::pretty_hex;
     use std::io::{Error, ErrorKind};
+    use ether::frame::Frame;
 
     pub struct Wire {
         tx: Box<dyn DataLinkSender>,
@@ -87,32 +43,21 @@ mod wire {
 
         pub fn send_reset_frame(&mut self, nonce: u32) {
             // Construct and send a reset packet.
-            let header = b"\
-                \x7F\xFF\xFF\xFF\xFF\xFF\
-                \x7F\x00\x00\x00\x00\x00\
-                \x88\xB5\
-                \x00\x00";
-            let mut buffer = [0x20_u8; 60];
-            buffer[0..16].copy_from_slice(header);
-            buffer[8..12].copy_from_slice(&nonce.to_be_bytes());
-            println!("SEND_RESET {}", pretty_hex(&buffer));
-            self.tx.send_to(&buffer, None);
+            let mut reply = Frame::default();
+            reply.set_reset(); // send reset/init
+            reply.set_tree_id(nonce);
+            println!("SEND_RESET {}", pretty_hex(&reply.data));
+            self.tx.send_to(&reply.data, None);
         }
 
         pub fn send_proto_frame(&mut self, tree_id: u32, i: u8, u: u8) {
             // Construct and send a protocol packet.
-            let header = b"\
-                \xFF\xFF\xFF\xFF\xFF\xFF\
-                \xFF\x00\x00\x00\x00\x00\
-                \x88\xB5\
-                \x00\x00";
-            let mut buffer = [0x20_u8; 60];
-            buffer[0..16].copy_from_slice(header);
-            buffer[8..12].copy_from_slice(&tree_id.to_be_bytes());
-            buffer[14] = i;
-            buffer[15] = u;
-            println!("SEND_PROTO {}", pretty_hex(&buffer));
-            self.tx.send_to(&buffer, None);
+            let mut reply = Frame::default();
+            reply.set_tree_id(tree_id);
+            reply.set_i_state(i);
+            reply.set_u_state(u);
+            println!("SEND_PROTO {}", pretty_hex(&reply.data));
+            self.tx.send_to(&reply.data, None);
         }
 
         pub fn recv_frame(&mut self) -> Result<&[u8], Error> {
@@ -131,6 +76,7 @@ mod link {
     use crate::wire::Wire;
     use pretty_hex::pretty_hex;
     use rand::Rng;
+    use ether::frame::{self, Frame};
 
     pub struct Link {
         wire: Wire,
@@ -167,48 +113,45 @@ mod link {
                 println!("LOOP");
                 let mut frame = [0; 60];
                 frame.copy_from_slice(self.recv_frame());
+                let frame = Frame::new(self.recv_frame()).expect("Bad frame size");
                 self.on_recv(&frame);
             }
         }
 
-        pub fn on_recv(&mut self, frame: &[u8]) {
-            println!("LINK_RECV {}", pretty_hex(&frame));
-            if (frame[12] != 0x88) || (frame[13] != 0xB5) {
-                panic!("Expected ethertype 0x88B5");
-            }
-            let reset = (frame[6] & 0x80) == 0x00;
-            if reset {
+        pub fn on_recv(&mut self, frame: &Frame) {
+            println!("LINK_RECV {}", pretty_hex(&frame.data));
+            if frame.is_reset() {
                 // init/reset protocol
 
-                println!("init/reset = {}", reset);
-                let mut tree_id = [0; 4];
-                tree_id.copy_from_slice(&frame[8..12]);
-                let other = u32::from_be_bytes(tree_id);
+                println!("init/reset");
+                let other = frame.get_tree_id();
                 println!("nonce {}, other {}", self.nonce, other);
 
                 if self.nonce < other {
                     println!("waiting...");
                 } else if self.nonce > other {
                     println!("entangle...");
-                    self.send_proto(0xF0, 0x00); // send TICK
+                    self.send_proto(frame::TICK, frame::TICK); // send TICK
                 } else {
                     println!("collision...");
                     self.nonce = rand::thread_rng().gen();
                     self.send_reset(); // re-key and send INIT
                 }
-            } else {
+            } else if frame.is_entangled() {
                 // entangled protocol
 
-                let i_state = frame[14];
-                let u_state = frame[15];
+                let i_state = frame.get_i_state();
+                let u_state = frame.get_u_state();
                 println!("entangled (i,u)=({},{})", i_state, u_state);
 
-                if i_state == 0xF0 {
+                if i_state == frame::TICK {
                     // TICK recv'd
-                    self.send_proto(0xF0, i_state); // send TICK
+                    self.send_proto(frame::TICK, i_state); // send TICK
                 } else {
                     println!("freeze...");
                 }
+            } else {
+                println!("invalid frame");
             }
         }
     }
