@@ -43,21 +43,16 @@ mod wire {
 
         pub fn send_reset_frame(&mut self, nonce: u32) {
             // Construct and send a reset packet.
-            let mut reply = Frame::default();
-            reply.set_reset(); // send reset/init
-            reply.set_tree_id(nonce);
-            println!("SEND_RESET {}", pretty_hex(&reply.data));
-            self.tx.send_to(&reply.data, None);
+            let frame = Frame::reset(nonce);
+            println!("SEND_RESET {}", pretty_hex(&frame.data));
+            self.tx.send_to(&frame.data, None);
         }
 
         pub fn send_proto_frame(&mut self, tree_id: u32, i: u8, u: u8) {
             // Construct and send a protocol packet.
-            let mut reply = Frame::default();
-            reply.set_tree_id(tree_id);
-            reply.set_i_state(i);
-            reply.set_u_state(u);
-            println!("SEND_PROTO {}", pretty_hex(&reply.data));
-            self.tx.send_to(&reply.data, None);
+            let frame = Frame::entangled(tree_id, i, u);
+            println!("SEND_PROTO {}", pretty_hex(&frame.data));
+            self.tx.send_to(&frame.data, None);
         }
 
         pub fn recv_frame(&mut self) -> Result<&[u8], Error> {
@@ -89,9 +84,9 @@ mod link {
             Link { wire, nonce }
         }
 
-        pub fn recv_frame(&mut self) -> &[u8] {
+        pub fn recv_frame(&mut self) -> Frame {
             match self.wire.recv_frame() {
-                Ok(frame) => frame,
+                Ok(data) => Frame::new(data).expect("Bad frame size"),
                 Err(e) => {
                     // If an error occurs, we can handle it here
                     panic!("An error occurred while reading: {}", e);
@@ -111,9 +106,7 @@ mod link {
             self.send_reset(); // Start protocol
             loop {
                 println!("LOOP");
-                let mut frame = [0; 60];
-                frame.copy_from_slice(self.recv_frame());
-                let frame = Frame::new(self.recv_frame()).expect("Bad frame size");
+                let frame = self.recv_frame();
                 self.on_recv(&frame);
             }
         }

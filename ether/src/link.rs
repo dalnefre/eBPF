@@ -38,24 +38,24 @@ impl Behavior for LinkBeh {
                                 Ok(effect)
                             } else if self.nonce > nonce {
                                 println!("entangle...");
-                                let mut reply = Frame::default();
-                                reply.set_i_state(frame::TICK); // initiate liveness
-                                reply.set_tree_id(self.nonce);
+                                let reply = Frame::entangled(
+                                    self.nonce,
+                                    frame::TICK,
+                                    frame::TICK,
+                                );
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else {
                                 println!("collision...");
                                 let nonce: u32 = rand::thread_rng().gen();
+                                let reply = Frame::reset(nonce);
+                                effect.send(&self.wire, Message::Frame(reply.data));
                                 effect.update(LinkBeh::new(
                                     self.port.clone(),
                                     &self.wire,
                                     nonce,
                                     0,
                                 ))?;
-                                let mut reply = Frame::default();
-                                reply.set_reset(); // send reset/init
-                                reply.set_tree_id(self.nonce);
-                                effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             }
                         } else if frame.is_entangled() {
@@ -120,31 +120,33 @@ impl Behavior for LinkBeh {
                             } else if i_state == frame::TACK {
                                 println!("TACK rcvd."); // Ack AIT recv'd
                                 self.port.ack_outbound();
-                                let mut reply = Frame::default();
-                                reply.set_u_state(i_state);
-                                reply.set_i_state(frame::TICK); // send liveness
-                                reply.set_tree_id(self.nonce);
+                                let reply = Frame::entangled( // send liveness
+                                    self.nonce,
+                                    frame::TICK,
+                                    i_state,
+                                );
+                                effect.send(&self.wire, Message::Frame(reply.data));
                                 effect.update(LinkBeh::new(
                                     self.port.clone(),
                                     &self.wire,
                                     self.nonce,
                                     0,
                                 ))?;
-                                effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else if i_state == frame::RTECK {
                                 println!("RTECK rcvd."); // Reject AIT recv'd
-                                let mut reply = Frame::default();
-                                reply.set_u_state(i_state);
-                                reply.set_i_state(frame::TICK); // send liveness
-                                reply.set_tree_id(self.nonce);
+                                let reply = Frame::entangled( // send liveness
+                                    self.nonce,
+                                    frame::TICK,
+                                    i_state,
+                                );
+                                effect.send(&self.wire, Message::Frame(reply.data));
                                 effect.update(LinkBeh::new(
                                     self.port.clone(),
                                     &self.wire,
                                     self.nonce,
                                     self.balance,
                                 ))?;
-                                effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else {
                                 println!("bad state.");

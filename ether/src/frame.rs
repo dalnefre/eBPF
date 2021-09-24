@@ -74,6 +74,19 @@ impl Frame {
         let data = data.try_into()?;
         Ok(Frame { data })
     }
+    pub fn reset(nonce: u32) -> Frame {
+        let mut frame = Frame::default();
+        frame.set_reset();
+        frame.set_tree_id(nonce);
+        frame
+    }
+    pub fn entangled(tree_id: u32, i: u8, u: u8) -> Frame {
+        let mut frame = Frame::default();
+        frame.set_tree_id(tree_id);
+        frame.set_i_state(i);
+        frame.set_u_state(u);
+        frame
+    }
     /*
         pub fn get_data(&self) -> &[u8] {
             &self.data[..]
