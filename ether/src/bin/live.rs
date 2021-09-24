@@ -1,12 +1,12 @@
 use std::env;
 
 mod wire {
+    use ether::frame::Frame;
     use pnet::datalink::{
         self, Channel::Ethernet, DataLinkReceiver, DataLinkSender, NetworkInterface,
     };
     use pretty_hex::pretty_hex;
     use std::io::{Error, ErrorKind};
-    use ether::frame::Frame;
 
     pub struct Wire {
         tx: Box<dyn DataLinkSender>,
@@ -74,9 +74,9 @@ use wire::Wire;
 
 mod link {
     use crate::wire::Wire;
+    use ether::frame::{self, Frame};
     use pretty_hex::pretty_hex;
     use rand::Rng;
-    use ether::frame::{self, Frame};
 
     pub struct Link {
         wire: Wire,

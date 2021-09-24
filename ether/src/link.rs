@@ -1,67 +1,11 @@
-//use std::convert::TryInto;
-//use std::borrow::BorrowMut;
-use std::{cell::RefCell, ops::DerefMut};
-
-//use pretty_hex::pretty_hex;
 use rand::Rng;
-//use crossbeam::crossbeam_channel::unbounded as channel;
-use crossbeam::crossbeam_channel::{Receiver, Sender};
-
-// Simulated Port for driving AIT link protocol tests
-#[derive(Debug, Clone)]
-pub struct Port {
-    tx: Sender<[u8; 44]>,
-    rx: Receiver<[u8; 44]>,
-    data: RefCell<Option<[u8; 44]>>,
-}
-impl Port {
-    pub fn new(tx: Sender<[u8; 44]>, rx: Receiver<[u8; 44]>) -> Port {
-        Port { tx, rx, data: RefCell::new(None) }
-    }
-
-    pub fn inbound_ready(&self) -> bool {
-        self.tx.is_empty() // if all prior data has been consumed, we are ready for more
-    }
-
-    pub fn inbound(&self, data: [u8; 44]) -> Result<(), Error> {
-        match self.tx.send(data) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                println!("Port::in ERROR! {}", e);
-                Err("Port send failed")
-            },
-        }
-    }
-
-    pub fn outbound(&self) -> Result<[u8; 44], Error> {
-        let mut ref_data = self.data.borrow_mut();
-        let opt_data = ref_data.deref_mut();
-        match opt_data {
-            Some(data) => {
-                Ok(data.clone())
-            },
-            None => {
-                match self.rx.try_recv() {
-                    Ok(data) => {
-                        let _ = opt_data.insert(data.clone()); // data is Copy, clone() would be implicit
-                        Ok(data)
-                    },
-                    Err(_) => Err("Port recv failed"),  // FIXME: distinguish "empty" from "error"
-                }
-            },
-        }
-    }
-
-    pub fn ack_outbound(&self) {
-        self.data.replace(None);
-    }
-}
 
 use crate::reactor::*;
 extern crate alloc;
 //use alloc::boxed::Box;
-use alloc::rc::Rc;
 use crate::frame::{self, Frame};
+use crate::port::Port;
+use alloc::rc::Rc;
 
 pub struct LinkBeh {
     port: Port,
@@ -102,7 +46,12 @@ impl Behavior for LinkBeh {
                             } else {
                                 println!("collision...");
                                 let nonce: u32 = rand::thread_rng().gen();
-                                effect.update(LinkBeh::new(self.port.clone(), &self.wire, nonce, 0))?;
+                                effect.update(LinkBeh::new(
+                                    self.port.clone(),
+                                    &self.wire,
+                                    nonce,
+                                    0,
+                                ))?;
                                 let mut reply = Frame::default();
                                 reply.set_reset(); // send reset/init
                                 reply.set_tree_id(self.nonce);
@@ -121,13 +70,23 @@ impl Behavior for LinkBeh {
                                         reply.set_i_state(frame::TECK); // send begin AIT
                                         reply.set_tree_id(self.nonce); // FIXME: ait destination address?
                                         reply.set_payload(payload);
-                                        effect.update(LinkBeh::new(self.port.clone(), &self.wire, self.nonce, -1))?;
-                                    },
+                                        effect.update(LinkBeh::new(
+                                            self.port.clone(),
+                                            &self.wire,
+                                            self.nonce,
+                                            -1,
+                                        ))?;
+                                    }
                                     Err(_) => {
                                         reply.set_i_state(frame::TICK); // send liveness
                                         reply.set_tree_id(self.nonce);
-                                        effect.update(LinkBeh::new(self.port.clone(), &self.wire, self.nonce, 0))?;
-                                    },
+                                        effect.update(LinkBeh::new(
+                                            self.port.clone(),
+                                            &self.wire,
+                                            self.nonce,
+                                            0,
+                                        ))?;
+                                    }
                                 }
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
@@ -140,11 +99,21 @@ impl Behavior for LinkBeh {
                                     let payload = frame.get_payload();
                                     self.port.inbound(payload)?;
                                     reply.set_i_state(frame::TACK); // send Ack AIT
-                                    effect.update(LinkBeh::new(self.port.clone(), &self.wire, self.nonce, 1))?;
+                                    effect.update(LinkBeh::new(
+                                        self.port.clone(),
+                                        &self.wire,
+                                        self.nonce,
+                                        1,
+                                    ))?;
                                 } else {
                                     reply.set_i_state(frame::RTECK); // send Reject AIT
                                     reply.set_tree_id(self.nonce);
-                                    effect.update(LinkBeh::new(self.port.clone(), &self.wire, self.nonce, 0))?;
+                                    effect.update(LinkBeh::new(
+                                        self.port.clone(),
+                                        &self.wire,
+                                        self.nonce,
+                                        0,
+                                    ))?;
                                 }
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
@@ -155,7 +124,12 @@ impl Behavior for LinkBeh {
                                 reply.set_u_state(i_state);
                                 reply.set_i_state(frame::TICK); // send liveness
                                 reply.set_tree_id(self.nonce);
-                                effect.update(LinkBeh::new(self.port.clone(), &self.wire, self.nonce, 0))?;
+                                effect.update(LinkBeh::new(
+                                    self.port.clone(),
+                                    &self.wire,
+                                    self.nonce,
+                                    0,
+                                ))?;
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else if i_state == frame::RTECK {
@@ -164,7 +138,12 @@ impl Behavior for LinkBeh {
                                 reply.set_u_state(i_state);
                                 reply.set_i_state(frame::TICK); // send liveness
                                 reply.set_tree_id(self.nonce);
-                                effect.update(LinkBeh::new(self.port.clone(), &self.wire, self.nonce, self.balance))?;
+                                effect.update(LinkBeh::new(
+                                    self.port.clone(),
+                                    &self.wire,
+                                    self.nonce,
+                                    self.balance,
+                                ))?;
                                 effect.send(&self.wire, Message::Frame(reply.data));
                                 Ok(effect)
                             } else {

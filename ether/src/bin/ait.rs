@@ -13,8 +13,9 @@ extern crate alloc;
 use alloc::rc::Rc;
 
 use ether::frame::Frame;
-use ether::link::{LinkBeh, Port};
-use ether::wire::{WireBeh};
+use ether::link::LinkBeh;
+use ether::port::Port;
+use ether::wire::WireBeh;
 
 fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
     assert!(s.len() <= 44);
@@ -145,16 +146,16 @@ fn live_ait(if_name: &str) {
 
     // Run ReActor in Main thread...
     //thread::spawn(move || {
-        let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
-        let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
-        thread::spawn(move || {
-            monitor_node_in(&in_port_rx);
-        });
-        thread::spawn(move || {
-            monitor_node_out(&out_port_tx);
-        });
-        let port = Port::new(in_port_tx, out_port_rx);
-        run_reactor(port, out_wire_tx, in_wire_rx);
+    let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
+    let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+    thread::spawn(move || {
+        monitor_node_in(&in_port_rx);
+    });
+    thread::spawn(move || {
+        monitor_node_out(&out_port_tx);
+    });
+    let port = Port::new(in_port_tx, out_port_rx);
+    run_reactor(port, out_wire_tx, in_wire_rx);
     //});
 }
 
