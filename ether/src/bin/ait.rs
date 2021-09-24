@@ -198,9 +198,7 @@ fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
             match event.message {
                 Message::Addr(link) => {
                     effect.update(WireBeh::new(&link, self.tx.clone(), self.rx.clone()))?;
-                    let mut reply = Frame::default();
-                    reply.set_reset(); // send INIT
-                    reply.set_tree_id(self.nonce);
+                    let reply = Frame::reset(self.nonce);
                     effect.send(&event.target, Message::Frame(reply.data));
                     effect.send(&event.target, Message::Empty); // start polling
                     Ok(effect)
