@@ -1,4 +1,4 @@
-/*** Ethernet Frame Format (PROPOSED FOR FUTURE USE)
+/*** Ethernet Frame Format
 
     0                   1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -47,10 +47,10 @@ Z...: Nonce/NodeID?
 
 use std::convert::TryInto;
 
-pub const TICK: u8 = 0xF0;
-pub const TECK: u8 = 0xE1;
-pub const RTECK: u8 = 0xD2;
-pub const TACK: u8 = 0xC3;
+pub const TICK: u8 = 0x03;
+pub const TECK: u8 = 0x07;
+pub const RTECK: u8 = 0x0B;
+pub const TACK: u8 = 0x0F;
 
 type Error = Box<dyn std::error::Error>;
 
@@ -61,8 +61,8 @@ impl Default for Frame {
     fn default() -> Frame {
         let header = b"\
                 \xFF\xFF\xFF\xFF\xFF\xFF\
-                \xFF\x00\x00\x00\x00\x00\
-                \x88\xB5\
+                \x00\x00\x00\x00\x00\x00\
+                \x88\xB6\
                 \x00\x00"; // skeletal entangled frame
         let mut data = [0x20_u8; 60];
         data[0..16].copy_from_slice(header);
@@ -77,11 +77,12 @@ impl Frame {
     pub fn reset(nonce: u32) -> Frame {
         let mut frame = Frame::default();
         frame.set_reset();
-        frame.set_tree_id(nonce);
+        frame.set_nonce(nonce);
         frame
     }
     pub fn entangled(tree_id: u32, i: u8, u: u8) -> Frame {
         let mut frame = Frame::default();
+        frame.set_entangled();
         frame.set_tree_id(tree_id);
         frame.set_i_state(i);
         frame.set_u_state(u);
@@ -93,22 +94,37 @@ impl Frame {
         }
     */
     pub fn set_reset(&mut self) {
-        self.data[0] = 0x7F;
-        self.data[6] = 0x7F;
+        self.data[13] = 0xB5;
     }
 
     pub fn is_reset(&self) -> bool {
-        (self.data[12] == 0x88) && (self.data[13] == 0xB5) && ((self.data[6] & 0x80) == 0x00)
+        (self.data[12] == 0x88) && (self.data[13] == 0xB5)
+    }
+
+    pub fn set_entangled(&mut self) {
+        self.data[13] = 0xB6;
     }
 
     pub fn is_entangled(&self) -> bool {
-        (self.data[12] == 0x88) && (self.data[13] == 0xB5) && ((self.data[6] & 0x80) == 0x80)
+        (self.data[12] == 0x88) && (self.data[13] == 0xB6)
+    }
+
+    pub fn set_nonce(&mut self, nonce: u32) {
+        // `copy_from_slice` will not panic because
+        // the slice is the same size as `nonce` (4 octets)
+        self.data[8..12].copy_from_slice(&nonce.to_be_bytes());
+    }
+
+    pub fn get_nonce(&self) -> u32 {
+        let mut nonce = [0; 4];
+        nonce.copy_from_slice(&self.data[8..12]);
+        u32::from_be_bytes(nonce)
     }
 
     pub fn set_tree_id(&mut self, id: u32) {
         // `copy_from_slice` will not panic because
         // the slice is the same size as `id` (4 octets)
-        self.data[8..12].copy_from_slice(&id.to_be_bytes());
+        self.data[2..6].copy_from_slice(&id.to_be_bytes());
     }
 
     pub fn get_tree_id(&self) -> u32 {
@@ -118,19 +134,19 @@ impl Frame {
     }
 
     pub fn set_i_state(&mut self, i: u8) {
-        self.data[14] = i;
+        self.data[0] = i;
     }
 
     pub fn get_i_state(&self) -> u8 {
-        self.data[14]
+        self.data[0]
     }
 
     pub fn set_u_state(&mut self, u: u8) {
-        self.data[15] = u;
+        self.data[6] = u;
     }
 
     pub fn get_u_state(&self) -> u8 {
-        self.data[15]
+        self.data[6]
     }
 
     pub fn set_payload(&mut self, payload: [u8; 44]) {

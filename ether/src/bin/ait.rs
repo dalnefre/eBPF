@@ -85,6 +85,7 @@ fn sim_ait() {
 
     // fail-safe exit after timeout
     let delay = std::time::Duration::from_millis(3_000);
+    //let delay = std::time::Duration::from_millis(3);
     thread::sleep(delay);
     println!("Time limit {:?} reached.", delay);
 }

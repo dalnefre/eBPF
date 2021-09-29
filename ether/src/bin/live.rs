@@ -6,7 +6,6 @@ mod wire {
         self, Channel::Ethernet, DataLinkReceiver, DataLinkSender, NetworkInterface,
     };
     use pretty_hex::pretty_hex;
-    use std::io::{Error, ErrorKind};
 
     pub struct Wire {
         tx: Box<dyn DataLinkSender>,
@@ -55,12 +54,21 @@ mod wire {
             self.tx.send_to(&frame.data, None);
         }
 
-        pub fn recv_frame(&mut self) -> Result<&[u8], Error> {
+        pub fn recv_frame(&mut self) -> Option<Frame> {
             self.cnt += 1;
             if self.cnt > 5 {
-                Err(Error::new(ErrorKind::Other, "Recv limit reached"))
+                println!("Recv limit reached");
+                None
             } else {
-                self.rx.next()
+                match self.rx.next() {
+                    Ok(data) => {
+                        Some(Frame::new(data).expect("Bad frame size"))
+                    },
+                    Err(e) => {
+                        println!("Recv error: {}", e);
+                        None
+                    }
+                }
             }
         }
     }
@@ -84,14 +92,8 @@ mod link {
             Link { wire, nonce }
         }
 
-        pub fn recv_frame(&mut self) -> Frame {
-            match self.wire.recv_frame() {
-                Ok(data) => Frame::new(data).expect("Bad frame size"),
-                Err(e) => {
-                    // If an error occurs, we can handle it here
-                    panic!("An error occurred while reading: {}", e);
-                }
-            }
+        pub fn recv_frame(&mut self) -> Option<Frame> {
+            self.wire.recv_frame()
         }
 
         pub fn send_reset(&mut self) {
@@ -106,9 +108,12 @@ mod link {
             self.send_reset(); // Start protocol
             loop {
                 println!("LOOP");
-                let frame = self.recv_frame();
-                self.on_recv(&frame);
+                match self.recv_frame() {
+                    Some(frame) => self.on_recv(&frame),
+                    None => break,
+                }
             }
+            println!("EXIT");
         }
 
         pub fn on_recv(&mut self, frame: &Frame) {

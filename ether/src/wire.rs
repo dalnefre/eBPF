@@ -5,6 +5,7 @@ extern crate alloc;
 //use alloc::boxed::Box;
 use alloc::rc::Rc;
 use crossbeam::crossbeam_channel::{Receiver, Sender};
+//use pretty_hex::pretty_hex;
 
 pub struct WireBeh {
     link: Rc<Actor>,
@@ -31,7 +32,7 @@ impl Behavior for WireBeh {
         let mut effect = Effect::new();
         match event.message {
             Message::Frame(data) => {
-                //println!("Wire::outbound");
+                //println!("Wire::outbound {}", pretty_hex(&data));
                 match self.tx.send(data) {
                     Ok(_) => Ok(effect),
                     _ => Err("send failed"),
@@ -42,7 +43,7 @@ impl Behavior for WireBeh {
                 // until we can inject events directly into ReActor
                 match self.rx.try_recv() {
                     Ok(data) => {
-                        //println!("Wire::inbound");
+                        //println!("Wire::inbound {}", pretty_hex(&data));
                         effect.send(&self.link, Message::Frame(data));
                         effect.send(&event.target, Message::Empty); // keep polling
                         Ok(effect)
