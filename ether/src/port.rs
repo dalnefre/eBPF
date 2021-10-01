@@ -1,3 +1,5 @@
+use crate::actor::{self, Actor, Cap};
+use crate::link::LinkEvent;
 //use std::convert::TryInto;
 //use std::borrow::BorrowMut;
 use std::{cell::RefCell, ops::DerefMut};
@@ -7,20 +9,34 @@ use std::{cell::RefCell, ops::DerefMut};
 use crate::reactor::Error;
 use crossbeam::crossbeam_channel::{Receiver, Sender};
 
+#[derive(Debug, Clone)]
+pub enum PortEvent {
+    Init(Cap<PortEvent>),
+    Inbound([u8; 44]),
+}
+
 // Simulated Port for driving AIT link protocol tests
 #[derive(Debug, Clone)]
 pub struct Port {
+    port: Option<Cap<PortEvent>>,
+    link: Cap<LinkEvent>,
     tx: Sender<[u8; 44]>,
     rx: Receiver<[u8; 44]>,
     data: RefCell<Option<[u8; 44]>>,
 }
 impl Port {
-    pub fn new(tx: Sender<[u8; 44]>, rx: Receiver<[u8; 44]>) -> Port {
-        Port {
-            tx,
-            rx,
-            data: RefCell::new(None),
-        }
+    pub fn create(link: Cap<LinkEvent>, tx: Sender<[u8; 44]>, rx: Receiver<[u8; 44]>) -> Cap<PortEvent> {
+        let port = actor::create(
+            Port {
+                port: None,
+                link,
+                tx,
+                rx,
+                data: RefCell::new(None),
+            }
+        );
+        port.send(PortEvent::Init(port.clone()));
+        port
     }
 
     pub fn inbound_ready(&self) -> bool {
@@ -56,5 +72,21 @@ impl Port {
 
     pub fn ack_outbound(&self) {
         self.data.replace(None);
+    }
+}
+impl Actor for Port {
+    type Event = PortEvent;
+
+    fn on_event(&mut self, event: Self::Event) {
+        match event {
+            PortEvent::Init(port) => {
+                self.port = Some(port); // FIXME: should fail if not None (set once only)
+            }
+            PortEvent::Inbound(payload) => {
+                self.inbound(payload).expect("Port::inbound failed");
+                let cust = self.port.clone().expect("Port::port not set!");
+                self.link.send(LinkEvent::Read(cust));  // Ack Write
+            },
+        }
     }
 }

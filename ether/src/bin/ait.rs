@@ -10,7 +10,7 @@ use pretty_hex::pretty_hex;
 use rand::Rng;
 
 use ether::frame::Frame;
-use ether::link::Link;
+use ether::link::{Link, LinkEvent};
 use ether::port::Port;
 use ether::wire::{Wire, WireEvent};
 
@@ -61,8 +61,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in(&in_port_rx);
         });
-        let port = Port::new(in_port_tx, out_port_rx);
-        run_reactor(port, out_wire_tx, in_wire_rx);
+        start_node(in_port_tx, out_port_rx, out_wire_tx, in_wire_rx);
     });
 
     thread::spawn(move || {
@@ -76,13 +75,12 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in(&in_port_rx);
         });
-        let port = Port::new(in_port_tx, out_port_rx);
-        run_reactor(port, in_wire_tx, out_wire_rx);
+        start_node(in_port_tx, out_port_rx, in_wire_tx, out_wire_rx);
     });
 
     // fail-safe exit after timeout
-    let delay = std::time::Duration::from_millis(3_000);
-    //let delay = std::time::Duration::from_millis(3);
+    //let delay = std::time::Duration::from_millis(3_000);
+    let delay = std::time::Duration::from_millis(50);
     thread::sleep(delay);
     println!("Time limit {:?} reached.", delay);
 }
@@ -142,8 +140,7 @@ fn live_ait(if_name: &str) {
         }
     });
 
-    // Run ReActor in Main thread...
-    //thread::spawn(move || {
+    // Start Node in Main thread...
     let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
     let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
     thread::spawn(move || {
@@ -152,26 +149,30 @@ fn live_ait(if_name: &str) {
     thread::spawn(move || {
         monitor_node_out(&out_port_tx);
     });
-    let port = Port::new(in_port_tx, out_port_rx);
-    run_reactor(port, out_wire_tx, in_wire_rx);
-    //});
+    start_node(in_port_tx, out_port_rx, out_wire_tx, in_wire_rx);
 }
 
-fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
-    let wire = actor::create(Wire::new(tx.clone(), rx.clone()));
+fn start_node(
+    port_tx: Sender<[u8; 44]>,
+    port_rx: Receiver<[u8; 44]>,
+    wire_tx: Sender<[u8; 60]>,
+    wire_rx: Receiver<[u8; 60]>,
+) {
+    let wire = actor::create(Wire::new(wire_tx.clone(), wire_rx.clone()));
     let nonce = rand::thread_rng().gen();
+
     let link = actor::create(Link::new(wire.clone(), nonce));
     wire.send(WireEvent::Poll(link.clone(), wire.clone())); // start polling
     let init = Frame::reset(nonce);
     wire.send(WireEvent::Frame(init.data)); // send init/reset
 
+    let port = Port::create(link.clone(), port_tx.clone(), port_rx.clone());
+    link.send(LinkEvent::Read(port.clone())); // port is ready to receive
+
     loop {
         // FIXME: there is no dispatch loop,
         // but we have to keep this thread alive
         // to avoid killing the actor threads
-        if port.inbound_ready() {
-            // NO-OP
-        }
     }
 }
 

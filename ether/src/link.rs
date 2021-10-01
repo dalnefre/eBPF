@@ -1,17 +1,21 @@
-use crate::actor::{self, Cap};
+use crate::actor::{Actor, Cap};
 use crate::frame::{self, Frame};
+use crate::port::PortEvent;
 use crate::wire::WireEvent;
 use rand::Rng;
 
 #[derive(Debug, Clone)]
 pub enum LinkEvent {
     Frame(Frame),
+    Read(Cap<PortEvent>),
+    //Write(Cap<PortEvent>, [u8; 44]),
 }
 
 pub struct Link {
     wire: Cap<WireEvent>,
     nonce: u32,
     balance: isize,
+    reader: Option<Cap<PortEvent>>,
     inbound: Option<[u8; 44]>,
     outbound: Option<[u8; 44]>,
 }
@@ -21,12 +25,13 @@ impl Link {
             wire,
             nonce,
             balance: 0,
+            reader: None,
             inbound: None,
             outbound: None,
         }
     }
 }
-impl actor::Actor for Link {
+impl Actor for Link {
     type Event = LinkEvent;
 
     fn on_event(&mut self, event: Self::Event) {
@@ -107,6 +112,14 @@ impl actor::Actor for Link {
                     panic!("bad frame format");
                 }
             }
+            LinkEvent::Read(cust) => {
+                match self.reader {
+                    Some(_) => panic!("Only one Link-to-Port reader allowed"),
+                    None => {
+                        self.reader = Some(cust);
+                    },
+                }
+            },
         }
     }
 }
