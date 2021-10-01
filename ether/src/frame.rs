@@ -54,6 +54,7 @@ pub const TACK: u8 = 0x0F;
 
 type Error = Box<dyn std::error::Error>;
 
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub data: [u8; 60],
 }

@@ -5,16 +5,12 @@ use std::env;
 use std::thread;
 
 use ether::actor::{self};
-use ether::reactor::{Behavior, Config, Effect, Error, Event, Message};
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
 use pretty_hex::pretty_hex;
 use rand::Rng;
-extern crate alloc;
-//use alloc::boxed::Box;
-use alloc::rc::Rc;
 
 use ether::frame::Frame;
-use ether::link::{Link, LinkBeh};
+use ether::link::Link;
 use ether::port::Port;
 use ether::wire::{Wire, WireEvent};
 
@@ -162,64 +158,20 @@ fn live_ait(if_name: &str) {
 }
 
 fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
-    struct Boot {
-        port: Port,
-        tx: Sender<[u8; 60]>,
-        rx: Receiver<[u8; 60]>,
-    }
-    impl Boot {
-        pub fn new(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
-            Box::new(Boot { port, tx, rx })
-        }
-    }
-    impl Behavior for Boot {
-        fn react(&self, _event: Event) -> Result<Effect, Error> {
-            let mut effect = Effect::new();
+    let wire = actor::create(Wire::new(tx.clone(), rx.clone()));
+    let nonce = rand::thread_rng().gen();
+    let link = actor::create(Link::new(wire.clone(), nonce));
+    wire.send(WireEvent::Poll(link.clone(), wire.clone())); // start polling
+    let init = Frame::reset(nonce);
+    wire.send(WireEvent::Frame(init.data)); // send init/reset
 
-            let nonce = rand::thread_rng().gen();
-            let wire = effect.create(WireBoot::new(nonce, self.tx.clone(), self.rx.clone()));
-            let link = effect.create(LinkBeh::new(self.port.clone(), &wire, nonce, 0));
-            effect.send(&wire, Message::Addr(Rc::clone(&link)));
-
-            Ok(effect)
-        }
-    }
-    struct WireBoot {
-        nonce: u32,
-        tx: Sender<[u8; 60]>,
-        rx: Receiver<[u8; 60]>,
-    }
-    impl WireBoot {
-        pub fn new(nonce: u32, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) -> Box<dyn Behavior> {
-            Box::new(WireBoot { nonce, tx, rx })
-        }
-    }
-    impl Behavior for WireBoot {
-        fn react(&self, event: Event) -> Result<Effect, Error> {
-            let mut effect = Effect::new();
-            match event.message {
-                Message::Addr(_link) => {
-                    let link = actor::create(Link::new(0));
-                    let wire = actor::create(Wire::new(
-                        link.clone(),
-                        self.tx.clone(),
-                        self.rx.clone()
-                    ));
-                    wire.send(WireEvent::Poll(wire.clone())); // start polling
-                    let reply = Frame::reset(self.nonce);
-                    effect.send(&event.target, Message::Frame(reply.data));
-                    Ok(effect)
-                }
-                _ => Err("unknown message: expected Addr(link)"),
-            }
-        }
-    }
-
-    let mut config = Config::new();
-    config.boot(Boot::new(port, tx, rx));
     loop {
-        let _pending = config.dispatch(100);
-        //println!("ACTOR DISPATCH (100), pending={}", pending);
+        // FIXME: there is no dispatch loop,
+        // but we have to keep this thread alive
+        // to avoid killing the actor threads
+        if port.inbound_ready() {
+            // NO-OP
+        }
     }
 }
 
