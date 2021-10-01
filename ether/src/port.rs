@@ -13,6 +13,7 @@ use crossbeam::crossbeam_channel::{Receiver, Sender};
 pub enum PortEvent {
     Init(Cap<PortEvent>),
     Inbound([u8; 44]),
+    AckWrite(),
 }
 
 // Simulated Port for driving AIT link protocol tests
@@ -87,6 +88,10 @@ impl Actor for Port {
                 let cust = self.port.clone().expect("Port::port not set!");
                 self.link.send(LinkEvent::Read(cust));  // Ack Write
             },
+            PortEvent::AckWrite() => {
+                println!("Port::AckWrite");
+                // FIXME: what do we need to do here?
+            }
         }
     }
 }
