@@ -1,11 +1,39 @@
 use rand::Rng;
 
+use crate::actor::{self};
 use crate::reactor::*;
 extern crate alloc;
 //use alloc::boxed::Box;
 use crate::frame::{self, Frame};
 use crate::port::Port;
 use alloc::rc::Rc;
+
+#[derive(Debug, Clone)]
+pub enum LinkEvent {
+    Frame([u8; 60]),
+}
+
+pub struct Link {
+    nonce: u32,
+}
+impl Link {
+    pub fn new(
+        nonce: u32,
+    ) -> Link {
+        Link { nonce }
+    }
+}
+impl actor::Actor for Link {
+    type Event = LinkEvent;
+
+    fn on_event(&mut self, event: Self::Event) {
+        match event {
+            LinkEvent::Frame(_data) => {
+                self.nonce = rand::thread_rng().gen();
+            },
+        }
+    }
+}
 
 pub struct LinkBeh {
     port: Port,

@@ -1,62 +1,58 @@
-//use std::io::{Error, ErrorKind};
-
-use crate::reactor::{Actor, Behavior, Effect, Error, Event, Message};
-extern crate alloc;
+use crate::actor::{Actor, Cap};
+//use crate::reactor::{Actor, Behavior, Effect, Error, Event, Message};
+//extern crate alloc;
 //use alloc::boxed::Box;
-use alloc::rc::Rc;
+//use alloc::rc::Rc;
 use crossbeam::crossbeam_channel::{Receiver, Sender};
 //use pretty_hex::pretty_hex;
+use crate::link::LinkEvent;
 
-pub struct WireBeh {
-    link: Rc<Actor>,
+#[derive(Debug, Clone)]
+pub enum WireEvent {
+    Poll(Cap<WireEvent>),
+    Frame([u8; 60]),
+}
+
+pub struct Wire {
+    link: Cap<LinkEvent>,
     tx: Sender<[u8; 60]>,
     rx: Receiver<[u8; 60]>,
 }
-
-impl WireBeh {
+impl Wire {
     pub fn new(
-        link: &Rc<Actor>,
+        link: Cap<LinkEvent>,
         tx: Sender<[u8; 60]>,
         rx: Receiver<[u8; 60]>,
-    ) -> Box<dyn Behavior> {
-        Box::new(WireBeh {
-            link: Rc::clone(&link),
-            tx,
-            rx,
-        })
+    ) -> Wire {
+        Wire { link, tx, rx }
     }
 }
+impl Actor for Wire {
+    type Event = WireEvent;
 
-impl Behavior for WireBeh {
-    fn react(&self, event: Event) -> Result<Effect, Error> {
-        let mut effect = Effect::new();
-        match event.message {
-            Message::Frame(data) => {
+    fn on_event(&mut self, event: Self::Event) {
+        match event {
+            WireEvent::Frame(data) => {
                 //println!("Wire::outbound {}", pretty_hex(&data));
-                match self.tx.send(data) {
-                    Ok(_) => Ok(effect),
-                    _ => Err("send failed"),
-                }
+                self.tx.send(data).expect("Wire::send failed");
             }
-            Message::Empty => {
+            WireEvent::Poll(myself) => {
                 // FIXME: this polling strategy is only needed
-                // until we can inject events directly into ReActor
+                // until we can inject events directly
                 match self.rx.try_recv() {
                     Ok(data) => {
                         //println!("Wire::inbound {}", pretty_hex(&data));
-                        effect.send(&self.link, Message::Frame(data));
-                        effect.send(&event.target, Message::Empty); // keep polling
-                        Ok(effect)
+                        self.link.send(LinkEvent::Frame(data));
                     }
                     _ => {
                         // FIXME: we should actually check for errors
                         // _OTHER THAN_ not data available
-                        effect.send(&event.target, Message::Empty); // keep polling
-                        Ok(effect)
                     }
                 }
+                //myself.send(event); // keep polling
+                //myself.send(event.clone()); // keep polling
+                myself.send(WireEvent::Poll(myself.clone())); // keep polling
             }
-            _ => Err("unknown message"),
         }
     }
 }

@@ -4,6 +4,7 @@ use std::convert::TryInto;
 use std::env;
 use std::thread;
 
+use ether::actor::{self};
 use ether::reactor::{Behavior, Config, Effect, Error, Event, Message};
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
 use pretty_hex::pretty_hex;
@@ -13,9 +14,9 @@ extern crate alloc;
 use alloc::rc::Rc;
 
 use ether::frame::Frame;
-use ether::link::LinkBeh;
+use ether::link::{Link, LinkBeh};
 use ether::port::Port;
-use ether::wire::WireBeh;
+use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
     assert!(s.len() <= 44);
@@ -197,11 +198,16 @@ fn run_reactor(port: Port, tx: Sender<[u8; 60]>, rx: Receiver<[u8; 60]>) {
         fn react(&self, event: Event) -> Result<Effect, Error> {
             let mut effect = Effect::new();
             match event.message {
-                Message::Addr(link) => {
-                    effect.update(WireBeh::new(&link, self.tx.clone(), self.rx.clone()))?;
+                Message::Addr(_link) => {
+                    let link = actor::create(Link::new(0));
+                    let wire = actor::create(Wire::new(
+                        link.clone(),
+                        self.tx.clone(),
+                        self.rx.clone()
+                    ));
+                    wire.send(WireEvent::Poll(wire.clone())); // start polling
                     let reply = Frame::reset(self.nonce);
                     effect.send(&event.target, Message::Frame(reply.data));
-                    effect.send(&event.target, Message::Empty); // start polling
                     Ok(effect)
                 }
                 _ => Err("unknown message: expected Addr(link)"),
