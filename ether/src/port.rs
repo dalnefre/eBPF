@@ -81,16 +81,34 @@ impl Actor for Port {
     fn on_event(&mut self, event: Self::Event) {
         match event {
             PortEvent::Init(port) => {
-                self.port = Some(port); // FIXME: should fail if not None (set once only)
+                //self.port = Some(port); // FIXME: should fail if not None (set once only)
+                match &self.port {
+                    None => { self.port = Some(port) },
+                    Some(_cust) => panic!("Port::port already set"),
+                }
             }
             PortEvent::Inbound(payload) => {
-                self.inbound(payload).expect("Port::inbound failed");
+                //println!("Port::Inbound");
                 let cust = self.port.clone().expect("Port::port not set!");
-                self.link.send(LinkEvent::Read(cust));  // Ack Write
+                if self.inbound_ready() {
+                    self.inbound(payload).expect("Port::inbound failed");
+                    self.link.send(LinkEvent::Read(cust));  // Ack Write
+                } else { // try again...
+                    cust.send(event);
+                }
             },
             PortEvent::AckWrite() => {
-                println!("Port::AckWrite");
-                // FIXME: what do we need to do here?
+                //println!("Port::AckWrite");
+                let cust = self.port.clone().expect("Port::port not set!");
+                match self.outbound() {
+                    Ok(payload) => { // send next payload
+                        self.link.send(LinkEvent::Write(cust, payload));
+                        self.ack_outbound(); // do this immediately after send, since Link buffers
+                    },
+                    Err(_) => { // try again...
+                        cust.send(event);
+                    },
+                }
             }
         }
     }

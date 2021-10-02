@@ -11,7 +11,7 @@ use rand::Rng;
 
 use ether::frame::Frame;
 use ether::link::{Link, LinkEvent};
-use ether::port::Port;
+use ether::port::{Port, PortEvent};
 use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
@@ -34,7 +34,8 @@ fn monitor_node_out(tx: &Sender<[u8; 44]>) {
 
 fn monitor_node_in(rx: &Receiver<[u8; 44]>) {
     loop {
-        thread::sleep(std::time::Duration::from_micros(500));
+        //thread::sleep(std::time::Duration::from_micros(500));
+        thread::sleep(std::time::Duration::from_millis(150));
         match rx.recv() {
             Ok(data) => {
                 println!("Node::in {}", pretty_hex(&data));
@@ -79,8 +80,8 @@ fn sim_ait() {
     });
 
     // fail-safe exit after timeout
-    //let delay = std::time::Duration::from_millis(3_000);
-    let delay = std::time::Duration::from_millis(50);
+    let delay = std::time::Duration::from_millis(3_000);
+    //let delay = std::time::Duration::from_millis(100);
     thread::sleep(delay);
     println!("Time limit {:?} reached.", delay);
 }
@@ -168,6 +169,7 @@ fn start_node(
 
     let port = Port::create(link.clone(), port_tx.clone(), port_rx.clone());
     link.send(LinkEvent::Read(port.clone())); // port is ready to receive
+    port.send(PortEvent::AckWrite()); // link is ready to receive
 
     loop {
         // FIXME: there is no dispatch loop,

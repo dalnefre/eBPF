@@ -58,24 +58,15 @@ impl Actor for Link {
                     //println!("entangled i={}", i_state);
                     match i_state {
                         frame::TICK => {
-                            println!("TICK rcvd."); // liveness recv'd
-                            if self.balance == -1 { // send completed
-                                println!("TICK deficit");
-                                let writer = self.writer.clone().expect("Link::writer not set!");
-                                writer.send(PortEvent::AckWrite()); // acknowlege write
-                                self.writer = None; // writer satisfied
-                                self.outbound = None; // clear outbound
-                                self.balance = 0; // clear balance
-                            } else if self.balance == 1 { // receive completed
-                                println!("TICK surplus");
+                            //println!("TICK rcvd."); // liveness recv'd
+                            if self.balance == 1 { // receive completed
+                                println!("TICK w/ surplus");
                                 let reader = self.reader.clone().expect("Link::reader not set!");
                                 let payload = self.inbound.clone().expect("Link::inbound not set!");
                                 reader.send(PortEvent::Inbound(payload));  // release payload
                                 self.reader = None; // reader satisfied
                                 self.inbound = None; // clear inbound
                                 self.balance = 0; // clear balance
-                            } else { // no AIT
-                                //self.balance = 0; // balance already clear?
                             }
                             assert_eq!(self.balance, 0); // at this point, the balance should always be 0
                             match self.outbound {
@@ -126,7 +117,19 @@ impl Actor for Link {
                         }
                         frame::TACK => {
                             println!("TACK rcvd."); // Ack AIT recv'd
-                            todo!("handle TACK");
+                            assert_eq!(self.balance, -1); // deficit expected
+                            println!("TACK w/ deficit");
+                            let writer = self.writer.clone().expect("Link::writer not set!");
+                            writer.send(PortEvent::AckWrite()); // acknowlege write
+                            self.writer = None; // writer satisfied
+                            self.outbound = None; // clear outbound
+                            self.balance = 0; // clear balance
+                            let reply = Frame::entangled(
+                                self.nonce,
+                                frame::TICK, // liveness (Ack Ack)
+                                i_state,
+                            );
+                            self.wire.send(WireEvent::Frame(reply.data));
                         }
                         frame::RTECK => {
                             println!("RTECK rcvd."); // Reject AIT recv'd
