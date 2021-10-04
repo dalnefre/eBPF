@@ -15,6 +15,17 @@ pub enum PortEvent {
     Inbound([u8; 44]),
     AckWrite(),
 }
+impl PortEvent {
+    pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
+        PortEvent::Init(port.clone())
+    }
+    pub fn new_inbound(payload: [u8; 44]) -> PortEvent {
+        PortEvent::Inbound(payload)
+    }
+    pub fn new_ack_write() -> PortEvent {
+        PortEvent::AckWrite()
+    }
+}
 
 // Simulated Port for driving AIT link protocol tests
 #[derive(Debug, Clone)]
@@ -26,17 +37,19 @@ pub struct Port {
     data: RefCell<Option<[u8; 44]>>,
 }
 impl Port {
-    pub fn create(link: Cap<LinkEvent>, tx: Sender<[u8; 44]>, rx: Receiver<[u8; 44]>) -> Cap<PortEvent> {
-        let port = actor::create(
-            Port {
-                port: None,
-                link,
-                tx,
-                rx,
-                data: RefCell::new(None),
-            }
-        );
-        port.send(PortEvent::Init(port.clone()));
+    pub fn create(
+        link: &Cap<LinkEvent>,
+        tx: &Sender<[u8; 44]>,
+        rx: &Receiver<[u8; 44]>,
+    ) -> Cap<PortEvent> {
+        let port = actor::create(Port {
+            port: None,
+            link: link.clone(),
+            tx: tx.clone(),
+            rx: rx.clone(),
+            data: RefCell::new(None),
+        });
+        port.send(PortEvent::new_init(&port));
         port
     }
 
@@ -83,31 +96,36 @@ impl Actor for Port {
             PortEvent::Init(port) => {
                 //self.port = Some(port); // FIXME: should fail if not None (set once only)
                 match &self.port {
-                    None => { self.port = Some(port) },
+                    None => self.port = Some(port),
                     Some(_cust) => panic!("Port::port already set"),
                 }
             }
             PortEvent::Inbound(payload) => {
                 //println!("Port::Inbound");
-                let cust = self.port.clone().expect("Port::port not set!");
-                if self.inbound_ready() {
-                    self.inbound(payload).expect("Port::inbound failed");
-                    self.link.send(LinkEvent::Read(cust));  // Ack Write
-                } else { // try again...
-                    cust.send(event);
+                if let Some(cust) = &self.port {
+                    if self.inbound_ready() {
+                        self.inbound(payload).expect("Port::inbound failed");
+                        self.link.send(LinkEvent::new_read(cust)); // Ack Write
+                    } else {
+                        // try again...
+                        cust.send(event);
+                    }
                 }
-            },
+            }
             PortEvent::AckWrite() => {
                 //println!("Port::AckWrite");
-                let cust = self.port.clone().expect("Port::port not set!");
-                match self.outbound() {
-                    Ok(payload) => { // send next payload
-                        self.link.send(LinkEvent::Write(cust, payload));
-                        self.ack_outbound(); // do this immediately after send, since Link buffers
-                    },
-                    Err(_) => { // try again...
-                        cust.send(event);
-                    },
+                if let Some(cust) = &self.port {
+                    match self.outbound() {
+                        Ok(payload) => {
+                            // send next payload
+                            self.link.send(LinkEvent::new_write(cust, payload));
+                            self.ack_outbound(); // do this immediately after send, since Link buffers
+                        }
+                        Err(_) => {
+                            // try again...
+                            cust.send(event);
+                        }
+                    }
                 }
             }
         }

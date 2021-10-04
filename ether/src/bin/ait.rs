@@ -4,7 +4,6 @@ use std::convert::TryInto;
 use std::env;
 use std::thread;
 
-use ether::actor::{self};
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
 use pretty_hex::pretty_hex;
 use rand::Rng;
@@ -62,7 +61,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in(&in_port_rx);
         });
-        start_node(in_port_tx, out_port_rx, out_wire_tx, in_wire_rx);
+        start_node(&in_port_tx, &out_port_rx, &out_wire_tx, &in_wire_rx);
     });
 
     thread::spawn(move || {
@@ -76,7 +75,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in(&in_port_rx);
         });
-        start_node(in_port_tx, out_port_rx, in_wire_tx, out_wire_rx);
+        start_node(&in_port_tx, &out_port_rx, &in_wire_tx, &out_wire_rx);
     });
 
     // fail-safe exit after timeout
@@ -150,26 +149,26 @@ fn live_ait(if_name: &str) {
     thread::spawn(move || {
         monitor_node_out(&out_port_tx);
     });
-    start_node(in_port_tx, out_port_rx, out_wire_tx, in_wire_rx);
+    start_node(&in_port_tx, &out_port_rx, &out_wire_tx, &in_wire_rx);
 }
 
 fn start_node(
-    port_tx: Sender<[u8; 44]>,
-    port_rx: Receiver<[u8; 44]>,
-    wire_tx: Sender<[u8; 60]>,
-    wire_rx: Receiver<[u8; 60]>,
+    port_tx: &Sender<[u8; 44]>,
+    port_rx: &Receiver<[u8; 44]>,
+    wire_tx: &Sender<[u8; 60]>,
+    wire_rx: &Receiver<[u8; 60]>,
 ) {
-    let wire = actor::create(Wire::new(wire_tx.clone(), wire_rx.clone()));
+    let wire = Wire::create(&wire_tx, &wire_rx);
     let nonce = rand::thread_rng().gen();
 
-    let link = actor::create(Link::new(wire.clone(), nonce));
-    wire.send(WireEvent::Poll(link.clone(), wire.clone())); // start polling
-    let init = Frame::reset(nonce);
-    wire.send(WireEvent::Frame(init.data)); // send init/reset
+    let link = Link::create(&wire, nonce);
+    wire.send(WireEvent::new_poll(&link, &wire)); // start polling
+    let init = Frame::new_reset(nonce);
+    wire.send(WireEvent::new_frame(init.data)); // send init/reset
 
-    let port = Port::create(link.clone(), port_tx.clone(), port_rx.clone());
-    link.send(LinkEvent::Read(port.clone())); // port is ready to receive
-    port.send(PortEvent::AckWrite()); // link is ready to receive
+    let port = Port::create(&link, &port_tx, &port_rx);
+    link.send(LinkEvent::new_read(&port)); // port is ready to receive
+    port.send(PortEvent::new_ack_write()); // link is ready to receive
 
     loop {
         // FIXME: there is no dispatch loop,

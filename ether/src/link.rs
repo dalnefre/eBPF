@@ -1,4 +1,4 @@
-use crate::actor::{Actor, Cap};
+use crate::actor::{self, Actor, Cap};
 use crate::frame::{self, Frame};
 use crate::port::PortEvent;
 use crate::wire::WireEvent;
@@ -9,6 +9,17 @@ pub enum LinkEvent {
     Frame(Frame),
     Read(Cap<PortEvent>),
     Write(Cap<PortEvent>, [u8; 44]),
+}
+impl LinkEvent {
+    pub fn new_read(port: &Cap<PortEvent>) -> LinkEvent {
+        LinkEvent::Read(port.clone())
+    }
+    pub fn new_write(port: &Cap<PortEvent>, payload: [u8; 44]) -> LinkEvent {
+        LinkEvent::Write(port.clone(), payload)
+    }
+    pub fn new_frame(frame: &Frame) -> LinkEvent {
+        LinkEvent::Frame(frame.clone())
+    }
 }
 
 pub struct Link {
@@ -21,16 +32,16 @@ pub struct Link {
     outbound: Option<[u8; 44]>,
 }
 impl Link {
-    pub fn new(wire: Cap<WireEvent>, nonce: u32) -> Link {
-        Link {
-            wire,
+    pub fn create(wire: &Cap<WireEvent>, nonce: u32) -> Cap<LinkEvent> {
+        actor::create(Link {
+            wire: wire.clone(),
             nonce,
             balance: 0,
             reader: None,
             inbound: None,
             writer: None,
             outbound: None,
-        }
+        })
     }
 }
 impl Actor for Link {
@@ -45,13 +56,13 @@ impl Actor for Link {
                         println!("waiting...");
                     } else if self.nonce > nonce {
                         println!("entangle...");
-                        let reply = Frame::entangled(self.nonce, frame::TICK, frame::TICK);
-                        self.wire.send(WireEvent::Frame(reply.data));
+                        let reply = Frame::new_entangled(self.nonce, frame::TICK, frame::TICK);
+                        self.wire.send(WireEvent::new_frame(reply.data));
                     } else {
                         println!("collision...");
                         self.nonce = rand::thread_rng().gen();
-                        let reply = Frame::reset(self.nonce);
-                        self.wire.send(WireEvent::Frame(reply.data));
+                        let reply = Frame::new_reset(self.nonce);
+                        self.wire.send(WireEvent::new_frame(reply.data));
                     }
                 } else if frame.is_entangled() {
                     let i_state = frame.get_i_state();
@@ -59,33 +70,35 @@ impl Actor for Link {
                     match i_state {
                         frame::TICK => {
                             //println!("TICK rcvd."); // liveness recv'd
-                            if self.balance == 1 { // receive completed
+                            if self.balance == 1 {
+                                // receive completed
                                 println!("TICK w/ surplus");
-                                let reader = self.reader.clone().expect("Link::reader not set!");
-                                let payload = self.inbound.clone().expect("Link::inbound not set!");
-                                reader.send(PortEvent::Inbound(payload));  // release payload
-                                self.reader = None; // reader satisfied
-                                self.inbound = None; // clear inbound
-                                self.balance = 0; // clear balance
+                                if let Some(reader) = &self.reader {
+                                    let payload = self.inbound.expect("Link::inbound not set!");
+                                    reader.send(PortEvent::new_inbound(payload)); // release payload
+                                    self.reader = None; // reader satisfied
+                                    self.inbound = None; // clear inbound
+                                    self.balance = 0; // clear balance
+                                }
                             }
                             assert_eq!(self.balance, 0); // at this point, the balance should always be 0
                             match self.outbound {
                                 None => {
-                                    let reply = Frame::entangled(
+                                    let reply = Frame::new_entangled(
                                         self.nonce,
                                         frame::TICK, // liveness
                                         i_state,
                                     );
-                                    self.wire.send(WireEvent::Frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(reply.data));
                                 }
                                 Some(payload) => {
-                                    let mut reply = Frame::entangled(
+                                    let mut reply = Frame::new_entangled(
                                         self.nonce,
                                         frame::TECK, // begin AIT
                                         i_state,
                                     );
                                     reply.set_payload(payload);
-                                    self.wire.send(WireEvent::Frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(reply.data));
                                     self.balance = -1; // deficit balance
                                 }
                             }
@@ -93,52 +106,55 @@ impl Actor for Link {
                         frame::TECK => {
                             println!("TECK rcvd."); // begin AIT recv'd
                             match &self.reader {
-                                Some(_cust) => { // reader ready
+                                Some(_cust) => {
+                                    // reader ready
                                     self.inbound = Some(frame.get_payload());
-                                    let reply = Frame::entangled(
+                                    let reply = Frame::new_entangled(
                                         self.nonce,
                                         frame::TACK, // Ack AIT
                                         i_state,
                                     );
-                                    self.wire.send(WireEvent::Frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(reply.data));
                                     self.balance = 1; // surplus balance
-                                },
-                                None => { // no reader ready
-                                    let reply = Frame::entangled(
+                                }
+                                None => {
+                                    // no reader ready
+                                    let reply = Frame::new_entangled(
                                         self.nonce,
                                         frame::RTECK, // reject AIT
                                         i_state,
                                     );
-                                    self.wire.send(WireEvent::Frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(reply.data));
                                     //self.balance = 0; // balance already clear?
                                     assert_eq!(self.balance, 0);
-                                },
+                                }
                             }
                         }
                         frame::TACK => {
                             println!("TACK rcvd."); // Ack AIT recv'd
                             assert_eq!(self.balance, -1); // deficit expected
                             println!("TACK w/ deficit");
-                            let writer = self.writer.clone().expect("Link::writer not set!");
-                            writer.send(PortEvent::AckWrite()); // acknowlege write
-                            self.writer = None; // writer satisfied
-                            self.outbound = None; // clear outbound
-                            self.balance = 0; // clear balance
-                            let reply = Frame::entangled(
-                                self.nonce,
-                                frame::TICK, // liveness (Ack Ack)
-                                i_state,
-                            );
-                            self.wire.send(WireEvent::Frame(reply.data));
+                            if let Some(writer) = &self.writer {
+                                writer.send(PortEvent::new_ack_write()); // acknowlege write
+                                self.writer = None; // writer satisfied
+                                self.outbound = None; // clear outbound
+                                self.balance = 0; // clear balance
+                                let reply = Frame::new_entangled(
+                                    self.nonce,
+                                    frame::TICK, // liveness (Ack Ack)
+                                    i_state,
+                                );
+                                self.wire.send(WireEvent::new_frame(reply.data));
+                            }
                         }
                         frame::RTECK => {
                             println!("RTECK rcvd."); // Reject AIT recv'd
-                            let reply = Frame::entangled(
+                            let reply = Frame::new_entangled(
                                 self.nonce,
                                 frame::TICK, // liveness
                                 i_state,
                             );
-                            self.wire.send(WireEvent::Frame(reply.data));
+                            self.wire.send(WireEvent::new_frame(reply.data));
                             self.balance = 0; // clear deficit
                         }
                         _ => {
@@ -148,20 +164,18 @@ impl Actor for Link {
                 } else {
                     panic!("bad frame format");
                 }
-            },
-            LinkEvent::Read(cust) => {
-                match &self.reader {
-                    None => { self.reader = Some(cust) },
-                    Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
-                }
+            }
+            LinkEvent::Read(cust) => match &self.reader {
+                None => self.reader = Some(cust),
+                Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
             },
             LinkEvent::Write(cust, payload) => {
                 match &self.writer {
-                    None => { self.writer = Some(cust) },
+                    None => self.writer = Some(cust),
                     Some(_cust) => panic!("Only one Port-to-Link writer allowed"),
                 }
                 self.outbound = Some(payload);
-            },
+            }
         }
     }
 }

@@ -2,8 +2,8 @@
 
 use crossbeam::crossbeam_channel::unbounded as channel;
 use crossbeam::crossbeam_channel::Sender;
-use std::thread;
 use std::marker::Send;
+use std::thread;
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
@@ -16,18 +16,16 @@ impl<Event> Cap<Event> {
 }
 
 pub trait Actor {
-    type Event : Send; // Type of event(s) handled by this Actor
+    type Event: Send; // Type of event(s) handled by this Actor
 
     fn on_event(&mut self, event: Self::Event); // Event handler
 }
 
 pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
     let (tx, rx) = channel::<T::Event>();
-    thread::spawn(move || {
-        loop {
-            let event = rx.recv().expect("recv failed");
-            actor.on_event(event);
-        }
+    thread::spawn(move || loop {
+        let event = rx.recv().expect("recv failed");
+        actor.on_event(event);
     });
     Cap { tx }
 }
@@ -50,11 +48,11 @@ mod tests {
 
             //fn on_event(&mut self, event: Empty) {
             fn on_event(&mut self, event: Self::Event) {
-                    match &self.delegate {
+                match &self.delegate {
                     None => {
                         println!("GOT NONE");
                         unsafe { ONCE_COUNT = 0 };
-                    },
+                    }
                     Some(target) => {
                         println!("GOT SOME");
                         unsafe { ONCE_COUNT = 1 };
@@ -76,13 +74,17 @@ mod tests {
         }
 
         let a_ignore = create(Ignore);
-        let once = Once { delegate: Some(a_ignore) };
+        let once = Once {
+            delegate: Some(a_ignore),
+        };
         let a_once = create(once);
         a_once.send(Empty);
         a_once.send(Empty);
 
         // FIXME: test results are timing-dependent
         thread::sleep(core::time::Duration::from_millis(10));
-        unsafe { assert_eq!(-2, ONCE_COUNT); }
+        unsafe {
+            assert_eq!(-2, ONCE_COUNT);
+        }
     }
 }
