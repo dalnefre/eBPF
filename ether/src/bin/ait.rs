@@ -164,7 +164,7 @@ fn start_node(
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_poll(&link, &wire)); // start polling
     let init = Frame::new_reset(nonce);
-    wire.send(WireEvent::new_frame(init.data)); // send init/reset
+    wire.send(WireEvent::new_frame(&init)); // send init/reset
 
     let port = Port::create(&link, &port_tx, &port_rx);
     link.send(LinkEvent::new_read(&port)); // port is ready to receive

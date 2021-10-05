@@ -47,6 +47,9 @@ Z...: Nonce/NodeID?
 
 use std::convert::TryInto;
 
+pub const PAYLOAD_SIZE: usize = 44; // maximum payload, 44 octets
+pub const FRAME_SIZE: usize = 60; // maximum frame, 60 octets (64 - 4 octet FCS)
+
 pub const TICK: u8 = 0x03;
 pub const TECK: u8 = 0x07;
 pub const RTECK: u8 = 0x0B;
@@ -56,7 +59,7 @@ type Error = Box<dyn std::error::Error>;
 
 #[derive(Debug, Clone)]
 pub struct Frame {
-    pub data: [u8; 60],
+    pub data: [u8; FRAME_SIZE],
 }
 impl Default for Frame {
     fn default() -> Frame {
@@ -65,7 +68,7 @@ impl Default for Frame {
                 \x00\x00\x00\x00\x00\x00\
                 \x88\xB6\
                 \x00\x00"; // skeletal entangled frame
-        let mut data = [0x20_u8; 60];
+        let mut data = [0x20_u8; FRAME_SIZE];
         data[0..16].copy_from_slice(header);
         Frame { data }
     }
@@ -76,28 +79,29 @@ impl Frame {
         Ok(Frame { data })
     }
     pub fn new_reset(nonce: u32) -> Frame {
-        let mut frame = Frame::default();
+        let mut frame = Self::default();
         frame.set_reset();
         frame.set_nonce(nonce);
         frame
     }
     pub fn new_entangled(tree_id: u32, i: u8, u: u8) -> Frame {
-        let mut frame = Frame::default();
+        let mut frame = Self::default();
         frame.set_entangled();
         frame.set_tree_id(tree_id);
         frame.set_i_state(i);
         frame.set_u_state(u);
         frame
     }
+
     /*
         pub fn get_data(&self) -> &[u8] {
             &self.data[..]
         }
     */
+
     pub fn set_reset(&mut self) {
         self.data[13] = 0xB5;
     }
-
     pub fn is_reset(&self) -> bool {
         (self.data[12] == 0x88) && (self.data[13] == 0xB5)
     }
@@ -105,7 +109,6 @@ impl Frame {
     pub fn set_entangled(&mut self) {
         self.data[13] = 0xB6;
     }
-
     pub fn is_entangled(&self) -> bool {
         (self.data[12] == 0x88) && (self.data[13] == 0xB6)
     }
@@ -115,7 +118,6 @@ impl Frame {
         // the slice is the same size as `nonce` (4 octets)
         self.data[8..12].copy_from_slice(&nonce.to_be_bytes());
     }
-
     pub fn get_nonce(&self) -> u32 {
         let mut nonce = [0; 4];
         nonce.copy_from_slice(&self.data[8..12]);
@@ -127,17 +129,15 @@ impl Frame {
         // the slice is the same size as `id` (4 octets)
         self.data[2..6].copy_from_slice(&id.to_be_bytes());
     }
-
     pub fn get_tree_id(&self) -> u32 {
         let mut tree_id = [0; 4];
-        tree_id.copy_from_slice(&self.data[8..12]);
+        tree_id.copy_from_slice(&self.data[2..6]);
         u32::from_be_bytes(tree_id)
     }
 
     pub fn set_i_state(&mut self, i: u8) {
         self.data[0] = i;
     }
-
     pub fn get_i_state(&self) -> u8 {
         self.data[0]
     }
@@ -145,7 +145,6 @@ impl Frame {
     pub fn set_u_state(&mut self, u: u8) {
         self.data[6] = u;
     }
-
     pub fn get_u_state(&self) -> u8 {
         self.data[6]
     }
@@ -153,7 +152,6 @@ impl Frame {
     pub fn set_payload(&mut self, payload: [u8; 44]) {
         self.data[16..60].copy_from_slice(&payload[..])
     }
-
     pub fn get_payload(&self) -> [u8; 44] {
         self.data[16..60].try_into().expect("Bad payload size")
     }

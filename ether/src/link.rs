@@ -57,12 +57,12 @@ impl Actor for Link {
                     } else if self.nonce > nonce {
                         println!("entangle...");
                         let reply = Frame::new_entangled(self.nonce, frame::TICK, frame::TICK);
-                        self.wire.send(WireEvent::new_frame(reply.data));
+                        self.wire.send(WireEvent::new_frame(&reply));
                     } else {
                         println!("collision...");
                         self.nonce = rand::thread_rng().gen();
                         let reply = Frame::new_reset(self.nonce);
-                        self.wire.send(WireEvent::new_frame(reply.data));
+                        self.wire.send(WireEvent::new_frame(&reply));
                     }
                 } else if frame.is_entangled() {
                     let i_state = frame.get_i_state();
@@ -89,7 +89,7 @@ impl Actor for Link {
                                         frame::TICK, // liveness
                                         i_state,
                                     );
-                                    self.wire.send(WireEvent::new_frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(&reply));
                                 }
                                 Some(payload) => {
                                     let mut reply = Frame::new_entangled(
@@ -98,7 +98,7 @@ impl Actor for Link {
                                         i_state,
                                     );
                                     reply.set_payload(payload);
-                                    self.wire.send(WireEvent::new_frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(&reply));
                                     self.balance = -1; // deficit balance
                                 }
                             }
@@ -114,7 +114,7 @@ impl Actor for Link {
                                         frame::TACK, // Ack AIT
                                         i_state,
                                     );
-                                    self.wire.send(WireEvent::new_frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(&reply));
                                     self.balance = 1; // surplus balance
                                 }
                                 None => {
@@ -124,7 +124,7 @@ impl Actor for Link {
                                         frame::RTECK, // reject AIT
                                         i_state,
                                     );
-                                    self.wire.send(WireEvent::new_frame(reply.data));
+                                    self.wire.send(WireEvent::new_frame(&reply));
                                     //self.balance = 0; // balance already clear?
                                     assert_eq!(self.balance, 0);
                                 }
@@ -144,7 +144,7 @@ impl Actor for Link {
                                     frame::TICK, // liveness (Ack Ack)
                                     i_state,
                                 );
-                                self.wire.send(WireEvent::new_frame(reply.data));
+                                self.wire.send(WireEvent::new_frame(&reply));
                             }
                         }
                         frame::RTECK => {
@@ -154,7 +154,7 @@ impl Actor for Link {
                                 frame::TICK, // liveness
                                 i_state,
                             );
-                            self.wire.send(WireEvent::new_frame(reply.data));
+                            self.wire.send(WireEvent::new_frame(&reply));
                             self.balance = 0; // clear deficit
                         }
                         _ => {
@@ -165,16 +165,22 @@ impl Actor for Link {
                     panic!("bad frame format");
                 }
             }
-            LinkEvent::Read(cust) => match &self.reader {
-                None => self.reader = Some(cust),
-                Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
+            LinkEvent::Read(cust) => {
+                match &self.reader {
+                    None => {
+                        self.reader = Some(cust);
+                    },
+                    Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
+                }
             },
             LinkEvent::Write(cust, payload) => {
                 match &self.writer {
-                    None => self.writer = Some(cust),
+                    None => {
+                        self.outbound = Some(payload);
+                        self.writer = Some(cust);
+                    },
                     Some(_cust) => panic!("Only one Port-to-Link writer allowed"),
                 }
-                self.outbound = Some(payload);
             }
         }
     }

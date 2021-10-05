@@ -7,14 +7,14 @@ use crossbeam::crossbeam_channel::{Receiver, Sender};
 #[derive(Debug, Clone)]
 pub enum WireEvent {
     Poll(Cap<LinkEvent>, Cap<WireEvent>),
-    Frame([u8; 60]),
+    Frame(Frame),
 }
 impl WireEvent {
     pub fn new_poll(link: &Cap<LinkEvent>, wire: &Cap<WireEvent>) -> WireEvent {
         WireEvent::Poll(link.clone(), wire.clone())
     }
-    pub fn new_frame(data: [u8; 60]) -> WireEvent {
-        WireEvent::Frame(data)
+    pub fn new_frame(frame: &Frame) -> WireEvent {
+        WireEvent::Frame(frame.clone())
     }
 }
 
@@ -34,10 +34,10 @@ impl Actor for Wire {
     type Event = WireEvent;
 
     fn on_event(&mut self, event: Self::Event) {
-        match event {
-            WireEvent::Frame(data) => {
-                //println!("Wire::outbound {}", pretty_hex(&data));
-                self.tx.send(data).expect("Wire::send failed");
+        match &event {
+            WireEvent::Frame(frame) => {
+                //println!("Wire::outbound {}", pretty_hex(&frame.data));
+                self.tx.send(frame.data).expect("Wire::send failed");
             }
             WireEvent::Poll(link, wire) => {
                 // FIXME: this polling strategy is only needed
@@ -54,9 +54,9 @@ impl Actor for Wire {
                     }
                 }
                 //wire.send(event); // keep polling
-                //wire.send(event.clone()); // keep polling
+                wire.send(event.clone()); // keep polling
                 //wire.send(WireEvent::Poll(link.clone(), wire.clone())); // keep polling
-                wire.send(WireEvent::new_poll(&link, &wire)); // keep polling
+                //wire.send(WireEvent::new_poll(&link, &wire)); // keep polling
             }
         }
     }
