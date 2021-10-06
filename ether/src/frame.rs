@@ -58,6 +58,17 @@ pub const TACK: u8 = 0x0F;
 type Error = Box<dyn std::error::Error>;
 
 #[derive(Debug, Clone)]
+pub struct Payload {
+    pub data: [u8; PAYLOAD_SIZE],
+}
+impl Payload {
+    pub fn new(data: &[u8]) -> Payload {
+        let data = data.try_into().expect("44 octet payload required");
+        Payload { data }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub data: [u8; FRAME_SIZE],
 }
@@ -149,10 +160,11 @@ impl Frame {
         self.data[6]
     }
 
-    pub fn set_payload(&mut self, payload: [u8; 44]) {
-        self.data[16..60].copy_from_slice(&payload[..])
+    pub fn set_payload(&mut self, payload: &Payload) {
+        self.data[16..60].copy_from_slice(&payload.data[..])
     }
-    pub fn get_payload(&self) -> [u8; 44] {
-        self.data[16..60].try_into().expect("Bad payload size")
+    pub fn get_payload(&self) -> Payload {
+        Payload::new(&self.data[16..60])
+        //self.data[16..60].try_into().expect("Bad payload size")
     }
 }

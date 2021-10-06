@@ -1,5 +1,5 @@
 use crate::actor::{self, Actor, Cap};
-use crate::frame::{self, Frame};
+use crate::frame::{self, Frame, Payload};
 use crate::port::PortEvent;
 use crate::wire::WireEvent;
 use rand::Rng;
@@ -8,14 +8,14 @@ use rand::Rng;
 pub enum LinkEvent {
     Frame(Frame),
     Read(Cap<PortEvent>),
-    Write(Cap<PortEvent>, [u8; 44]),
+    Write(Cap<PortEvent>, Payload),
 }
 impl LinkEvent {
     pub fn new_read(port: &Cap<PortEvent>) -> LinkEvent {
         LinkEvent::Read(port.clone())
     }
-    pub fn new_write(port: &Cap<PortEvent>, payload: [u8; 44]) -> LinkEvent {
-        LinkEvent::Write(port.clone(), payload)
+    pub fn new_write(port: &Cap<PortEvent>, payload: &Payload) -> LinkEvent {
+        LinkEvent::Write(port.clone(), payload.clone())
     }
     pub fn new_frame(frame: &Frame) -> LinkEvent {
         LinkEvent::Frame(frame.clone())
@@ -27,9 +27,9 @@ pub struct Link {
     nonce: u32,
     balance: isize,
     reader: Option<Cap<PortEvent>>,
-    inbound: Option<[u8; 44]>,
+    inbound: Option<Payload>,
     writer: Option<Cap<PortEvent>>,
-    outbound: Option<[u8; 44]>,
+    outbound: Option<Payload>,
 }
 impl Link {
     pub fn create(wire: &Cap<WireEvent>, nonce: u32) -> Cap<LinkEvent> {
@@ -48,10 +48,11 @@ impl Actor for Link {
     type Event = LinkEvent;
 
     fn on_event(&mut self, event: Self::Event) {
-        match event {
+        match &event {
             LinkEvent::Frame(frame) => {
                 if frame.is_reset() {
-                    let nonce = frame.get_tree_id();
+                    let nonce = frame.get_nonce();
+                    println!("Link::nonce={}, frame.nonce={}", self.nonce, nonce);
                     if self.nonce < nonce {
                         println!("waiting...");
                     } else if self.nonce > nonce {
@@ -74,15 +75,16 @@ impl Actor for Link {
                                 // receive completed
                                 println!("TICK w/ surplus");
                                 if let Some(reader) = &self.reader {
-                                    let payload = self.inbound.expect("Link::inbound not set!");
-                                    reader.send(PortEvent::new_inbound(payload)); // release payload
-                                    self.reader = None; // reader satisfied
-                                    self.inbound = None; // clear inbound
-                                    self.balance = 0; // clear balance
+                                    if let Some(payload) = &self.inbound {
+                                        reader.send(PortEvent::new_inbound(&payload)); // release payload
+                                        self.reader = None; // reader satisfied
+                                        self.inbound = None; // clear inbound
+                                        self.balance = 0; // clear balance
+                                    }
                                 }
                             }
                             assert_eq!(self.balance, 0); // at this point, the balance should always be 0
-                            match self.outbound {
+                            match &self.outbound {
                                 None => {
                                     let reply = Frame::new_entangled(
                                         self.nonce,
@@ -97,7 +99,7 @@ impl Actor for Link {
                                         frame::TECK, // begin AIT
                                         i_state,
                                     );
-                                    reply.set_payload(payload);
+                                    reply.set_payload(&payload);
                                     self.wire.send(WireEvent::new_frame(&reply));
                                     self.balance = -1; // deficit balance
                                 }
@@ -168,7 +170,7 @@ impl Actor for Link {
             LinkEvent::Read(cust) => {
                 match &self.reader {
                     None => {
-                        self.reader = Some(cust);
+                        self.reader = Some(cust.clone());
                     },
                     Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
                 }
@@ -176,8 +178,8 @@ impl Actor for Link {
             LinkEvent::Write(cust, payload) => {
                 match &self.writer {
                     None => {
-                        self.outbound = Some(payload);
-                        self.writer = Some(cust);
+                        self.outbound = Some(payload.clone());
+                        self.writer = Some(cust.clone());
                     },
                     Some(_cust) => panic!("Only one Port-to-Link writer allowed"),
                 }
