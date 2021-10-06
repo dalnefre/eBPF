@@ -1,260 +1,189 @@
+use crate::actor::{self, Actor, Cap};
+use crate::frame::{self, Frame, Payload};
+use crate::port::PortEvent;
+use crate::wire::WireEvent;
 use rand::Rng;
 
-use crate::reactor::*;
-extern crate alloc;
-//use alloc::boxed::Box;
-use crate::frame::{self, Frame};
-use crate::port::Port;
-use alloc::rc::Rc;
+#[derive(Debug, Clone)]
+pub enum LinkEvent {
+    Frame(Frame),
+    Read(Cap<PortEvent>),
+    Write(Cap<PortEvent>, Payload),
+}
+impl LinkEvent {
+    pub fn new_read(port: &Cap<PortEvent>) -> LinkEvent {
+        LinkEvent::Read(port.clone())
+    }
+    pub fn new_write(port: &Cap<PortEvent>, payload: &Payload) -> LinkEvent {
+        LinkEvent::Write(port.clone(), payload.clone())
+    }
+    pub fn new_frame(frame: &Frame) -> LinkEvent {
+        LinkEvent::Frame(frame.clone())
+    }
+}
 
-pub struct LinkBeh {
-    port: Port,
-    wire: Rc<Actor>,
+pub struct Link {
+    wire: Cap<WireEvent>,
     nonce: u32,
     balance: isize,
+    reader: Option<Cap<PortEvent>>,
+    inbound: Option<Payload>,
+    writer: Option<Cap<PortEvent>>,
+    outbound: Option<Payload>,
 }
-impl LinkBeh {
-    pub fn new(port: Port, wire: &Rc<Actor>, nonce: u32, balance: isize) -> Box<dyn Behavior> {
-        Box::new(LinkBeh {
-            port,
-            wire: Rc::clone(&wire),
+impl Link {
+    pub fn create(wire: &Cap<WireEvent>, nonce: u32) -> Cap<LinkEvent> {
+        actor::create(Link {
+            wire: wire.clone(),
             nonce,
-            balance,
+            balance: 0,
+            reader: None,
+            inbound: None,
+            writer: None,
+            outbound: None,
         })
     }
 }
-impl Behavior for LinkBeh {
-    fn react(&self, event: Event) -> Result<Effect, Error> {
-        let mut effect = Effect::new();
-        match event.message {
-            Message::Frame(data) => {
-                // Frame received from the wire
-                match Frame::new(&data[..]) {
-                    Ok(frame) => {
-                        if frame.is_reset() {
-                            let nonce = frame.get_tree_id();
-                            if self.nonce < nonce {
-                                println!("waiting...");
-                                Ok(effect)
-                            } else if self.nonce > nonce {
-                                println!("entangle...");
-                                let reply = Frame::entangled(
-                                    self.nonce,
-                                    frame::TICK,
-                                    frame::TICK,
-                                );
-                                effect.send(&self.wire, Message::Frame(reply.data));
-                                Ok(effect)
-                            } else {
-                                println!("collision...");
-                                let nonce: u32 = rand::thread_rng().gen();
-                                let reply = Frame::reset(nonce);
-                                effect.send(&self.wire, Message::Frame(reply.data));
-                                effect.update(LinkBeh::new(
-                                    self.port.clone(),
-                                    &self.wire,
-                                    nonce,
-                                    0,
-                                ))?;
-                                Ok(effect)
-                            }
-                        } else if frame.is_entangled() {
-                            let i_state = frame.get_i_state();
-                            //println!("entangled i={}...", i_state);
-                            if i_state == frame::TICK {
-                                //println!("TICK rcvd."); // liveness recv'd
-                                let mut reply = Frame::default();
-                                reply.set_u_state(i_state);
-                                match self.port.outbound() {
-                                    Ok(payload) => {
-                                        reply.set_i_state(frame::TECK); // send begin AIT
-                                        reply.set_tree_id(self.nonce); // FIXME: ait destination address?
-                                        reply.set_payload(payload);
-                                        effect.update(LinkBeh::new(
-                                            self.port.clone(),
-                                            &self.wire,
-                                            self.nonce,
-                                            -1,
-                                        ))?;
-                                    }
-                                    Err(_) => {
-                                        reply.set_i_state(frame::TICK); // send liveness
-                                        reply.set_tree_id(self.nonce);
-                                        effect.update(LinkBeh::new(
-                                            self.port.clone(),
-                                            &self.wire,
-                                            self.nonce,
-                                            0,
-                                        ))?;
+impl Actor for Link {
+    type Event = LinkEvent;
+
+    fn on_event(&mut self, event: Self::Event) {
+        match &event {
+            LinkEvent::Frame(frame) => {
+                if frame.is_reset() {
+                    let nonce = frame.get_nonce();
+                    println!("Link::nonce={}, frame.nonce={}", self.nonce, nonce);
+                    if self.nonce < nonce {
+                        println!("waiting...");
+                    } else if self.nonce > nonce {
+                        println!("entangle...");
+                        let reply = Frame::new_entangled(self.nonce, frame::TICK, frame::TICK);
+                        self.wire.send(WireEvent::new_frame(&reply));
+                    } else {
+                        println!("collision...");
+                        self.nonce = rand::thread_rng().gen();
+                        let reply = Frame::new_reset(self.nonce);
+                        self.wire.send(WireEvent::new_frame(&reply));
+                    }
+                } else if frame.is_entangled() {
+                    let i_state = frame.get_i_state();
+                    //println!("entangled i={}", i_state);
+                    match i_state {
+                        frame::TICK => {
+                            //println!("TICK rcvd."); // liveness recv'd
+                            if self.balance == 1 {
+                                // receive completed
+                                println!("TICK w/ surplus");
+                                if let Some(reader) = &self.reader {
+                                    if let Some(payload) = &self.inbound {
+                                        reader.send(PortEvent::new_inbound(&payload)); // release payload
+                                        self.reader = None; // reader satisfied
+                                        self.inbound = None; // clear inbound
+                                        self.balance = 0; // clear balance
                                     }
                                 }
-                                effect.send(&self.wire, Message::Frame(reply.data));
-                                Ok(effect)
-                            } else if i_state == frame::TECK {
-                                println!("TECK rcvd."); // begin AIT recv'd
-                                let mut reply = Frame::default();
-                                reply.set_u_state(i_state);
-                                if self.port.inbound_ready() {
-                                    let _nonce = frame.get_tree_id(); // FIXME: ait destination address?
-                                    let payload = frame.get_payload();
-                                    self.port.inbound(payload)?;
-                                    reply.set_i_state(frame::TACK); // send Ack AIT
-                                    effect.update(LinkBeh::new(
-                                        self.port.clone(),
-                                        &self.wire,
-                                        self.nonce,
-                                        1,
-                                    ))?;
-                                } else {
-                                    reply.set_i_state(frame::RTECK); // send Reject AIT
-                                    reply.set_tree_id(self.nonce);
-                                    effect.update(LinkBeh::new(
-                                        self.port.clone(),
-                                        &self.wire,
-                                        self.nonce,
-                                        0,
-                                    ))?;
-                                }
-                                effect.send(&self.wire, Message::Frame(reply.data));
-                                Ok(effect)
-                            } else if i_state == frame::TACK {
-                                println!("TACK rcvd."); // Ack AIT recv'd
-                                self.port.ack_outbound();
-                                let reply = Frame::entangled( // send liveness
-                                    self.nonce,
-                                    frame::TICK,
-                                    i_state,
-                                );
-                                effect.send(&self.wire, Message::Frame(reply.data));
-                                effect.update(LinkBeh::new(
-                                    self.port.clone(),
-                                    &self.wire,
-                                    self.nonce,
-                                    0,
-                                ))?;
-                                Ok(effect)
-                            } else if i_state == frame::RTECK {
-                                println!("RTECK rcvd."); // Reject AIT recv'd
-                                let reply = Frame::entangled( // send liveness
-                                    self.nonce,
-                                    frame::TICK,
-                                    i_state,
-                                );
-                                effect.send(&self.wire, Message::Frame(reply.data));
-                                effect.update(LinkBeh::new(
-                                    self.port.clone(),
-                                    &self.wire,
-                                    self.nonce,
-                                    self.balance,
-                                ))?;
-                                Ok(effect)
-                            } else {
-                                println!("bad state.");
-                                Err("bad protocol state")
                             }
-                        } else {
-                            println!("bad frame.");
-                            Err("bad frame format")
+                            assert_eq!(self.balance, 0); // at this point, the balance should always be 0
+                            match &self.outbound {
+                                None => {
+                                    let reply = Frame::new_entangled(
+                                        self.nonce,
+                                        frame::TICK, // liveness
+                                        i_state,
+                                    );
+                                    self.wire.send(WireEvent::new_frame(&reply));
+                                }
+                                Some(payload) => {
+                                    let mut reply = Frame::new_entangled(
+                                        self.nonce,
+                                        frame::TECK, // begin AIT
+                                        i_state,
+                                    );
+                                    reply.set_payload(&payload);
+                                    self.wire.send(WireEvent::new_frame(&reply));
+                                    self.balance = -1; // deficit balance
+                                }
+                            }
+                        }
+                        frame::TECK => {
+                            println!("TECK rcvd."); // begin AIT recv'd
+                            match &self.reader {
+                                Some(_cust) => {
+                                    // reader ready
+                                    self.inbound = Some(frame.get_payload());
+                                    let reply = Frame::new_entangled(
+                                        self.nonce,
+                                        frame::TACK, // Ack AIT
+                                        i_state,
+                                    );
+                                    self.wire.send(WireEvent::new_frame(&reply));
+                                    self.balance = 1; // surplus balance
+                                }
+                                None => {
+                                    // no reader ready
+                                    let reply = Frame::new_entangled(
+                                        self.nonce,
+                                        frame::RTECK, // reject AIT
+                                        i_state,
+                                    );
+                                    self.wire.send(WireEvent::new_frame(&reply));
+                                    //self.balance = 0; // balance already clear?
+                                    assert_eq!(self.balance, 0);
+                                }
+                            }
+                        }
+                        frame::TACK => {
+                            println!("TACK rcvd."); // Ack AIT recv'd
+                            assert_eq!(self.balance, -1); // deficit expected
+                            println!("TACK w/ deficit");
+                            if let Some(writer) = &self.writer {
+                                writer.send(PortEvent::new_ack_write()); // acknowlege write
+                                self.writer = None; // writer satisfied
+                                self.outbound = None; // clear outbound
+                                self.balance = 0; // clear balance
+                                let reply = Frame::new_entangled(
+                                    self.nonce,
+                                    frame::TICK, // liveness (Ack Ack)
+                                    i_state,
+                                );
+                                self.wire.send(WireEvent::new_frame(&reply));
+                            }
+                        }
+                        frame::RTECK => {
+                            println!("RTECK rcvd."); // Reject AIT recv'd
+                            let reply = Frame::new_entangled(
+                                self.nonce,
+                                frame::TICK, // liveness
+                                i_state,
+                            );
+                            self.wire.send(WireEvent::new_frame(&reply));
+                            self.balance = 0; // clear deficit
+                        }
+                        _ => {
+                            panic!("bad protocol state");
                         }
                     }
-                    Err(_) => Err("bad frame data"),
+                } else {
+                    panic!("bad frame format");
                 }
             }
-            _ => Err("unknown message"),
-            //_ => Err(format!("unknown message {:?}", event.message)),
+            LinkEvent::Read(cust) => {
+                match &self.reader {
+                    None => {
+                        self.reader = Some(cust.clone());
+                    },
+                    Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
+                }
+            },
+            LinkEvent::Write(cust, payload) => {
+                match &self.writer {
+                    None => {
+                        self.outbound = Some(payload.clone());
+                        self.writer = Some(cust.clone());
+                    },
+                    Some(_cust) => panic!("Only one Port-to-Link writer allowed"),
+                }
+            }
         }
-        //Ok(effect)
     }
 }
-
-/*** Reference Implementation in Humus
-
-# The _link_ is modeled as two separate endpoints,
-# one in each node, connected by a _wire_.
-# Each endpoint has:
-#   * a nonce (for symmetry breaking)
-#   * a liveness flag
-#   * an AIT buffer (reader, writer, out_pkt)
-#   * an information balance counter
-LET link_beh(wire, nonce, live, ait, xfer) = \msg.[
-    CASE msg OF
-    (cust, #poll) : [
-        SEND (SELF, nonce, live, ait, xfer) TO cust
-        BECOME link_beh(wire, nonce, FALSE, ait, xfer)
-    ]
-    ($wire, #TICK) : [
-        CASE ait OF
-        (_, ?, _) : [  # entangled liveness
-            SEND (SELF, #TICK) TO wire
-            BECOME link_beh(wire, nonce, TRUE, ait, 0)
-        ]
-        (_, _, out_pkt) : [  # initiate AIT
-            SEND (SELF, #TECK, out_pkt) TO wire
-            BECOME link_beh(wire, nonce, TRUE, ait, -1)
-        ]
-        END
-    ]
-    ($wire, #TECK, in_pkt) : [
-        CASE ait OF
-        (?, _, _) : [  # no reader, reject AIT
-            SEND (#LINK, SELF, #REVERSE, msg, ait) TO println
-            SEND (SELF, #~TECK, in_pkt) TO wire
-            BECOME link_beh(wire, nonce, TRUE, ait, xfer)
-        ]
-        (r, w, out_pkt) : [  # deliver AIT received
-            SEND (SELF, #TACK, in_pkt) TO wire
-            SEND (SELF, #write, in_pkt) TO r
-            BECOME link_beh(wire, nonce, TRUE, (?, w, out_pkt), 1)
-        ]
-        END
-    ]
-    ($wire, #TACK, _) : [
-        LET (r, w, _) = $ait
-        SEND (SELF, #TICK) TO wire
-        SEND (SELF, #read) TO w
-        BECOME link_beh(wire, nonce, TRUE, (r, ?, ?), 0)
-    ]
-    ($wire, #~TECK, _) : [
-        SEND (SELF, #TICK) TO wire
-        BECOME link_beh(wire, nonce, TRUE, ait, 0)
-    ]
-    (cust, #read) : [
-        CASE ait OF
-        (?, w, out_pkt) : [
-            BECOME link_beh(wire, nonce, live, (cust, w, out_pkt), xfer)
-        ]
-        _ : [ THROW (#Unexpected, NOW, SELF, msg, live, ait) ]
-        END
-    ]
-    (cust, #write, out_pkt) : [
-        CASE ait OF
-        (r, ?, _) : [
-            BECOME link_beh(wire, nonce, live, (r, cust, out_pkt), xfer)
-        ]
-        _ : [ THROW (#Unexpected, NOW, SELF, msg, live, ait) ]
-        END
-    ]
-    ($wire, #INIT, nonce') : [
-        CASE compare(nonce, nonce') OF
-        1 : [  # entangle link
-            SEND (NOW, SELF, #entangle) TO println
-            SEND (SELF, #TICK) TO wire
-        ]
-        -1 : [  # ignore (wait for other endpoint to entangle)
-            SEND (NOW, SELF, #waiting) TO println
-        ]
-        _ : [  # error! re-key...
-            SEND (NOW, SELF, #re-key) TO println
-            SEND (SELF, nonce_limit) TO random
-        ]
-        END
-    ]
-    (_, _) : [ THROW (#Unexpected, NOW, SELF, msg) ]
-    nonce' : [
-        BECOME link_beh(wire, nonce', live, ait, xfer)
-        SEND (SELF, #INIT, nonce') TO wire
-    ]
-    END
-]
-
-***/

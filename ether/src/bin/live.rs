@@ -42,14 +42,14 @@ mod wire {
 
         pub fn send_reset_frame(&mut self, nonce: u32) {
             // Construct and send a reset packet.
-            let frame = Frame::reset(nonce);
+            let frame = Frame::new_reset(nonce);
             println!("SEND_RESET {}", pretty_hex(&frame.data));
             self.tx.send_to(&frame.data, None);
         }
 
         pub fn send_proto_frame(&mut self, tree_id: u32, i: u8, u: u8) {
             // Construct and send a protocol packet.
-            let frame = Frame::entangled(tree_id, i, u);
+            let frame = Frame::new_entangled(tree_id, i, u);
             println!("SEND_PROTO {}", pretty_hex(&frame.data));
             self.tx.send_to(&frame.data, None);
         }
@@ -61,9 +61,7 @@ mod wire {
                 None
             } else {
                 match self.rx.next() {
-                    Ok(data) => {
-                        Some(Frame::new(data).expect("Bad frame size"))
-                    },
+                    Ok(data) => Some(Frame::new(data)),
                     Err(e) => {
                         println!("Recv error: {}", e);
                         None
