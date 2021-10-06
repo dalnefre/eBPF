@@ -55,8 +55,6 @@ pub const TECK: u8 = 0x07;
 pub const RTECK: u8 = 0x0B;
 pub const TACK: u8 = 0x0F;
 
-type Error = Box<dyn std::error::Error>;
-
 #[derive(Debug, Clone)]
 pub struct Payload {
     pub data: [u8; PAYLOAD_SIZE],
@@ -85,9 +83,9 @@ impl Default for Frame {
     }
 }
 impl Frame {
-    pub fn new(data: &[u8]) -> Result<Frame, Error> {
-        let data = data.try_into()?;
-        Ok(Frame { data })
+    pub fn new(data: &[u8]) -> Frame {
+        let data = data.try_into().expect("60 octet frame required");
+        Frame { data }
     }
     pub fn new_reset(nonce: u32) -> Frame {
         let mut frame = Self::default();

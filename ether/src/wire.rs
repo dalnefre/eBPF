@@ -19,11 +19,11 @@ impl WireEvent {
 }
 
 pub struct Wire {
-    tx: Sender<[u8; 60]>,
-    rx: Receiver<[u8; 60]>,
+    tx: Sender<Frame>,
+    rx: Receiver<Frame>,
 }
 impl Wire {
-    pub fn create(tx: &Sender<[u8; 60]>, rx: &Receiver<[u8; 60]>) -> Cap<WireEvent> {
+    pub fn create(tx: &Sender<Frame>, rx: &Receiver<Frame>) -> Cap<WireEvent> {
         actor::create(Wire {
             tx: tx.clone(),
             rx: rx.clone(),
@@ -37,15 +37,14 @@ impl Actor for Wire {
         match &event {
             WireEvent::Frame(frame) => {
                 //println!("Wire::outbound {}", pretty_hex(&frame.data));
-                self.tx.send(frame.data).expect("Wire::send failed");
+                self.tx.send(frame.clone()).expect("Wire::send failed");
             }
             WireEvent::Poll(link, wire) => {
                 // FIXME: this polling strategy is only needed
                 // until we can inject events directly
                 match self.rx.try_recv() {
-                    Ok(data) => {
-                        //println!("Wire::inbound {}", pretty_hex(&data));
-                        let frame = Frame::new(&data[..]).expect("bad frame size");
+                    Ok(frame) => {
+                        //println!("Wire::inbound {}", pretty_hex(&frame.data));
                         link.send(LinkEvent::new_frame(&frame));
                     }
                     _ => {

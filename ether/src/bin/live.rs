@@ -61,7 +61,7 @@ mod wire {
                 None
             } else {
                 match self.rx.next() {
-                    Ok(data) => Some(Frame::new(data).expect("Bad frame size")),
+                    Ok(data) => Some(Frame::new(data)),
                     Err(e) => {
                         println!("Recv error: {}", e);
                         None

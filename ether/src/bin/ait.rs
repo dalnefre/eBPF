@@ -1,6 +1,5 @@
 use crossbeam::crossbeam_channel::unbounded as channel;
 use crossbeam::crossbeam_channel::{Receiver, Sender};
-use std::convert::TryInto;
 use std::env;
 use std::thread;
 
@@ -50,8 +49,8 @@ fn monitor_node_in(rx: &Receiver<Payload>) {
 fn sim_ait() {
     println!("SIM_AIT");
 
-    let (in_wire_tx, in_wire_rx) = channel::<[u8; 60]>();
-    let (out_wire_tx, out_wire_rx) = channel::<[u8; 60]>();
+    let (in_wire_tx, in_wire_rx) = channel::<Frame>();
+    let (out_wire_tx, out_wire_rx) = channel::<Frame>();
 
     thread::spawn(move || {
         let (in_port_tx, in_port_rx) = channel::<Payload>();
@@ -107,16 +106,16 @@ fn live_ait(if_name: &str) {
         ),
     };
 
-    let (in_wire_tx, in_wire_rx) = channel::<[u8; 60]>();
-    let (out_wire_tx, out_wire_rx) = channel::<[u8; 60]>();
+    let (in_wire_tx, in_wire_rx) = channel::<Frame>();
+    let (out_wire_tx, out_wire_rx) = channel::<Frame>();
 
     thread::spawn(move || {
         loop {
             match ether_rx.next() {
-                Ok(raw_data) => {
-                    let data = raw_data.try_into().expect("Bad frame size");
-                    //println!("ETHER_RECV {}", pretty_hex(&data));
-                    in_wire_tx.send(data).expect("Send failed on channel");
+                Ok(data) => {
+                    let frame = Frame::new(data);
+                    //println!("ETHER_RECV {}", pretty_hex(&frame.data));
+                    in_wire_tx.send(frame).expect("Send failed on channel");
                 }
                 Err(e) => {
                     // If an error occurs, we can handle it here
@@ -129,9 +128,9 @@ fn live_ait(if_name: &str) {
     thread::spawn(move || {
         loop {
             match out_wire_rx.recv() {
-                Ok(data) => {
-                    //println!("ETHER_SEND {}", pretty_hex(&data));
-                    ether_tx.send_to(&data, None);
+                Ok(frame) => {
+                    //println!("ETHER_SEND {}", pretty_hex(&frame.data));
+                    ether_tx.send_to(&frame.data, None);
                 }
                 Err(e) => {
                     // If an error occurs, we can handle it here
@@ -156,8 +155,8 @@ fn live_ait(if_name: &str) {
 fn start_node(
     port_tx: &Sender<Payload>,
     port_rx: &Receiver<Payload>,
-    wire_tx: &Sender<[u8; 60]>,
-    wire_rx: &Receiver<[u8; 60]>,
+    wire_tx: &Sender<Frame>,
+    wire_rx: &Receiver<Frame>,
 ) {
     let wire = Wire::create(&wire_tx, &wire_rx);
     let nonce = rand::thread_rng().gen();
