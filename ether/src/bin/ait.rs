@@ -7,14 +7,14 @@ use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
 use pretty_hex::pretty_hex;
 use rand::Rng;
 
-use ether::frame::{Frame, Payload};
+use ether::frame::{self, Frame, Payload};
 use ether::link::{Link, LinkEvent};
 use ether::port::{Port, PortEvent};
 use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
-    assert!(s.len() <= 44);
-    let mut buf = [0_u8; 44];
+    assert!(s.len() <= frame::PAYLOAD_SIZE);
+    let mut buf = [0_u8; frame::PAYLOAD_SIZE];
     buf[..s.len()].copy_from_slice(&s.as_bytes());
     let payload = Payload::new(&buf);
     tx.send(payload).expect("insert_payload failed");
