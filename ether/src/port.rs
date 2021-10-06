@@ -32,15 +32,15 @@ impl PortEvent {
 pub struct Port {
     port: Option<Cap<PortEvent>>,
     link: Cap<LinkEvent>,
-    tx: Sender<[u8; 44]>,
-    rx: Receiver<[u8; 44]>,
+    tx: Sender<Payload>,
+    rx: Receiver<Payload>,
     data: RefCell<Option<Payload>>,
 }
 impl Port {
     pub fn create(
         link: &Cap<LinkEvent>,
-        tx: &Sender<[u8; 44]>,
-        rx: &Receiver<[u8; 44]>,
+        tx: &Sender<Payload>,
+        rx: &Receiver<Payload>,
     ) -> Cap<PortEvent> {
         let port = actor::create(Port {
             port: None,
@@ -58,7 +58,7 @@ impl Port {
     }
 
     pub fn inbound(&self, payload: &Payload) {
-        self.tx.send(payload.data).expect("Port::inbound failed!");
+        self.tx.send(payload.clone()).expect("Port::inbound failed!");
     }
 
     pub fn outbound(&self) -> Option<Payload> {
@@ -68,8 +68,7 @@ impl Port {
             Some(payload) => Some(payload.clone()),
             None => {
                 match self.rx.try_recv() {
-                    Ok(data) => {
-                        let payload = Payload::new(&data);
+                    Ok(payload) => {
                         let _ = opt_data.insert(payload.clone());
                         Some(payload)
                     }

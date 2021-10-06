@@ -8,19 +8,20 @@ use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
 use pretty_hex::pretty_hex;
 use rand::Rng;
 
-use ether::frame::Frame;
+use ether::frame::{Frame, Payload};
 use ether::link::{Link, LinkEvent};
 use ether::port::{Port, PortEvent};
 use ether::wire::{Wire, WireEvent};
 
-fn insert_payload(tx: &Sender<[u8; 44]>, s: &str) {
+fn insert_payload(tx: &Sender<Payload>, s: &str) {
     assert!(s.len() <= 44);
     let mut buf = [0_u8; 44];
     buf[..s.len()].copy_from_slice(&s.as_bytes());
-    tx.send(buf).expect("insert_payload failed");
+    let payload = Payload::new(&buf);
+    tx.send(payload).expect("insert_payload failed");
 }
 
-fn monitor_node_out(tx: &Sender<[u8; 44]>) {
+fn monitor_node_out(tx: &Sender<Payload>) {
     loop {
         let mut line = String::new();
         std::io::stdin()
@@ -31,13 +32,13 @@ fn monitor_node_out(tx: &Sender<[u8; 44]>) {
     }
 }
 
-fn monitor_node_in(rx: &Receiver<[u8; 44]>) {
+fn monitor_node_in(rx: &Receiver<Payload>) {
     loop {
         //thread::sleep(std::time::Duration::from_micros(500));
         thread::sleep(std::time::Duration::from_millis(150));
         match rx.recv() {
-            Ok(data) => {
-                println!("Node::in {}", pretty_hex(&data));
+            Ok(payload) => {
+                println!("Node::in {}", pretty_hex(&payload.data));
             }
             Err(e) => {
                 panic!("Node::in ERROR! {}", e);
@@ -53,8 +54,8 @@ fn sim_ait() {
     let (out_wire_tx, out_wire_rx) = channel::<[u8; 60]>();
 
     thread::spawn(move || {
-        let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
-        let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let (in_port_tx, in_port_rx) = channel::<Payload>();
+        let (out_port_tx, out_port_rx) = channel::<Payload>();
         insert_payload(&out_port_tx, "Uno");
         insert_payload(&out_port_tx, "Dos");
         insert_payload(&out_port_tx, "Tres");
@@ -65,8 +66,8 @@ fn sim_ait() {
     });
 
     thread::spawn(move || {
-        let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
-        let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+        let (in_port_tx, in_port_rx) = channel::<Payload>();
+        let (out_port_tx, out_port_rx) = channel::<Payload>();
         insert_payload(&out_port_tx, "One");
         insert_payload(&out_port_tx, "Two");
         insert_payload(&out_port_tx, "Three");
@@ -141,8 +142,8 @@ fn live_ait(if_name: &str) {
     });
 
     // Start Node in Main thread...
-    let (in_port_tx, in_port_rx) = channel::<[u8; 44]>();
-    let (out_port_tx, out_port_rx) = channel::<[u8; 44]>();
+    let (in_port_tx, in_port_rx) = channel::<Payload>();
+    let (out_port_tx, out_port_rx) = channel::<Payload>();
     thread::spawn(move || {
         monitor_node_in(&in_port_rx);
     });
@@ -153,8 +154,8 @@ fn live_ait(if_name: &str) {
 }
 
 fn start_node(
-    port_tx: &Sender<[u8; 44]>,
-    port_rx: &Receiver<[u8; 44]>,
+    port_tx: &Sender<Payload>,
+    port_rx: &Receiver<Payload>,
     wire_tx: &Sender<[u8; 60]>,
     wire_rx: &Receiver<[u8; 60]>,
 ) {
