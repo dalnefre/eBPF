@@ -168,7 +168,7 @@ fn start_node(
 
     let port = Port::create(&link, &port_tx, &port_rx);
     link.send(LinkEvent::new_read(&port)); // port is ready to receive
-    port.send(PortEvent::new_ack_write()); // link is ready to receive
+    port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
 
     loop {
         // FIXME: there is no dispatch loop,

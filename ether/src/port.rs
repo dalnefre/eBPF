@@ -12,23 +12,22 @@ use crossbeam::crossbeam_channel::{Receiver, Sender};
 #[derive(Debug, Clone)]
 pub enum PortEvent {
     Init(Cap<PortEvent>),
-    Inbound(Payload),
-    AckWrite,
+    LinkToPortWrite(Payload),
+    LinkToPortRead,
 }
 impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
         PortEvent::Init(port.clone())
     }
-    pub fn new_inbound(payload: &Payload) -> PortEvent {
-        PortEvent::Inbound(payload.clone())
+    pub fn new_link_to_port_write(payload: &Payload) -> PortEvent {
+        PortEvent::LinkToPortWrite(payload.clone())
     }
-    pub fn new_ack_write() -> PortEvent {
-        PortEvent::AckWrite
+    pub fn new_link_to_port_read() -> PortEvent {
+        PortEvent::LinkToPortRead
     }
 }
 
 // Simulated Port for driving AIT link protocol tests
-#[derive(Debug, Clone)]
 pub struct Port {
     port: Option<Cap<PortEvent>>,
     link: Cap<LinkEvent>,
@@ -96,7 +95,7 @@ impl Actor for Port {
                     Some(_cust) => panic!("Port::port already set"),
                 }
             }
-            PortEvent::Inbound(payload) => {
+            PortEvent::LinkToPortWrite(payload) => {
                 //println!("Port::Inbound");
                 if let Some(cust) = &self.port {
                     if self.inbound_ready() {
@@ -108,7 +107,7 @@ impl Actor for Port {
                     }
                 }
             }
-            PortEvent::AckWrite => {
+            PortEvent::LinkToPortRead => {
                 //println!("Port::AckWrite");
                 if let Some(cust) = &self.port {
                     match self.outbound() {

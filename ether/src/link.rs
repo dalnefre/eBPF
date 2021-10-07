@@ -76,7 +76,7 @@ impl Actor for Link {
                                 println!("TICK w/ surplus");
                                 if let Some(reader) = &self.reader {
                                     if let Some(payload) = &self.inbound {
-                                        reader.send(PortEvent::new_inbound(&payload)); // release payload
+                                        reader.send(PortEvent::new_link_to_port_write(&payload)); // release payload
                                         self.reader = None; // reader satisfied
                                         self.inbound = None; // clear inbound
                                         self.balance = 0; // clear balance
@@ -137,7 +137,7 @@ impl Actor for Link {
                             assert_eq!(self.balance, -1); // deficit expected
                             println!("TACK w/ deficit");
                             if let Some(writer) = &self.writer {
-                                writer.send(PortEvent::new_ack_write()); // acknowlege write
+                                writer.send(PortEvent::new_link_to_port_read()); // acknowlege write
                                 self.writer = None; // writer satisfied
                                 self.outbound = None; // clear outbound
                                 self.balance = 0; // clear balance
