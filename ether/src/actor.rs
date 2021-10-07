@@ -1,4 +1,4 @@
-// draft actor mechanism
+// channel actor mechanisms
 
 use crossbeam::crossbeam_channel::unbounded as channel;
 use crossbeam::crossbeam_channel::Sender;
@@ -35,56 +35,50 @@ mod tests {
     use super::*;
 
     #[test]
-    fn once_behavior() {
-        static mut ONCE_COUNT: i32 = -1;
+    fn counting_actor_accumulates_correct_total() {
 
-        struct Empty; // an empty message
-
-        struct Once {
-            delegate: Option<Cap<Empty>>,
+        #[derive(Debug, Clone)]
+        enum CountingEvent {
+            Accum(isize),
+            Total(isize),
         }
-        impl Actor for Once {
-            type Event = Empty;
 
-            //fn on_event(&mut self, event: Empty) {
+        struct Counter {
+            count: isize,
+        }
+        impl Counter {
+            pub fn create() -> Cap<CountingEvent> {
+                self::create(Counter {
+                    count: 0,
+                })
+            }
+        }
+        impl Actor for Counter {
+            type Event = CountingEvent;
+
             fn on_event(&mut self, event: Self::Event) {
-                match &self.delegate {
-                    None => {
-                        println!("GOT NONE");
-                        unsafe { ONCE_COUNT = 0 };
+                match event {
+                    CountingEvent::Accum(change) => {
+                        self.count += change;
+                        println!("COUNT + {} = {}", change, self.count);
                     }
-                    Some(target) => {
-                        println!("GOT SOME");
-                        unsafe { ONCE_COUNT = 1 };
-                        target.send(event);
-                        self.delegate = None;
+                    CountingEvent::Total(expect) => {
+                        assert_eq!(expect, self.count);
                     }
                 }
             }
         }
 
-        struct Ignore;
-        impl Actor for Ignore {
-            type Event = Empty;
+        let a_counter = Counter::create();
+        a_counter.send(CountingEvent::Accum(8));
+        a_counter.send(CountingEvent::Accum(-5));
 
-            fn on_event(&mut self, _event: Self::Event) {
-                println!("IGNORE");
-                unsafe { ONCE_COUNT = -2 };
-            }
-        }
+        // keep test thread alive long enough to deliver events
+        std::thread::sleep(core::time::Duration::from_millis(10));
 
-        let a_ignore = create(Ignore);
-        let once = Once {
-            delegate: Some(a_ignore),
-        };
-        let a_once = create(once);
-        a_once.send(Empty);
-        a_once.send(Empty);
+        a_counter.send(CountingEvent::Total(3));
 
-        // FIXME: test results are timing-dependent
-        thread::sleep(core::time::Duration::from_millis(10));
-        unsafe {
-            assert_eq!(-2, ONCE_COUNT);
-        }
+        // keep test thread alive long enough verify total
+        std::thread::sleep(core::time::Duration::from_millis(10));
     }
 }
