@@ -1,9 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::Payload;
 use crate::link::LinkEvent;
-//use std::convert::TryInto;
-//use std::borrow::BorrowMut;
-use std::{cell::RefCell, ops::DerefMut};
 
 //use pretty_hex::pretty_hex;
 //use crossbeam::crossbeam_channel::unbounded as channel;
@@ -29,11 +26,10 @@ impl PortEvent {
 
 // Simulated Port for driving AIT link protocol tests
 pub struct Port {
-    port: Option<Cap<PortEvent>>,
+    myself: Option<Cap<PortEvent>>,
     link: Cap<LinkEvent>,
     tx: Sender<Payload>,
     rx: Receiver<Payload>,
-    data: RefCell<Option<Payload>>,
 }
 impl Port {
     pub fn create(
@@ -42,43 +38,13 @@ impl Port {
         rx: &Receiver<Payload>,
     ) -> Cap<PortEvent> {
         let port = actor::create(Port {
-            port: None,
+            myself: None,
             link: link.clone(),
             tx: tx.clone(),
             rx: rx.clone(),
-            data: RefCell::new(None),
         });
         port.send(PortEvent::new_init(&port));
         port
-    }
-
-    pub fn inbound_ready(&self) -> bool {
-        self.tx.is_empty() // if all prior data has been consumed, we are ready for more
-    }
-
-    pub fn inbound(&self, payload: &Payload) {
-        self.tx.send(payload.clone()).expect("Port::inbound failed!");
-    }
-
-    pub fn outbound(&self) -> Option<Payload> {
-        let mut ref_data = self.data.borrow_mut();
-        let opt_data = ref_data.deref_mut();
-        match opt_data {
-            Some(payload) => Some(payload.clone()),
-            None => {
-                match self.rx.try_recv() {
-                    Ok(payload) => {
-                        let _ = opt_data.insert(payload.clone());
-                        Some(payload)
-                    }
-                    Err(_) => None, // FIXME: distinguish "empty" from "error"
-                }
-            }
-        }
-    }
-
-    pub fn ack_outbound(&self) {
-        self.data.replace(None);
     }
 }
 impl Actor for Port {
@@ -86,39 +52,37 @@ impl Actor for Port {
 
     fn on_event(&mut self, event: Self::Event) {
         match &event {
-            PortEvent::Init(port) => {
-                //self.port = Some(port.clone()); // FIXME: should fail if not None (set once only)
-                match &self.port {
+            PortEvent::Init(myself) => {
+                match &self.myself {
                     None => {
-                        self.port = Some(port.clone())
+                        self.myself = Some(myself.clone())
                     },
-                    Some(_cust) => panic!("Port::port already set"),
+                    Some(_) => panic!("Port::port already set"),
                 }
             }
             PortEvent::LinkToPortWrite(payload) => {
-                //println!("Port::Inbound");
-                if let Some(cust) = &self.port {
-                    if self.inbound_ready() {
-                        self.inbound(&payload);
-                        self.link.send(LinkEvent::new_read(cust)); // Ack Write
+                //println!("Port::LinkToPortWrite");
+                if let Some(myself) = &self.myself {
+                    if self.tx.is_empty() { // if all prior data has been consumed, we are ready for more
+                        self.tx.send(payload.clone()).expect("Port::inbound failed!");
+                        self.link.send(LinkEvent::new_read(myself)); // Ack Write
                     } else {
                         // try again...
-                        cust.send(event);
+                        myself.send(event);
                     }
                 }
             }
             PortEvent::LinkToPortRead => {
-                //println!("Port::AckWrite");
-                if let Some(cust) = &self.port {
-                    match self.outbound() {
-                        Some(payload) => {
+                //println!("Port::LinkToPortRead");
+                if let Some(myself) = &self.myself {
+                    match self.rx.try_recv() {
+                        Ok(payload) => {
                             // send next payload
-                            self.link.send(LinkEvent::new_write(cust, &payload));
-                            self.ack_outbound(); // do this immediately after send, since Link buffers
+                            self.link.send(LinkEvent::new_write(myself, &payload));
                         }
-                        None => {
+                        Err(_) => {
                             // try again...
-                            cust.send(event);
+                            myself.send(event);
                         }
                     }
                 }
