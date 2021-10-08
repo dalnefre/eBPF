@@ -1,7 +1,8 @@
 // channel actor mechanisms
 
-use crossbeam::crossbeam_channel::unbounded as channel;
-use crossbeam::crossbeam_channel::Sender;
+use std::sync::mpsc::{channel, Sender};
+//use crossbeam::crossbeam_channel::unbounded as channel;
+//use crossbeam::crossbeam_channel::Sender;
 use std::marker::Send;
 use std::thread;
 
@@ -23,8 +24,13 @@ pub trait Actor {
 
 pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
     let (tx, rx) = channel::<T::Event>();
+/*
     thread::spawn(move || loop {
         let event = rx.recv().expect("recv failed");
+        actor.on_event(event);
+    });
+*/
+    thread::spawn(move || while let Ok(event) = rx.recv() {
         actor.on_event(event);
     });
     Cap { tx }
@@ -60,6 +66,7 @@ mod tests {
                         println!("COUNT + {} = {}", change, self.count);
                     }
                     CountingEvent::Total(expect) => {
+                        println!("TOTAL = {}", self.count);
                         assert_eq!(expect, self.count);
                     }
                 }
