@@ -1,9 +1,7 @@
-
 use ether::actor::{self, Actor, Cap};
 
 #[test]
 fn once_actor_forwards_only_one_event() {
-
     #[derive(Debug, Clone)]
     pub struct EmptyEvent; // an empty message
 
@@ -11,9 +9,10 @@ fn once_actor_forwards_only_one_event() {
     struct VerifyEvent; // verify mock
 
     #[derive(Debug, Clone)]
-    enum MockEvent { // aggregate event type
+    enum MockEvent {
+        // aggregate event type
         Mock(EmptyEvent),
-        Test(VerifyEvent),
+        Ctrl(VerifyEvent),
     }
 
     struct MockDelegate {
@@ -21,9 +20,7 @@ fn once_actor_forwards_only_one_event() {
     }
     impl MockDelegate {
         pub fn create() -> Cap<MockEvent> {
-            actor::create(MockDelegate {
-                event_count: 0,
-            })
+            actor::create(MockDelegate { event_count: 0 })
         }
     }
     impl Actor for MockDelegate {
@@ -35,7 +32,7 @@ fn once_actor_forwards_only_one_event() {
                     self.event_count += 1;
                     println!("EVENT_COUNT = {}", self.event_count);
                 }
-                MockEvent::Test(_e) => {
+                MockEvent::Ctrl(_e) => {
                     println!("VERIFYING...");
                     assert_eq!(1, self.event_count);
                 }
@@ -44,43 +41,39 @@ fn once_actor_forwards_only_one_event() {
     }
     let a_mock = MockDelegate::create();
 
-    struct WrapMock {
+    struct MockFacet {
         mock: Cap<MockEvent>,
     }
-    impl WrapMock {
+    impl MockFacet {
         pub fn create(mock: &Cap<MockEvent>) -> Cap<EmptyEvent> {
-            actor::create(WrapMock {
-                mock: mock.clone(),
-            })
+            actor::create(MockFacet { mock: mock.clone() })
         }
     }
-    impl Actor for WrapMock {
+    impl Actor for MockFacet {
         type Event = EmptyEvent;
 
         fn on_event(&mut self, event: Self::Event) {
             self.mock.send(MockEvent::Mock(event));
         }
     }
-    let a_delegate = WrapMock::create(&a_mock);
+    let a_delegate = MockFacet::create(&a_mock);
 
-    struct WrapTest {
+    struct CtrlFacet {
         mock: Cap<MockEvent>,
     }
-    impl WrapTest {
+    impl CtrlFacet {
         pub fn create(mock: &Cap<MockEvent>) -> Cap<VerifyEvent> {
-            actor::create(WrapTest {
-                mock: mock.clone(),
-            })
+            actor::create(CtrlFacet { mock: mock.clone() })
         }
     }
-    impl Actor for WrapTest {
+    impl Actor for CtrlFacet {
         type Event = VerifyEvent;
 
         fn on_event(&mut self, event: Self::Event) {
-            self.mock.send(MockEvent::Test(event));
+            self.mock.send(MockEvent::Ctrl(event));
         }
     }
-    let a_test = WrapTest::create(&a_mock);
+    let a_test = CtrlFacet::create(&a_mock);
 
     pub struct Once {
         delegate: Option<Cap<EmptyEvent>>,

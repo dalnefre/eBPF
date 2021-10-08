@@ -52,19 +52,18 @@ impl Actor for Port {
 
     fn on_event(&mut self, event: Self::Event) {
         match &event {
-            PortEvent::Init(myself) => {
-                match &self.myself {
-                    None => {
-                        self.myself = Some(myself.clone())
-                    },
-                    Some(_) => panic!("Port::port already set"),
-                }
-            }
+            PortEvent::Init(myself) => match &self.myself {
+                None => self.myself = Some(myself.clone()),
+                Some(_) => panic!("Port::port already set"),
+            },
             PortEvent::LinkToPortWrite(payload) => {
                 //println!("Port::LinkToPortWrite");
                 if let Some(myself) = &self.myself {
-                    if self.tx.is_empty() { // if all prior data has been consumed, we are ready for more
-                        self.tx.send(payload.clone()).expect("Port::inbound failed!");
+                    if self.tx.is_empty() {
+                        // if all prior data has been consumed, we are ready for more
+                        self.tx
+                            .send(payload.clone())
+                            .expect("Port::inbound failed!");
                         self.link.send(LinkEvent::new_read(myself)); // Ack Write
                     } else {
                         // try again...

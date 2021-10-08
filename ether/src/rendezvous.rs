@@ -46,55 +46,45 @@ impl Actor for Rendezvous {
 
     fn on_event(&mut self, event: Self::Event) {
         match &event {
-            RendezvousEvent::Init(myself) => {
-                match &self.myself {
-                    None => {
-                        self.myself = Some(myself.clone());
-                    },
-                    Some(_) => panic!("Rendezvous::myself already set"),
+            RendezvousEvent::Init(myself) => match &self.myself {
+                None => {
+                    self.myself = Some(myself.clone());
                 }
-            }
-            RendezvousEvent::Read(reader) => {
-                match &self.writer {
-                    Some(writer) => {
-                        if let Some(myself) = &self.myself {
-                            if let Some(payload) = &self.payload {
-                                reader.send(RendezvousEvent::new_write(&myself, &payload));
-                                writer.send(RendezvousEvent::new_read(&myself));
-                                self.payload = None;
-                                self.writer = None;
-                            }
-                        }
-                    },
-                    None => {
-                        match &self.reader {
-                            None => {
-                                self.reader = Some(reader.clone());
-                            },
-                            Some(_) => panic!("Rendezvous::reader already set"),
-                        }
-                    },
-                }
+                Some(_) => panic!("Rendezvous::myself already set"),
             },
-            RendezvousEvent::Write(writer, payload) => {
-                match &self.reader {
-                    Some(reader) => {
-                        if let Some(myself) = &self.myself {
+            RendezvousEvent::Read(reader) => match &self.writer {
+                Some(writer) => {
+                    if let Some(myself) = &self.myself {
+                        if let Some(payload) = &self.payload {
                             reader.send(RendezvousEvent::new_write(&myself, &payload));
                             writer.send(RendezvousEvent::new_read(&myself));
-                            self.reader = None;
+                            self.payload = None;
+                            self.writer = None;
                         }
-                    },
-                    None => {
-                        match &self.writer {
-                            None => {
-                                self.writer = Some(writer.clone());
-                                self.payload = Some(payload.clone());
-                            },
-                            Some(_) => panic!("Rendezvous::reader already set"),
-                        }
-                    },
+                    }
                 }
+                None => match &self.reader {
+                    None => {
+                        self.reader = Some(reader.clone());
+                    }
+                    Some(_) => panic!("Rendezvous::reader already set"),
+                },
+            },
+            RendezvousEvent::Write(writer, payload) => match &self.reader {
+                Some(reader) => {
+                    if let Some(myself) = &self.myself {
+                        reader.send(RendezvousEvent::new_write(&myself, &payload));
+                        writer.send(RendezvousEvent::new_read(&myself));
+                        self.reader = None;
+                    }
+                }
+                None => match &self.writer {
+                    None => {
+                        self.writer = Some(writer.clone());
+                        self.payload = Some(payload.clone());
+                    }
+                    Some(_) => panic!("Rendezvous::reader already set"),
+                },
             },
         }
     }

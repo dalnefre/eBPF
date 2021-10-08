@@ -4,6 +4,7 @@ use std::env;
 use std::thread;
 
 use pnet::datalink::{self, Channel::Ethernet, NetworkInterface};
+use pnet::datalink::{DataLinkReceiver, DataLinkSender};
 use pretty_hex::pretty_hex;
 use rand::Rng;
 
@@ -85,6 +86,37 @@ fn sim_ait() {
     println!("Time limit {:?} reached.", delay);
 }
 
+fn send_to_ethernet(ether_tx: &mut Box<dyn DataLinkSender>, wire_rx: &Receiver<Frame>) {
+    loop {
+        match wire_rx.recv() {
+            Ok(frame) => {
+                //println!("ETHER_SEND {}", pretty_hex(&frame.data));
+                ether_tx.send_to(&frame.data, None);
+            }
+            Err(e) => {
+                // If an error occurs, we can handle it here
+                panic!("Channel read failed: {}", e);
+            }
+        }
+    }
+}
+
+fn recv_from_ethernet(wire_tx: &Sender<Frame>, ether_rx: &mut Box<dyn DataLinkReceiver>) {
+    loop {
+        match ether_rx.next() {
+            Ok(data) => {
+                let frame = Frame::new(data);
+                //println!("ETHER_RECV {}", pretty_hex(&frame.data));
+                wire_tx.send(frame).expect("Send failed on channel");
+            }
+            Err(e) => {
+                // If an error occurs, we can handle it here
+                panic!("Ethernet read failed: {}", e);
+            }
+        }
+    }
+}
+
 fn live_ait(if_name: &str) {
     println!("LIVE_AIT");
 
@@ -106,38 +138,14 @@ fn live_ait(if_name: &str) {
         ),
     };
 
+    // Start Ethernet adapter
     let (in_wire_tx, in_wire_rx) = channel::<Frame>();
     let (out_wire_tx, out_wire_rx) = channel::<Frame>();
-
     thread::spawn(move || {
-        loop {
-            match ether_rx.next() {
-                Ok(data) => {
-                    let frame = Frame::new(data);
-                    //println!("ETHER_RECV {}", pretty_hex(&frame.data));
-                    in_wire_tx.send(frame).expect("Send failed on channel");
-                }
-                Err(e) => {
-                    // If an error occurs, we can handle it here
-                    panic!("Ethernet read failed: {}", e);
-                }
-            }
-        }
+        send_to_ethernet(&mut ether_tx, &out_wire_rx);
     });
-
     thread::spawn(move || {
-        loop {
-            match out_wire_rx.recv() {
-                Ok(frame) => {
-                    //println!("ETHER_SEND {}", pretty_hex(&frame.data));
-                    ether_tx.send_to(&frame.data, None);
-                }
-                Err(e) => {
-                    // If an error occurs, we can handle it here
-                    panic!("Channel read failed: {}", e);
-                }
-            }
-        }
+        recv_from_ethernet(&in_wire_tx, &mut ether_rx);
     });
 
     // Start Node in Main thread...

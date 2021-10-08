@@ -54,8 +54,8 @@ impl Actor for Wire {
                 }
                 //wire.send(event); // keep polling
                 wire.send(event.clone()); // keep polling
-                //wire.send(WireEvent::Poll(link.clone(), wire.clone())); // keep polling
-                //wire.send(WireEvent::new_poll(&link, &wire)); // keep polling
+                                          //wire.send(WireEvent::Poll(link.clone(), wire.clone())); // keep polling
+                                          //wire.send(WireEvent::new_poll(&link, &wire)); // keep polling
             }
         }
     }

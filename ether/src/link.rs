@@ -167,23 +167,19 @@ impl Actor for Link {
                     panic!("bad frame format");
                 }
             }
-            LinkEvent::Read(cust) => {
-                match &self.reader {
-                    None => {
-                        self.reader = Some(cust.clone());
-                    },
-                    Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
+            LinkEvent::Read(cust) => match &self.reader {
+                None => {
+                    self.reader = Some(cust.clone());
                 }
+                Some(_cust) => panic!("Only one Link-to-Port reader allowed"),
             },
-            LinkEvent::Write(cust, payload) => {
-                match &self.writer {
-                    None => {
-                        self.outbound = Some(payload.clone());
-                        self.writer = Some(cust.clone());
-                    },
-                    Some(_cust) => panic!("Only one Port-to-Link writer allowed"),
+            LinkEvent::Write(cust, payload) => match &self.writer {
+                None => {
+                    self.outbound = Some(payload.clone());
+                    self.writer = Some(cust.clone());
                 }
-            }
+                Some(_cust) => panic!("Only one Port-to-Link writer allowed"),
+            },
         }
     }
 }

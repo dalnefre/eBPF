@@ -36,7 +36,6 @@ mod tests {
 
     #[test]
     fn counting_actor_accumulates_correct_total() {
-
         #[derive(Debug, Clone)]
         enum CountingEvent {
             Accum(isize),
@@ -48,9 +47,7 @@ mod tests {
         }
         impl Counter {
             pub fn create() -> Cap<CountingEvent> {
-                self::create(Counter {
-                    count: 0,
-                })
+                self::create(Counter { count: 0 })
             }
         }
         impl Actor for Counter {
