@@ -1,0 +1,155 @@
+use crossbeam::crossbeam_channel::unbounded as channel;
+//use crossbeam::crossbeam_channel::{Receiver, Sender};
+
+use ether::actor::{self, Actor, Cap};
+use ether::frame::{self, Frame, Payload};
+use ether::link::{LinkEvent, Link};
+use ether::wire::{WireEvent, Wire};
+use ether::port::{PortEvent};
+
+#[test]
+fn exactly_once_in_order_ait() {
+    pub const N_END: u8 = 0x03;
+
+    #[derive(Debug, Clone)]
+    pub struct VerifyEvent; // verify mock
+
+    #[derive(Debug, Clone)]
+    pub enum PortMockEvent {
+        // aggregate event type
+        Mock(PortEvent),
+        Ctrl(VerifyEvent),
+    }
+
+    pub struct PortMock {
+        myself: Option<Cap<PortEvent>>,
+        link: Cap<LinkEvent>,
+        n_send: u8,
+        n_recv: u8,
+        in_order: bool,
+    }
+    impl PortMock {
+        pub fn create(link: &Cap<LinkEvent>) -> Cap<PortMockEvent> {
+            actor::create(PortMock {
+                myself: None,
+                link: link.clone(),
+                n_send: 0,
+                n_recv: 0,
+                in_order: true,
+            })
+        }
+    }
+    impl Actor for PortMock {
+        type Event = PortMockEvent;
+    
+        fn on_event(&mut self, event: Self::Event) {
+            match &event {
+                PortMockEvent::Mock(port_event) => {
+                    match &port_event {
+                        PortEvent::Init(myself) => match &self.myself {
+                            None => self.myself = Some(myself.clone()),
+                            Some(_) => panic!("Port::port already set"),
+                        },
+                        PortEvent::LinkToPortWrite(payload) => {
+                            if let Some(myself) = &self.myself {
+                                self.n_recv += 1;
+                                if payload.data[0] != self.n_recv {
+                                    self.in_order = false;
+                                }
+                                self.link.send(LinkEvent::new_read(&myself));
+                            }
+                        },
+                        PortEvent::LinkToPortRead => {
+                            if let Some(myself) = &self.myself {
+                                if self.n_send < N_END {
+                                    self.n_send += 1;
+                                    let data = [self.n_send; frame::PAYLOAD_SIZE];
+                                    let payload = Payload::new(&data);
+                                    self.link.send(LinkEvent::new_write(&myself, &payload));
+                                }
+                            }
+                        },
+                    }        
+                }
+                PortMockEvent::Ctrl(_verify_event) => {
+                    println!("VERIFYING...");
+                    assert!(self.myself.is_some());
+                    assert_eq!(N_END, self.n_send);
+                    assert_eq!(N_END, self.n_recv);
+                    assert_eq!(true, self.in_order);
+                }
+            }
+        }
+    }
+
+    struct PortMockFacet {
+        mock: Cap<PortMockEvent>,
+    }
+    impl PortMockFacet {
+        pub fn create(mock: &Cap<PortMockEvent>) -> Cap<PortEvent> {
+            let port = actor::create(PortMockFacet { mock: mock.clone() });
+            port.send(PortEvent::new_init(&port));
+            port
+        }
+    }
+    impl Actor for PortMockFacet {
+        type Event = PortEvent;
+
+        fn on_event(&mut self, event: Self::Event) {
+            self.mock.send(PortMockEvent::Mock(event));
+        }
+    }
+
+    struct PortCtrlFacet {
+        mock: Cap<PortMockEvent>,
+    }
+    impl PortCtrlFacet {
+        pub fn create(mock: &Cap<PortMockEvent>) -> Cap<VerifyEvent> {
+            actor::create(PortCtrlFacet { mock: mock.clone() })
+        }
+    }
+    impl Actor for PortCtrlFacet {
+        type Event = VerifyEvent;
+
+        fn on_event(&mut self, event: Self::Event) {
+            self.mock.send(PortMockEvent::Ctrl(event));
+        }
+    }
+
+    let (a_to_b_tx, a_to_b_rx) = channel::<Frame>();
+    let (b_to_a_tx, b_to_a_rx) = channel::<Frame>();
+
+    // Alice
+    let a_wire = Wire::create(&a_to_b_tx, &b_to_a_rx);
+    let a_nonce = 12345;
+    let a_link = Link::create(&a_wire, a_nonce);
+    a_wire.send(WireEvent::new_poll(&a_link, &a_wire)); // start polling
+    let init = Frame::new_reset(a_nonce);
+    a_wire.send(WireEvent::new_frame(&init)); // send init/reset
+    let a_port_mock = PortMock::create(&a_link);
+    let a_port_ctrl = PortCtrlFacet::create(&a_port_mock);
+    let a_port = PortMockFacet::create(&a_port_mock);
+    a_link.send(LinkEvent::new_read(&a_port)); // port is ready to receive
+    a_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
+
+    // Bob
+    let b_wire = Wire::create(&b_to_a_tx, &a_to_b_rx);
+    let b_nonce = 67890;
+    let b_link = Link::create(&b_wire, b_nonce);
+    b_wire.send(WireEvent::new_poll(&b_link, &b_wire)); // start polling
+    let init = Frame::new_reset(b_nonce);
+    b_wire.send(WireEvent::new_frame(&init)); // send init/reset
+    let b_port_mock = PortMock::create(&b_link);
+    let b_port_ctrl = PortCtrlFacet::create(&b_port_mock);
+    let b_port = PortMockFacet::create(&b_port_mock);
+    b_link.send(LinkEvent::new_read(&b_port)); // port is ready to receive
+    b_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
+
+    // keep test thread alive long enough to deliver events
+    std::thread::sleep(core::time::Duration::from_millis(250));
+    a_port_ctrl.send(VerifyEvent);
+    b_port_ctrl.send(VerifyEvent);
+
+    // keep test thread alive long enough verify mock(s)
+    std::thread::sleep(core::time::Duration::from_millis(50));
+}
