@@ -3,9 +3,9 @@ use crossbeam::crossbeam_channel::unbounded as channel;
 
 use ether::actor::{self, Actor, Cap};
 use ether::frame::{self, Frame, Payload};
-use ether::link::{LinkEvent, Link};
-use ether::wire::{WireEvent, Wire};
-use ether::port::{PortEvent};
+use ether::link::{Link, LinkEvent};
+use ether::port::PortEvent;
+use ether::wire::{Wire, WireEvent};
 
 #[test]
 fn exactly_once_in_order_ait() {
@@ -41,36 +41,37 @@ fn exactly_once_in_order_ait() {
     }
     impl Actor for PortMock {
         type Event = PortMockEvent;
-    
+
         fn on_event(&mut self, event: Self::Event) {
             match &event {
-                PortMockEvent::Mock(port_event) => {
-                    match &port_event {
-                        PortEvent::Init(myself) => match &self.myself {
-                            None => self.myself = Some(myself.clone()),
-                            Some(_) => panic!("Port::port already set"),
-                        },
-                        PortEvent::LinkToPortWrite(payload) => {
-                            if let Some(myself) = &self.myself {
-                                self.n_recv += 1;
-                                if payload.data[0] != self.n_recv {
-                                    self.in_order = false;
-                                }
-                                self.link.send(LinkEvent::new_read(&myself));
+                PortMockEvent::Mock(port_event) => match &port_event {
+                    PortEvent::Init(myself) => match &self.myself {
+                        None => self.myself = Some(myself.clone()),
+                        Some(_) => panic!("Port::port already set"),
+                    },
+                    PortEvent::LinkStatus(state, balance) => {
+                        println!("Port::LinkStatus state={:?}, balance={}", state, balance);
+                    }
+                    PortEvent::LinkToPortWrite(payload) => {
+                        if let Some(myself) = &self.myself {
+                            self.n_recv += 1;
+                            if payload.data[0] != self.n_recv {
+                                self.in_order = false;
                             }
-                        },
-                        PortEvent::LinkToPortRead => {
-                            if let Some(myself) = &self.myself {
-                                if self.n_send < N_END {
-                                    self.n_send += 1;
-                                    let data = [self.n_send; frame::PAYLOAD_SIZE];
-                                    let payload = Payload::new(&data);
-                                    self.link.send(LinkEvent::new_write(&myself, &payload));
-                                }
+                            self.link.send(LinkEvent::new_read(&myself));
+                        }
+                    }
+                    PortEvent::LinkToPortRead => {
+                        if let Some(myself) = &self.myself {
+                            if self.n_send < N_END {
+                                self.n_send += 1;
+                                let data = [self.n_send; frame::PAYLOAD_SIZE];
+                                let payload = Payload::new(&data);
+                                self.link.send(LinkEvent::new_write(&myself, &payload));
                             }
-                        },
-                    }        
-                }
+                        }
+                    }
+                },
                 PortMockEvent::Ctrl(_verify_event) => {
                     println!("VERIFYING...");
                     assert!(self.myself.is_some());

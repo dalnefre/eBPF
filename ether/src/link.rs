@@ -5,26 +5,39 @@ use crate::wire::WireEvent;
 use rand::Rng;
 
 #[derive(Debug, Clone)]
+pub enum LinkState {
+    Stop, // link is disabled
+    Init, // ready to become entangled
+    Run,  // entangled, but quiet
+    Live, // entangled with recent activity
+}
+
+#[derive(Debug, Clone)]
 pub enum LinkEvent {
-    Frame(Frame),
-    Read(Cap<PortEvent>),
-    Write(Cap<PortEvent>, Payload),
+    Frame(Frame),                   // inbound frame received
+    Poll(Cap<PortEvent>),           // link status check
+    Read(Cap<PortEvent>),           // reader ready
+    Write(Cap<PortEvent>, Payload), // writer full
 }
 impl LinkEvent {
+    pub fn new_frame(frame: &Frame) -> LinkEvent {
+        LinkEvent::Frame(frame.clone())
+    }
+    pub fn new_poll(port: &Cap<PortEvent>) -> LinkEvent {
+        LinkEvent::Poll(port.clone())
+    }
     pub fn new_read(port: &Cap<PortEvent>) -> LinkEvent {
         LinkEvent::Read(port.clone())
     }
     pub fn new_write(port: &Cap<PortEvent>, payload: &Payload) -> LinkEvent {
         LinkEvent::Write(port.clone(), payload.clone())
     }
-    pub fn new_frame(frame: &Frame) -> LinkEvent {
-        LinkEvent::Frame(frame.clone())
-    }
 }
 
 pub struct Link {
     wire: Cap<WireEvent>,
     nonce: u32,
+    state: LinkState,
     balance: isize,
     reader: Option<Cap<PortEvent>>,
     inbound: Option<Payload>,
@@ -36,6 +49,7 @@ impl Link {
         actor::create(Link {
             wire: wire.clone(),
             nonce,
+            state: LinkState::Init,
             balance: 0,
             reader: None,
             inbound: None,
@@ -51,6 +65,7 @@ impl Actor for Link {
         match &event {
             LinkEvent::Frame(frame) => {
                 if frame.is_reset() {
+                    self.state = LinkState::Init;
                     let nonce = frame.get_nonce();
                     println!("Link::nonce={}, frame.nonce={}", self.nonce, nonce);
                     if self.nonce < nonce {
@@ -66,6 +81,7 @@ impl Actor for Link {
                         self.wire.send(WireEvent::new_frame(&reply));
                     }
                 } else if frame.is_entangled() {
+                    self.state = LinkState::Live;
                     let i_state = frame.get_i_state();
                     //println!("entangled i={}", i_state);
                     match i_state {
@@ -166,6 +182,10 @@ impl Actor for Link {
                 } else {
                     panic!("bad frame format");
                 }
+            }
+            LinkEvent::Poll(cust) => {
+                cust.send(PortEvent::new_link_status(&self.state, self.balance));
+                self.state = LinkState::Run;
             }
             LinkEvent::Read(cust) => match &self.reader {
                 None => {

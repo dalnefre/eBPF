@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::Payload;
-use crate::link::LinkEvent;
+use crate::link::{LinkEvent, LinkState};
 
 //use pretty_hex::pretty_hex;
 //use crossbeam::crossbeam_channel::unbounded as channel;
@@ -9,12 +9,16 @@ use crossbeam::crossbeam_channel::{Receiver, Sender};
 #[derive(Debug, Clone)]
 pub enum PortEvent {
     Init(Cap<PortEvent>),
+    LinkStatus(LinkState, isize),
     LinkToPortWrite(Payload),
     LinkToPortRead,
 }
 impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
         PortEvent::Init(port.clone())
+    }
+    pub fn new_link_status(state: &LinkState, balance: isize) -> PortEvent {
+        PortEvent::LinkStatus(state.clone(), balance)
     }
     pub fn new_link_to_port_write(payload: &Payload) -> PortEvent {
         PortEvent::LinkToPortWrite(payload.clone())
@@ -56,6 +60,9 @@ impl Actor for Port {
                 None => self.myself = Some(myself.clone()),
                 Some(_) => panic!("Port::port already set"),
             },
+            PortEvent::LinkStatus(state, balance) => {
+                println!("Port::LinkStatus state={:?}, balance={}", state, balance);
+            }
             PortEvent::LinkToPortWrite(payload) => {
                 //println!("Port::LinkToPortWrite");
                 if let Some(myself) = &self.myself {
