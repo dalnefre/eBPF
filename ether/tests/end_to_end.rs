@@ -120,10 +120,10 @@ fn exactly_once_in_order_ait() {
     let (b_to_a_tx, b_to_a_rx) = channel::<Frame>();
 
     // Alice
-    let a_wire = Wire::create(&a_to_b_tx, &b_to_a_rx);
+    let a_wire = Wire::create(&a_to_b_tx);
     let a_nonce = 12345;
     let a_link = Link::create(&a_wire, a_nonce);
-    a_wire.send(WireEvent::new_poll(&a_link, &a_wire)); // start polling
+    a_wire.send(WireEvent::new_listen(&a_link, &b_to_a_rx)); // start listening
     let init = Frame::new_reset(a_nonce);
     a_wire.send(WireEvent::new_frame(&init)); // send init/reset
     let a_port_mock = PortMock::create(&a_link);
@@ -133,10 +133,10 @@ fn exactly_once_in_order_ait() {
     a_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
 
     // Bob
-    let b_wire = Wire::create(&b_to_a_tx, &a_to_b_rx);
+    let b_wire = Wire::create(&b_to_a_tx);
     let b_nonce = 67890;
     let b_link = Link::create(&b_wire, b_nonce);
-    b_wire.send(WireEvent::new_poll(&b_link, &b_wire)); // start polling
+    b_wire.send(WireEvent::new_listen(&b_link, &a_to_b_rx)); // start listening
     let init = Frame::new_reset(b_nonce);
     b_wire.send(WireEvent::new_frame(&init)); // send init/reset
     let b_port_mock = PortMock::create(&b_link);

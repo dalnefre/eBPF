@@ -6,12 +6,12 @@ use crossbeam::crossbeam_channel::{Receiver, Sender};
 
 #[derive(Debug, Clone)]
 pub enum WireEvent {
-    Poll(Cap<LinkEvent>, Cap<WireEvent>),
+    Listen(Cap<LinkEvent>, Receiver<Frame>),
     Frame(Frame),
 }
 impl WireEvent {
-    pub fn new_poll(link: &Cap<LinkEvent>, wire: &Cap<WireEvent>) -> WireEvent {
-        WireEvent::Poll(link.clone(), wire.clone())
+    pub fn new_listen(link: &Cap<LinkEvent>, rx: &Receiver<Frame>) -> WireEvent {
+        WireEvent::Listen(link.clone(), rx.clone())
     }
     pub fn new_frame(frame: &Frame) -> WireEvent {
         WireEvent::Frame(frame.clone())
@@ -20,14 +20,10 @@ impl WireEvent {
 
 pub struct Wire {
     tx: Sender<Frame>,
-    rx: Receiver<Frame>,
 }
 impl Wire {
-    pub fn create(tx: &Sender<Frame>, rx: &Receiver<Frame>) -> Cap<WireEvent> {
-        actor::create(Wire {
-            tx: tx.clone(),
-            rx: rx.clone(),
-        })
+    pub fn create(tx: &Sender<Frame>) -> Cap<WireEvent> {
+        actor::create(Wire { tx: tx.clone() })
     }
 }
 impl Actor for Wire {
@@ -39,24 +35,15 @@ impl Actor for Wire {
                 //println!("Wire::outbound {}", pretty_hex(&frame.data));
                 self.tx.send(frame.clone()).expect("Wire::send failed");
             }
-            WireEvent::Poll(link, wire) => {
-                // FIXME: this polling strategy is only needed
-                // until we can inject events directly
-                match self.rx.try_recv() {
-                    Ok(frame) => {
+            WireEvent::Listen(link, rx) => {
+                let rx = rx.clone(); // local copy moved into closure
+                let link = link.clone(); // local copy moved into closure
+                std::thread::spawn(move || {
+                    while let Ok(frame) = rx.recv() {
                         //println!("Wire::inbound {}", pretty_hex(&frame.data));
                         link.send(LinkEvent::new_frame(&frame));
                     }
-                    _ => {
-                        // FIXME: we should actually check for errors
-                        // _OTHER THAN_ not data available
-                    }
-                }
-                /* keep polling... */
-                //wire.send(event);
-                wire.send(event.clone());
-                //wire.send(WireEvent::Poll(link.clone(), wire.clone()));
-                //wire.send(WireEvent::new_poll(&link, &wire));
+                });
             }
         }
     }
