@@ -171,10 +171,9 @@ fn start_node(
 
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link, &wire_rx)); // start listening
-    let init = Frame::new_reset(nonce);
-    wire.send(WireEvent::new_frame(&init)); // send init/reset
 
     let port = Port::create(&link, &port_tx, &port_rx);
+    link.send(LinkEvent::new_start(&port)); // start link
     link.send(LinkEvent::new_read(&port)); // port is ready to receive
     port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
 

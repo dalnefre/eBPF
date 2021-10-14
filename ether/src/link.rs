@@ -7,7 +7,9 @@ use rand::Rng;
 #[derive(Debug, Clone)]
 pub enum LinkEvent {
     Frame(Frame),                   // inbound frame received
+    Start(Cap<PortEvent>),          // start link activity
     Poll(Cap<PortEvent>),           // link status check
+    Stop(Cap<PortEvent>),           // stop link activity
     Read(Cap<PortEvent>),           // reader ready
     Write(Cap<PortEvent>, Payload), // writer full
 }
@@ -15,8 +17,14 @@ impl LinkEvent {
     pub fn new_frame(frame: &Frame) -> LinkEvent {
         LinkEvent::Frame(frame.clone())
     }
+    pub fn new_start(port: &Cap<PortEvent>) -> LinkEvent {
+        LinkEvent::Start(port.clone())
+    }
     pub fn new_poll(port: &Cap<PortEvent>) -> LinkEvent {
         LinkEvent::Poll(port.clone())
+    }
+    pub fn new_stop(port: &Cap<PortEvent>) -> LinkEvent {
+        LinkEvent::Stop(port.clone())
     }
     pub fn new_read(port: &Cap<PortEvent>) -> LinkEvent {
         LinkEvent::Read(port.clone())
@@ -26,7 +34,7 @@ impl LinkEvent {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LinkState {
     Stop, // link is disabled
     Init, // ready to become entangled
@@ -49,7 +57,7 @@ impl Link {
         actor::create(Link {
             wire: wire.clone(),
             nonce,
-            state: LinkState::Init,
+            state: LinkState::Stop,
             balance: 0,
             reader: None,
             inbound: None,
@@ -64,7 +72,9 @@ impl Actor for Link {
     fn on_event(&mut self, event: Self::Event) {
         match &event {
             LinkEvent::Frame(frame) => {
-                if frame.is_reset() {
+                if self.state == LinkState::Stop {
+                    return; // EARLY EXIT WHEN LINK IS STOPPED.
+                } else if frame.is_reset() {
                     self.state = LinkState::Init;
                     let nonce = frame.get_nonce();
                     println!("Link::nonce={}, frame.nonce={}", self.nonce, nonce);
@@ -183,9 +193,21 @@ impl Actor for Link {
                     panic!("bad frame format");
                 }
             }
+            LinkEvent::Start(cust) => {
+                let init = Frame::new_reset(self.nonce);
+                self.wire.send(WireEvent::new_frame(&init)); // send init/reset
+                self.state = LinkState::Init;
+                cust.send(PortEvent::new_link_status(&self.state, &self.balance));
+            }
             LinkEvent::Poll(cust) => {
-                cust.send(PortEvent::new_link_status(&self.state, self.balance));
-                self.state = LinkState::Run;
+                cust.send(PortEvent::new_link_status(&self.state, &self.balance));
+                if self.state == LinkState::Live {
+                    self.state = LinkState::Run; // clear Live status
+                }
+            }
+            LinkEvent::Stop(cust) => {
+                self.state = LinkState::Stop;
+                cust.send(PortEvent::new_link_status(&self.state, &self.balance));
             }
             LinkEvent::Read(cust) => match &self.reader {
                 None => {

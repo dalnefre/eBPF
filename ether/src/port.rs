@@ -17,8 +17,8 @@ impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
         PortEvent::Init(port.clone())
     }
-    pub fn new_link_status(state: &LinkState, balance: isize) -> PortEvent {
-        PortEvent::LinkStatus(state.clone(), balance)
+    pub fn new_link_status(state: &LinkState, balance: &isize) -> PortEvent {
+        PortEvent::LinkStatus(state.clone(), balance.clone())
     }
     pub fn new_link_to_port_write(payload: &Payload) -> PortEvent {
         PortEvent::LinkToPortWrite(payload.clone())

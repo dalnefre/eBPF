@@ -3,7 +3,7 @@ use crossbeam::crossbeam_channel::unbounded as channel;
 
 use ether::actor::{self, Actor, Cap};
 use ether::frame::{self, Frame, Payload};
-use ether::link::{Link, LinkEvent};
+use ether::link::{Link, LinkEvent, LinkState};
 use ether::port::PortEvent;
 use ether::wire::{Wire, WireEvent};
 
@@ -125,11 +125,10 @@ fn exactly_once_in_order_ait() {
     let a_nonce = 12345;
     let a_link = Link::create(&a_wire, a_nonce);
     a_wire.send(WireEvent::new_listen(&a_link, &b_to_a_rx)); // start listening
-    let init = Frame::new_reset(a_nonce);
-    a_wire.send(WireEvent::new_frame(&init)); // send init/reset
     let a_port_mock = PortMock::create(&a_link);
     let a_port_ctrl = PortCtrlFacet::create(&a_port_mock);
     let a_port = PortMockFacet::create(&a_port_mock);
+    a_link.send(LinkEvent::new_start(&a_port)); // start link
     a_link.send(LinkEvent::new_read(&a_port)); // port is ready to receive
     a_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
 
@@ -138,11 +137,10 @@ fn exactly_once_in_order_ait() {
     let b_nonce = 67890;
     let b_link = Link::create(&b_wire, b_nonce);
     b_wire.send(WireEvent::new_listen(&b_link, &a_to_b_rx)); // start listening
-    let init = Frame::new_reset(b_nonce);
-    b_wire.send(WireEvent::new_frame(&init)); // send init/reset
     let b_port_mock = PortMock::create(&b_link);
     let b_port_ctrl = PortCtrlFacet::create(&b_port_mock);
     let b_port = PortMockFacet::create(&b_port_mock);
+    b_link.send(LinkEvent::new_start(&b_port)); // start link
     b_link.send(LinkEvent::new_read(&b_port)); // port is ready to receive
     b_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
 
@@ -152,5 +150,118 @@ fn exactly_once_in_order_ait() {
     b_port_ctrl.send(VerifyEvent);
 
     // keep test thread alive long enough verify mock(s)
+    std::thread::sleep(core::time::Duration::from_millis(50));
+}
+
+#[test]
+fn detect_link_failure_by_polling() {
+
+    #[derive(Debug, Clone)]
+    pub enum LogEvent {
+        LinkStatus(LinkState, isize),
+        UnexpectedEvent,
+    }
+    impl LogEvent {
+        pub fn new_link_status(state: &LinkState, balance: &isize) -> LogEvent {
+            LogEvent::LinkStatus(state.clone(), balance.clone())
+        }
+        pub fn new_unexpected_event() -> LogEvent {
+            LogEvent::UnexpectedEvent
+        }
+    }
+    pub struct FakeLog {
+        id: isize,
+    }
+    impl FakeLog {
+        pub fn create(id: isize) -> Cap<LogEvent> {
+            actor::create(FakeLog { id })
+        }
+    }
+    impl Actor for FakeLog {
+        type Event = LogEvent;
+
+        fn on_event(&mut self, event: Self::Event) {
+            println!("Log[{}]::event {:?}", self.id, event);
+        }
+    }
+    
+    pub struct FakePort {
+        log: Cap<LogEvent>,
+    }
+    impl FakePort {
+        pub fn create(log: &Cap<LogEvent>) -> Cap<PortEvent> {
+            actor::create(FakePort {
+                log: log.clone(),
+            })
+        }
+    }
+    impl Actor for FakePort {
+        type Event = PortEvent;
+
+        fn on_event(&mut self, event: Self::Event) {
+            match &event {
+                PortEvent::LinkStatus(state, balance) => {
+                    //println!("Port::LinkStatus state={:?}, balance={}", state, balance);
+                    self.log.send(LogEvent::new_link_status(state, balance));
+                }
+                _ => {
+                    self.log.send(LogEvent::new_unexpected_event());
+                }
+            }
+        }
+    }
+
+    let (a_to_b_tx, a_to_b_rx) = channel::<Frame>();
+    let (b_to_a_tx, b_to_a_rx) = channel::<Frame>();
+
+    // Alice
+    let a_wire = Wire::create(&a_to_b_tx);
+    let a_nonce = 12345;
+    let a_link = Link::create(&a_wire, a_nonce);
+    a_wire.send(WireEvent::new_listen(&a_link, &b_to_a_rx)); // start listening
+    let a_log = FakeLog::create(0);
+    let a_port = FakePort::create(&a_log);
+    a_link.send(LinkEvent::new_poll(&a_port)); // poll for link status
+    a_link.send(LinkEvent::new_start(&a_port)); // start link
+
+    // Bob
+    let b_wire = Wire::create(&b_to_a_tx);
+    let b_nonce = 67890;
+    let b_link = Link::create(&b_wire, b_nonce);
+    b_wire.send(WireEvent::new_listen(&b_link, &a_to_b_rx)); // start listening
+    let b_log = FakeLog::create(1);
+    let b_port = FakePort::create(&b_log);
+    b_link.send(LinkEvent::new_poll(&b_port)); // poll for link status
+    b_link.send(LinkEvent::new_start(&b_port)); // start link
+
+    // wait for entanglement to be established
+    std::thread::sleep(core::time::Duration::from_millis(30));
+    a_link.send(LinkEvent::new_poll(&a_port));
+    b_link.send(LinkEvent::new_poll(&b_port));
+    a_link.send(LinkEvent::new_poll(&a_port));
+    b_link.send(LinkEvent::new_poll(&b_port));
+
+    // wait before checking again...
+    std::thread::sleep(core::time::Duration::from_millis(10));
+    a_link.send(LinkEvent::new_poll(&a_port));
+    b_link.send(LinkEvent::new_poll(&b_port));
+
+    // wait before stopping link...
+    std::thread::sleep(core::time::Duration::from_millis(10));
+    a_link.send(LinkEvent::new_stop(&a_port));
+    //b_link.send(LinkEvent::new_stop(&b_port)); // NOTE: stopping one side should freeze the other
+    b_link.send(LinkEvent::new_poll(&b_port));
+
+    // wait before checking again...
+    std::thread::sleep(core::time::Duration::from_millis(10));
+    a_link.send(LinkEvent::new_poll(&a_port));
+    b_link.send(LinkEvent::new_poll(&b_port));
+
+    // wait to see if link recovers...
+    std::thread::sleep(core::time::Duration::from_millis(30));
+    a_link.send(LinkEvent::new_poll(&a_port));
+    b_link.send(LinkEvent::new_poll(&b_port));
+
+    // keep test thread alive long enough for verification
     std::thread::sleep(core::time::Duration::from_millis(50));
 }
