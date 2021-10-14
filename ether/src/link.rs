@@ -5,14 +5,6 @@ use crate::wire::WireEvent;
 use rand::Rng;
 
 #[derive(Debug, Clone)]
-pub enum LinkState {
-    Stop, // link is disabled
-    Init, // ready to become entangled
-    Run,  // entangled, but quiet
-    Live, // entangled with recent activity
-}
-
-#[derive(Debug, Clone)]
 pub enum LinkEvent {
     Frame(Frame),                   // inbound frame received
     Poll(Cap<PortEvent>),           // link status check
@@ -32,6 +24,14 @@ impl LinkEvent {
     pub fn new_write(port: &Cap<PortEvent>, payload: &Payload) -> LinkEvent {
         LinkEvent::Write(port.clone(), payload.clone())
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum LinkState {
+    Stop, // link is disabled
+    Init, // ready to become entangled
+    Run,  // entangled, but quiet
+    Live, // entangled with recent activity
 }
 
 pub struct Link {

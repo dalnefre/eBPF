@@ -28,7 +28,12 @@ impl PortEvent {
     }
 }
 
-// Simulated Port for driving AIT link protocol tests
+#[derive(Debug, Clone)]
+pub struct PortState {
+    pub link_state: LinkState,
+    pub ait_balance: isize,
+}
+
 pub struct Port {
     myself: Option<Cap<PortEvent>>,
     link: Cap<LinkEvent>,
@@ -58,7 +63,7 @@ impl Actor for Port {
         match &event {
             PortEvent::Init(myself) => match &self.myself {
                 None => self.myself = Some(myself.clone()),
-                Some(_) => panic!("Port::port already set"),
+                Some(_) => panic!("Port::myself already set"),
             },
             PortEvent::LinkStatus(state, balance) => {
                 println!("Port::LinkStatus state={:?}, balance={}", state, balance);
