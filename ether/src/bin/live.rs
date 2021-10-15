@@ -1,7 +1,7 @@
 use std::env;
 
 mod wire {
-    use ether::frame::Frame;
+    use ether::frame::{Frame, TreeId};
     use pnet::datalink::{
         self, Channel::Ethernet, DataLinkReceiver, DataLinkSender, NetworkInterface,
     };
@@ -47,9 +47,9 @@ mod wire {
             self.tx.send_to(&frame.data, None);
         }
 
-        pub fn send_proto_frame(&mut self, tree_id: u32, i: u8, u: u8) {
+        pub fn send_proto_frame(&mut self, tree_id: &TreeId, i: u8, u: u8) {
             // Construct and send a protocol packet.
-            let frame = Frame::new_entangled(tree_id, i, u);
+            let frame = Frame::new_entangled(&tree_id, i, u);
             println!("SEND_PROTO {}", pretty_hex(&frame.data));
             self.tx.send_to(&frame.data, None);
         }
@@ -75,7 +75,7 @@ use wire::Wire;
 
 mod link {
     use crate::wire::Wire;
-    use ether::frame::{self, Frame};
+    use ether::frame::{self, Frame, TreeId};
     use pretty_hex::pretty_hex;
     use rand::Rng;
 
@@ -99,7 +99,8 @@ mod link {
         }
 
         pub fn send_proto(&mut self, i: u8, u: u8) {
-            self.wire.send_proto_frame(self.nonce, i, u);
+            let tree_id = TreeId::new(self.nonce); // HACK! using nonce as tree_id
+            self.wire.send_proto_frame(&tree_id, i, u);
         }
 
         pub fn event_loop(&mut self) {
@@ -120,7 +121,7 @@ mod link {
                 // init/reset protocol
 
                 println!("init/reset");
-                let other = frame.get_tree_id();
+                let other = frame.get_nonce();
                 println!("nonce {}, other {}", self.nonce, other);
 
                 if self.nonce < other {

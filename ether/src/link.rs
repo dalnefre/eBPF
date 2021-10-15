@@ -1,5 +1,5 @@
 use crate::actor::{self, Actor, Cap};
-use crate::frame::{self, Frame, Payload};
+use crate::frame::{self, Frame, Payload, TreeId};
 use crate::port::PortEvent;
 use crate::wire::WireEvent;
 use rand::Rng;
@@ -72,6 +72,7 @@ impl Actor for Link {
     fn on_event(&mut self, event: Self::Event) {
         match &event {
             LinkEvent::Frame(frame) => {
+                let tree_id = TreeId::new(self.nonce);
                 if self.state == LinkState::Stop {
                     return; // EARLY EXIT WHEN LINK IS STOPPED.
                 } else if frame.is_reset() {
@@ -82,7 +83,7 @@ impl Actor for Link {
                         println!("waiting...");
                     } else if self.nonce > nonce {
                         println!("entangle...");
-                        let reply = Frame::new_entangled(self.nonce, frame::TICK, frame::TICK);
+                        let reply = Frame::new_entangled(&tree_id, frame::TICK, frame::TICK);
                         self.wire.send(WireEvent::new_frame(&reply));
                     } else {
                         println!("collision...");
@@ -113,7 +114,7 @@ impl Actor for Link {
                             match &self.outbound {
                                 None => {
                                     let reply = Frame::new_entangled(
-                                        self.nonce,
+                                        &tree_id,
                                         frame::TICK, // liveness
                                         i_state,
                                     );
@@ -121,7 +122,7 @@ impl Actor for Link {
                                 }
                                 Some(payload) => {
                                     let mut reply = Frame::new_entangled(
-                                        self.nonce,
+                                        &tree_id,
                                         frame::TECK, // begin AIT
                                         i_state,
                                     );
@@ -138,7 +139,7 @@ impl Actor for Link {
                                     // reader ready
                                     self.inbound = Some(frame.get_payload());
                                     let reply = Frame::new_entangled(
-                                        self.nonce,
+                                        &tree_id,
                                         frame::TACK, // Ack AIT
                                         i_state,
                                     );
@@ -148,7 +149,7 @@ impl Actor for Link {
                                 None => {
                                     // no reader ready
                                     let reply = Frame::new_entangled(
-                                        self.nonce,
+                                        &tree_id,
                                         frame::RTECK, // reject AIT
                                         i_state,
                                     );
@@ -168,7 +169,7 @@ impl Actor for Link {
                                 self.outbound = None; // clear outbound
                                 self.balance = 0; // clear balance
                                 let reply = Frame::new_entangled(
-                                    self.nonce,
+                                    &tree_id,
                                     frame::TICK, // liveness (Ack Ack)
                                     i_state,
                                 );
@@ -178,7 +179,7 @@ impl Actor for Link {
                         frame::RTECK => {
                             println!("RTECK rcvd."); // Reject AIT recv'd
                             let reply = Frame::new_entangled(
-                                self.nonce,
+                                &tree_id,
                                 frame::TICK, // liveness
                                 i_state,
                             );

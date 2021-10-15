@@ -56,6 +56,19 @@ pub const RTECK: u8 = 0x0B;
 pub const TACK: u8 = 0x0F;
 
 #[derive(Debug, Clone)]
+pub struct TreeId {
+    id: u32,
+}
+impl TreeId {
+    pub fn new(id: u32) -> TreeId {
+        TreeId { id }
+    }
+    pub fn get_id(&self) -> u32 {
+        self.id
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Payload {
     pub data: [u8; PAYLOAD_SIZE],
 }
@@ -93,7 +106,7 @@ impl Frame {
         frame.set_nonce(nonce);
         frame
     }
-    pub fn new_entangled(tree_id: u32, i: u8, u: u8) -> Frame {
+    pub fn new_entangled(tree_id: &TreeId, i: u8, u: u8) -> Frame {
         let mut frame = Self::default();
         frame.set_entangled();
         frame.set_tree_id(tree_id);
@@ -133,15 +146,15 @@ impl Frame {
         u32::from_be_bytes(nonce)
     }
 
-    pub fn set_tree_id(&mut self, id: u32) {
+    pub fn set_tree_id(&mut self, tree_id: &TreeId) {
         // `copy_from_slice` will not panic because
         // the slice is the same size as `id` (4 octets)
-        self.data[2..6].copy_from_slice(&id.to_be_bytes());
+        self.data[2..6].copy_from_slice(&tree_id.get_id().to_be_bytes());
     }
-    pub fn get_tree_id(&self) -> u32 {
+    pub fn get_tree_id(&self) -> TreeId {
         let mut tree_id = [0; 4];
         tree_id.copy_from_slice(&self.data[2..6]);
-        u32::from_be_bytes(tree_id)
+        TreeId::new(u32::from_be_bytes(tree_id))
     }
 
     pub fn set_i_state(&mut self, i: u8) {

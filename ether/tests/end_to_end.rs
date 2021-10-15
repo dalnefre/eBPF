@@ -155,7 +155,6 @@ fn exactly_once_in_order_ait() {
 
 #[test]
 fn detect_link_failure_by_polling() {
-
     #[derive(Debug, Clone)]
     pub enum LogEvent {
         LinkStatus(LinkState, isize),
@@ -184,15 +183,13 @@ fn detect_link_failure_by_polling() {
             println!("Log[{}]::event {:?}", self.id, event);
         }
     }
-    
+
     pub struct FakePort {
         log: Cap<LogEvent>,
     }
     impl FakePort {
         pub fn create(log: &Cap<LogEvent>) -> Cap<PortEvent> {
-            actor::create(FakePort {
-                log: log.clone(),
-            })
+            actor::create(FakePort { log: log.clone() })
         }
     }
     impl Actor for FakePort {
