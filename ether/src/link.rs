@@ -103,7 +103,9 @@ impl Actor for Link {
                                 println!("TICK w/ surplus");
                                 if let Some(reader) = &self.reader {
                                     if let Some(payload) = &self.inbound {
-                                        reader.send(PortEvent::new_link_to_port_write(&payload)); // release payload
+                                        reader.send( // release payload
+                                            PortEvent::new_link_to_port_write(&payload)
+                                        );
                                         self.reader = None; // reader satisfied
                                         self.inbound = None; // clear inbound
                                         self.balance = 0; // clear balance

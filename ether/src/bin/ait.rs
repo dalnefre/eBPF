@@ -8,16 +8,17 @@ use pnet::datalink::{DataLinkReceiver, DataLinkSender};
 use pretty_hex::pretty_hex;
 use rand::Rng;
 
-use ether::frame::{self, Frame, Payload};
+use ether::frame::{self, Frame, Payload, TreeId};
 use ether::link::{Link, LinkEvent};
 use ether::port::{Port, PortEvent};
 use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
     assert!(s.len() <= frame::PAYLOAD_SIZE);
+    let tree_id = TreeId::new(144); // fake TreeId
     let mut buf = [0_u8; frame::PAYLOAD_SIZE];
     buf[..s.len()].copy_from_slice(&s.as_bytes());
-    let payload = Payload::new(&buf);
+    let payload = Payload::new(&tree_id, &buf);
     tx.send(payload).expect("insert_payload failed");
 }
 

@@ -70,12 +70,13 @@ impl TreeId {
 
 #[derive(Debug, Clone)]
 pub struct Payload {
+    pub id: TreeId,
     pub data: [u8; PAYLOAD_SIZE],
 }
 impl Payload {
-    pub fn new(data: &[u8]) -> Payload {
+    pub fn new(id: &TreeId, data: &[u8]) -> Payload {
         let data = data.try_into().expect("44 octet payload required");
-        Payload { data }
+        Payload { id: id.clone(), data }
     }
 }
 
@@ -172,10 +173,12 @@ impl Frame {
     }
 
     pub fn set_payload(&mut self, payload: &Payload) {
+        self.set_tree_id(&payload.id);
         self.data[16..60].copy_from_slice(&payload.data[..])
     }
     pub fn get_payload(&self) -> Payload {
-        Payload::new(&self.data[16..60])
+        let tree_id = self.get_tree_id();
+        Payload::new(&tree_id, &self.data[16..60])
         //self.data[16..60].try_into().expect("Bad payload size")
     }
 }

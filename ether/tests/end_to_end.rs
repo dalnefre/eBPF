@@ -2,7 +2,7 @@ use crossbeam::crossbeam_channel::unbounded as channel;
 //use crossbeam::crossbeam_channel::{Receiver, Sender};
 
 use ether::actor::{self, Actor, Cap};
-use ether::frame::{self, Frame, Payload};
+use ether::frame::{self, Frame, Payload, TreeId};
 use ether::link::{Link, LinkEvent, LinkState};
 use ether::port::PortEvent;
 use ether::wire::{Wire, WireEvent};
@@ -65,8 +65,9 @@ fn exactly_once_in_order_ait() {
                         if let Some(myself) = &self.myself {
                             if self.n_send < N_END {
                                 self.n_send += 1;
+                                let tree_id = TreeId::new(42); // fake TreeId
                                 let data = [self.n_send; frame::PAYLOAD_SIZE];
-                                let payload = Payload::new(&data);
+                                let payload = Payload::new(&tree_id, &data);
                                 self.link.send(LinkEvent::new_write(&myself, &payload));
                             }
                         }
