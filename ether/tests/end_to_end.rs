@@ -65,7 +65,7 @@ fn exactly_once_in_order_ait() {
                         if let Some(myself) = &self.myself {
                             if self.n_send < N_END {
                                 self.n_send += 1;
-                                let tree_id = TreeId::new(42); // fake TreeId
+                                let tree_id = TreeId::new(144); // fake TreeId
                                 let data = [self.n_send; frame::PAYLOAD_SIZE];
                                 let payload = Payload::new(&tree_id, &data);
                                 self.link.send(LinkEvent::new_write(&myself, &payload));
@@ -155,7 +155,7 @@ fn exactly_once_in_order_ait() {
 }
 
 #[test]
-fn detect_link_failure_by_polling() {
+fn detect_link_failure_by_harvesting_events() {
     #[derive(Debug, Clone)]
     pub enum LogEvent {
         LinkStatus(LinkState, isize),

@@ -1,7 +1,7 @@
 use std::env;
 
 mod wire {
-    use ether::frame::{Frame, TreeId};
+    use ether::frame::Frame;
     use pnet::datalink::{
         self, Channel::Ethernet, DataLinkReceiver, DataLinkSender, NetworkInterface,
     };
@@ -47,9 +47,9 @@ mod wire {
             self.tx.send_to(&frame.data, None);
         }
 
-        pub fn send_proto_frame(&mut self, tree_id: &TreeId, i: u8, u: u8) {
+        pub fn send_proto_frame(&mut self, i: u8, u: u8) {
             // Construct and send a protocol packet.
-            let frame = Frame::new_entangled(&tree_id, i, u);
+            let frame = Frame::new_entangled(i, u);
             println!("SEND_PROTO {}", pretty_hex(&frame.data));
             self.tx.send_to(&frame.data, None);
         }
@@ -75,7 +75,7 @@ use wire::Wire;
 
 mod link {
     use crate::wire::Wire;
-    use ether::frame::{self, Frame, TreeId};
+    use ether::frame::{self, Frame};
     use pretty_hex::pretty_hex;
     use rand::Rng;
 
@@ -99,8 +99,7 @@ mod link {
         }
 
         pub fn send_proto(&mut self, i: u8, u: u8) {
-            let tree_id = TreeId::new(self.nonce); // HACK! using nonce as tree_id
-            self.wire.send_proto_frame(&tree_id, i, u);
+            self.wire.send_proto_frame(i, u);
         }
 
         pub fn event_loop(&mut self) {

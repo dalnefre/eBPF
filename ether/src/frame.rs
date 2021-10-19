@@ -75,8 +75,9 @@ pub struct Payload {
 }
 impl Payload {
     pub fn new(id: &TreeId, data: &[u8]) -> Payload {
+        let id = id.clone();
         let data = data.try_into().expect("44 octet payload required");
-        Payload { id: id.clone(), data }
+        Payload { id, data }
     }
 }
 
@@ -107,10 +108,9 @@ impl Frame {
         frame.set_nonce(nonce);
         frame
     }
-    pub fn new_entangled(tree_id: &TreeId, i: u8, u: u8) -> Frame {
+    pub fn new_entangled(i: u8, u: u8) -> Frame {
         let mut frame = Self::default();
         frame.set_entangled();
-        frame.set_tree_id(tree_id);
         frame.set_i_state(i);
         frame.set_u_state(u);
         frame
