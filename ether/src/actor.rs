@@ -4,6 +4,7 @@ use crossbeam::crossbeam_channel::unbounded as channel;
 use crossbeam::crossbeam_channel::Sender;
 use std::marker::Send;
 use std::thread;
+//use tokio::task;
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
@@ -24,6 +25,7 @@ pub trait Actor {
 pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
     let (tx, rx) = channel::<T::Event>();
     thread::spawn(move || {
+    //task::spawn_blocking(move || {
         while let Ok(event) = rx.recv() {
             actor.on_event(event);
         }
