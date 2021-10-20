@@ -65,13 +65,19 @@ fn exactly_once_in_order_ait() {
                         if let Some(myself) = &self.myself {
                             if self.n_send < N_END {
                                 self.n_send += 1;
-                                let tree_id = TreeId::new(144); // fake TreeId
+                                let tree_id = TreeId::new(144); // FIXME: fake TreeId
                                 let data = [self.n_send; frame::PAYLOAD_SIZE];
                                 let payload = Payload::new(&tree_id, &data);
                                 self.link.send(LinkEvent::new_write(&myself, &payload));
                             }
                         }
                     }
+                    PortEvent::HubToPortWrite(cust, payload) => {
+                        println!("Port::HubToPortWrite cust={:?} payload={:?}", cust, payload);
+                    },
+                    PortEvent::HubToPortRead(cust) => {
+                        println!("Port::HubToPortRead cust={:?}", cust);
+                    },
                 },
                 PortMockEvent::Ctrl(_verify_event) => {
                     println!("VERIFYING...");

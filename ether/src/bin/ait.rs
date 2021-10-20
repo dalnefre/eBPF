@@ -15,7 +15,7 @@ use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
     assert!(s.len() <= frame::PAYLOAD_SIZE);
-    let tree_id = TreeId::new(144); // fake TreeId
+    let tree_id = TreeId::new(144); // FIXME: fake TreeId
     let mut buf = [0_u8; frame::PAYLOAD_SIZE];
     buf[..s.len()].copy_from_slice(&s.as_bytes());
     let payload = Payload::new(&tree_id, &buf);
@@ -173,7 +173,7 @@ fn start_node(
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link, &wire_rx)); // start listening
 
-    let port = Port::create(&link, &port_tx, &port_rx);
+    let port = Port::create(&link); //, &port_tx, &port_rx);
     link.send(LinkEvent::new_start(&port)); // start link
     link.send(LinkEvent::new_read(&port)); // port is ready to receive
     port.send(PortEvent::new_link_to_port_read()); // link is ready to receive

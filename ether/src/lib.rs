@@ -1,4 +1,5 @@
 pub mod actor;
+pub mod cell;
 pub mod frame;
 pub mod hub;
 pub mod link;
