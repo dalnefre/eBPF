@@ -1,7 +1,7 @@
 use crate::actor::{self, Actor, Cap};
+use crate::cell::CellEvent;
 use crate::frame::Payload;
 use crate::port::{PortEvent, PortState};
-use crate::cell::CellEvent;
 
 use pretty_hex::pretty_hex;
 
@@ -38,17 +38,17 @@ impl HubEvent {
 // Multi-Port Node/Hub
 pub struct Hub {
     myself: Option<Cap<HubEvent>>,
-    port_1: Cap<PortEvent>,
-    port_2: Cap<PortEvent>,
-    route: usize,
+    port: Cap<PortEvent>,
+    reader: Option<Cap<CellEvent>>,
+    writer: Option<Cap<CellEvent>>,
 }
 impl Hub {
-    pub fn create(port_1: &Cap<PortEvent>, port_2: &Cap<PortEvent>) -> Cap<HubEvent> {
+    pub fn create(port: &Cap<PortEvent>) -> Cap<HubEvent> {
         let hub = actor::create(Hub {
             myself: None,
-            port_1: port_1.clone(),
-            port_2: port_2.clone(),
-            route: 1,
+            port: port.clone(),
+            reader: None,
+            writer: None,
         });
         hub.send(HubEvent::new_init(&hub));
         hub
@@ -70,37 +70,62 @@ impl Actor for Hub {
                 );
             }
             HubEvent::PortToHubWrite(cust, payload) => {
-                println!(
-                    "Hub::PortToHubWrite cust={:?} payload={}",
-                    cust,
-                    pretty_hex(&payload.data)
-                );
-                if let Some(_myself) = &self.myself {}
-            }
-            HubEvent::PortToHubRead(cust) => {
-                println!("Hub::PortToHubRead cust={:?}", cust);
                 if let Some(myself) = &self.myself {
                     println!(
-                        "Hub::myself={:?} port_1={:?} port_2={:?}",
-                        myself, self.port_1, self.port_2
+                        "Hub::PortToHubWrite myself={:?} cust={:?} payload={}",
+                        myself,
+                        cust,
+                        pretty_hex(&payload.data)
                     );
+                    match &self.reader {
+                        Some(cell) => {
+                            cell.send(CellEvent::new_hub_to_cell_write(&payload));
+                            self.reader = None;
+                        }
+                        None => panic!("Cell-to-Hub reader not ready"),
+                    }
+                }
+            }
+            HubEvent::PortToHubRead(cust) => {
+                if let Some(myself) = &self.myself {
+                    println!("Hub::PortToHubRead myself={:?} cust={:?}", myself, cust);
+                    match &self.writer {
+                        Some(cell) => {
+                            cell.send(CellEvent::new_hub_to_cell_read());
+                            self.writer = None;
+                        }
+                        None => panic!("Cell-to-Hub writer not ready"),
+                    }
                 }
             }
             HubEvent::CellToHubWrite(cust, payload) => {
-                println!(
-                    "Hub::CellToHubWrite cust={:?} payload={}",
-                    cust,
-                    pretty_hex(&payload.data)
-                );
-                if let Some(_myself) = &self.myself {}
-            }
-            HubEvent::CellToHubRead(cust) => {
-                println!("Hub::CellToHubRead cust={:?}", cust);
                 if let Some(myself) = &self.myself {
                     println!(
-                        "Hub::myself={:?} port_1={:?} port_2={:?}",
-                        myself, self.port_1, self.port_2
+                        "Hub::CellToHubWrite myself={:?} cust={:?} payload={}",
+                        myself,
+                        cust,
+                        pretty_hex(&payload.data)
                     );
+                    match &self.writer {
+                        None => {
+                            self.writer = Some(cust.clone());
+                            self.port
+                                .send(PortEvent::new_hub_to_port_write(&myself, &payload));
+                        }
+                        Some(_cust) => panic!("Only one Cell-to-Hub writer allowed"),
+                    }
+                }
+            }
+            HubEvent::CellToHubRead(cust) => {
+                if let Some(myself) = &self.myself {
+                    println!("Hub::CellToHubRead myself={:?} cust={:?}", myself, cust);
+                    match &self.reader {
+                        None => {
+                            self.reader = Some(cust.clone());
+                            self.port.send(PortEvent::new_hub_to_port_read(&myself));
+                        }
+                        Some(_cust) => panic!("Only one Cell-to-Hub reader allowed"),
+                    }
                 }
             }
         }

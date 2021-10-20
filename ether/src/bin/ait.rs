@@ -9,8 +9,10 @@ use pretty_hex::pretty_hex;
 use rand::Rng;
 
 use ether::frame::{self, Frame, Payload, TreeId};
-use ether::link::{Link, LinkEvent};
+use ether::cell::Cell;
+use ether::hub::{Hub, HubEvent};
 use ether::port::{Port, PortEvent};
+use ether::link::{Link, LinkEvent};
 use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
@@ -162,8 +164,8 @@ fn live_ait(if_name: &str) {
 }
 
 fn start_node(
-    port_tx: &Sender<Payload>,
-    port_rx: &Receiver<Payload>,
+    cell_tx: &Sender<Payload>,
+    cell_rx: &Receiver<Payload>,
     wire_tx: &Sender<Frame>,
     wire_rx: &Receiver<Frame>,
 ) {
@@ -173,10 +175,15 @@ fn start_node(
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link, &wire_rx)); // start listening
 
-    let port = Port::create(&link); //, &port_tx, &port_rx);
+    let port = Port::create(&link);
     link.send(LinkEvent::new_start(&port)); // start link
-    link.send(LinkEvent::new_read(&port)); // port is ready to receive
+    //link.send(LinkEvent::new_read(&port)); // port is ready to receive
     port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
+
+    let hub = Hub::create(&port);
+
+    let cell = Cell::create(&hub, &cell_tx, &cell_rx);
+    hub.send(HubEvent::new_cell_to_hub_read(&cell)); // cell is ready to receive
 
     loop {
         // FIXME: there is no dispatch loop,
