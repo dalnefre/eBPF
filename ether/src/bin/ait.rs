@@ -169,11 +169,11 @@ fn start_node(
     wire_tx: &Sender<Frame>,
     wire_rx: &Receiver<Frame>,
 ) {
-    let wire = Wire::create(&wire_tx);
+    let wire = Wire::create(&wire_tx, &wire_rx);
     let nonce = rand::thread_rng().gen();
 
     let link = Link::create(&wire, nonce);
-    wire.send(WireEvent::new_listen(&link, &wire_rx)); // start listening
+    wire.send(WireEvent::new_listen(&link)); // start listening
 
     let port = Port::create(&link);
     link.send(LinkEvent::new_start(&port)); // start link

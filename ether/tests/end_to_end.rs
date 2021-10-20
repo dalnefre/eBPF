@@ -128,10 +128,10 @@ fn exactly_once_in_order_ait() {
     let (b_to_a_tx, b_to_a_rx) = channel::<Frame>();
 
     // Alice
-    let a_wire = Wire::create(&a_to_b_tx);
+    let a_wire = Wire::create(&a_to_b_tx, &b_to_a_rx);
     let a_nonce = 12345;
     let a_link = Link::create(&a_wire, a_nonce);
-    a_wire.send(WireEvent::new_listen(&a_link, &b_to_a_rx)); // start listening
+    a_wire.send(WireEvent::new_listen(&a_link)); // start listening
     let a_port_mock = PortMock::create(&a_link);
     let a_port_ctrl = PortCtrlFacet::create(&a_port_mock);
     let a_port = PortMockFacet::create(&a_port_mock);
@@ -140,10 +140,10 @@ fn exactly_once_in_order_ait() {
     a_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
 
     // Bob
-    let b_wire = Wire::create(&b_to_a_tx);
+    let b_wire = Wire::create(&b_to_a_tx, &a_to_b_rx);
     let b_nonce = 67890;
     let b_link = Link::create(&b_wire, b_nonce);
-    b_wire.send(WireEvent::new_listen(&b_link, &a_to_b_rx)); // start listening
+    b_wire.send(WireEvent::new_listen(&b_link)); // start listening
     let b_port_mock = PortMock::create(&b_link);
     let b_port_ctrl = PortCtrlFacet::create(&b_port_mock);
     let b_port = PortMockFacet::create(&b_port_mock);
@@ -219,20 +219,20 @@ fn detect_link_failure_by_harvesting_events() {
     let (b_to_a_tx, b_to_a_rx) = channel::<Frame>();
 
     // Alice
-    let a_wire = Wire::create(&a_to_b_tx);
+    let a_wire = Wire::create(&a_to_b_tx, &b_to_a_rx);
     let a_nonce = 12345;
     let a_link = Link::create(&a_wire, a_nonce);
-    a_wire.send(WireEvent::new_listen(&a_link, &b_to_a_rx)); // start listening
+    a_wire.send(WireEvent::new_listen(&a_link)); // start listening
     let a_log = FakeLog::create(0);
     let a_port = FakePort::create(&a_log);
     a_link.send(LinkEvent::new_poll(&a_port)); // poll for link status
     a_link.send(LinkEvent::new_start(&a_port)); // start link
 
     // Bob
-    let b_wire = Wire::create(&b_to_a_tx);
+    let b_wire = Wire::create(&b_to_a_tx, &a_to_b_rx);
     let b_nonce = 67890;
     let b_link = Link::create(&b_wire, b_nonce);
-    b_wire.send(WireEvent::new_listen(&b_link, &a_to_b_rx)); // start listening
+    b_wire.send(WireEvent::new_listen(&b_link)); // start listening
     let b_log = FakeLog::create(1);
     let b_port = FakePort::create(&b_log);
     b_link.send(LinkEvent::new_poll(&b_port)); // poll for link status

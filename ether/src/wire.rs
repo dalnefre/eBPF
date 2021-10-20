@@ -6,12 +6,12 @@ use crossbeam::crossbeam_channel::{Receiver, Sender};
 
 #[derive(Debug, Clone)]
 pub enum WireEvent {
-    Listen(Cap<LinkEvent>, Receiver<Frame>),
+    Listen(Cap<LinkEvent>),
     Frame(Frame),
 }
 impl WireEvent {
-    pub fn new_listen(link: &Cap<LinkEvent>, rx: &Receiver<Frame>) -> WireEvent {
-        WireEvent::Listen(link.clone(), rx.clone())
+    pub fn new_listen(link: &Cap<LinkEvent>) -> WireEvent {
+        WireEvent::Listen(link.clone())
     }
     pub fn new_frame(frame: &Frame) -> WireEvent {
         WireEvent::Frame(frame.clone())
@@ -20,10 +20,14 @@ impl WireEvent {
 
 pub struct Wire {
     tx: Sender<Frame>,
+    rx: Receiver<Frame>,
 }
 impl Wire {
-    pub fn create(tx: &Sender<Frame>) -> Cap<WireEvent> {
-        actor::create(Wire { tx: tx.clone() })
+    pub fn create(tx: &Sender<Frame>, rx: &Receiver<Frame>) -> Cap<WireEvent> {
+        actor::create(Wire {
+            tx: tx.clone(),
+            rx: rx.clone(),
+        })
     }
 }
 impl Actor for Wire {
@@ -35,8 +39,8 @@ impl Actor for Wire {
                 //println!("Wire::outbound {}", pretty_hex(&frame.data));
                 self.tx.send(frame.clone()).expect("Wire::send failed");
             }
-            WireEvent::Listen(link, rx) => {
-                let rx = rx.clone(); // local copy moved into closure
+            WireEvent::Listen(link) => {
+                let rx = self.rx.clone(); // local copy moved into closure
                 let link = link.clone(); // local copy moved into closure
                 std::thread::spawn(move || {
                     while let Ok(frame) = rx.recv() {
