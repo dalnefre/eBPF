@@ -10,8 +10,8 @@ pub enum LinkEvent {
     Start(Cap<PortEvent>),          // start link activity
     Poll(Cap<PortEvent>),           // link status check
     Stop(Cap<PortEvent>),           // stop link activity
-    Read(Cap<PortEvent>),           // reader ready
-    Write(Cap<PortEvent>, Payload), // writer full
+    Read(Cap<PortEvent>),           // reader ready (port-to-link)
+    Write(Cap<PortEvent>, Payload), // writer full (port-to-link)
 }
 impl LinkEvent {
     pub fn new_frame(frame: &Frame) -> LinkEvent {
@@ -102,8 +102,9 @@ impl Actor for Link {
                                 println!("TICK w/ surplus");
                                 if let Some(reader) = &self.reader {
                                     if let Some(payload) = &self.inbound {
-                                        reader.send( // release payload
-                                            PortEvent::new_link_to_port_write(&payload)
+                                        reader.send(
+                                            // release payload
+                                            PortEvent::new_link_to_port_write(&payload),
                                         );
                                         self.reader = None; // reader satisfied
                                         self.inbound = None; // clear inbound

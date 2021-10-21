@@ -8,11 +8,11 @@ use pnet::datalink::{DataLinkReceiver, DataLinkSender};
 use pretty_hex::pretty_hex;
 use rand::Rng;
 
+use ether::cell::{Cell, CellEvent};
 use ether::frame::{self, Frame, Payload, TreeId};
-use ether::cell::Cell;
 use ether::hub::{Hub, HubEvent};
-use ether::port::{Port, PortEvent};
 use ether::link::{Link, LinkEvent};
+use ether::port::Port;
 use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
@@ -173,17 +173,16 @@ fn start_node(
     let nonce = rand::thread_rng().gen();
 
     let link = Link::create(&wire, nonce);
-    wire.send(WireEvent::new_listen(&link)); // start listening
+    wire.send(WireEvent::new_listen(&link)); // start listening on Wire
 
     let port = Port::create(&link);
-    link.send(LinkEvent::new_start(&port)); // start link
-    //link.send(LinkEvent::new_read(&port)); // port is ready to receive
-    port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
+    link.send(LinkEvent::new_start(&port)); // start Link
 
     let hub = Hub::create(&port);
 
     let cell = Cell::create(&hub, &cell_tx, &cell_rx);
-    hub.send(HubEvent::new_cell_to_hub_read(&cell)); // cell is ready to receive
+    cell.send(CellEvent::new_hub_to_cell_read()); // Cell ready to receive
+    hub.send(HubEvent::new_cell_to_hub_read(&cell)); // Hub ready to receive
 
     loop {
         // FIXME: there is no dispatch loop,

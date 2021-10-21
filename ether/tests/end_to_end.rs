@@ -46,7 +46,9 @@ fn exactly_once_in_order_ait() {
             match &event {
                 PortMockEvent::Mock(port_event) => match &port_event {
                     PortEvent::Init(myself) => match &self.myself {
-                        None => self.myself = Some(myself.clone()),
+                        None => {
+                            self.myself = Some(myself.clone());
+                        },
                         Some(_) => panic!("Port::port already set"),
                     },
                     PortEvent::LinkStatus(state, balance) => {
@@ -136,8 +138,8 @@ fn exactly_once_in_order_ait() {
     let a_port_ctrl = PortCtrlFacet::create(&a_port_mock);
     let a_port = PortMockFacet::create(&a_port_mock);
     a_link.send(LinkEvent::new_start(&a_port)); // start link
-    a_link.send(LinkEvent::new_read(&a_port)); // port is ready to receive
-    a_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
+    a_port.send(PortEvent::new_link_to_port_read()); // Port is ready to receive
+    a_link.send(LinkEvent::new_read(&a_port)); // Link is ready to receive
 
     // Bob
     let b_wire = Wire::create(&b_to_a_tx, &a_to_b_rx);
@@ -148,8 +150,8 @@ fn exactly_once_in_order_ait() {
     let b_port_ctrl = PortCtrlFacet::create(&b_port_mock);
     let b_port = PortMockFacet::create(&b_port_mock);
     b_link.send(LinkEvent::new_start(&b_port)); // start link
-    b_link.send(LinkEvent::new_read(&b_port)); // port is ready to receive
-    b_port.send(PortEvent::new_link_to_port_read()); // link is ready to receive
+    b_port.send(PortEvent::new_link_to_port_read()); // Port is ready to receive
+    b_link.send(LinkEvent::new_read(&b_port)); // Link is ready to receive
 
     // keep test thread alive long enough to deliver events
     std::thread::sleep(core::time::Duration::from_millis(250));
