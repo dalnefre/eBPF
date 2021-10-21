@@ -8,11 +8,17 @@ use std::thread;
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
+    id: usize,
     tx: Sender<Event>,
 }
 impl<Event> Cap<Event> {
     pub fn send(&self, event: Event) {
         self.tx.send(event).expect("send failed");
+    }
+}
+impl<Event> PartialEq for Cap<Event> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
     }
 }
 
@@ -30,7 +36,8 @@ pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
             actor.on_event(event);
         }
     });
-    Cap { tx }
+    let a = &actor as *const T; // create a unique id from the address of the actor state
+    Cap { id: a as usize, tx }
 }
 
 #[cfg(test)]
