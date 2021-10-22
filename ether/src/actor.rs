@@ -29,6 +29,8 @@ pub trait Actor {
 }
 
 pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
+    let a = &actor as *const T; // create a unique id from the address of the actor state
+    let id = a as usize;
     let (tx, rx) = channel::<T::Event>();
     thread::spawn(move || {
     //task::spawn_blocking(move || {
@@ -36,8 +38,7 @@ pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
             actor.on_event(event);
         }
     });
-    let a = &actor as *const T; // create a unique id from the address of the actor state
-    Cap { id: a as usize, tx }
+    Cap { id, tx }
 }
 
 #[cfg(test)]
