@@ -175,28 +175,31 @@ impl Hub {
     fn try_everyone(&mut self) {
         if let Some(myself) = &self.myself {
             // try sending from Cell
-            if let Some(cell) = &self.cell_buf.writer {
-                if let Some(payload) = &self.cell_buf.payload {
+            let cell_buf = &mut self.cell_buf;
+            if let Some(cell) = &cell_buf.writer {
+                if let Some(payload) = &cell_buf.payload {
 
-                    let routes = &mut self.cell_buf.send_to;
+                    let routes = &mut cell_buf.send_to;
                     if !routes.is_empty() {
                         let mut i: usize = 0; // current route index
                         while i < routes.len() {
                             match routes[i] {
                                 Route::Nowhere => panic!("Route to Nowhere?!"),
                                 Route::Cell => {
-                                    if let Some(cell) = &self.cell_buf.reader {
+                                    // FIXME: can't route from a Cell to itself...
+                                    if let Some(cell) = &cell_buf.reader {
                                         cell.send(CellEvent::new_hub_to_cell_write(&payload));
-                                        self.cell_buf.reader = None;
+                                        cell_buf.reader = None;
                                         routes.remove(i);
                                     } else {
                                         i += 1; // route not ready
                                     }
                                 },
                                 Route::Port(to) => {
-                                    if let Some(port) = &self.port_bufs[to].reader {
+                                    let to_buf = &mut self.port_bufs[to];
+                                    if let Some(port) = &to_buf.reader {
                                         port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
-                                        self.port_bufs[to].reader = None;
+                                        to_buf.reader = None;
                                         routes.remove(i);
                                     } else {
                                         i += 1; // route not ready
@@ -214,30 +217,33 @@ impl Hub {
                 }
             }
             // try sending from each Port
-            let mut n: usize = 0; // current port number
-            while n < MAX_PORTS {
-                if let Some(port) = &self.port_bufs[n].writer {
-                    if let Some(payload) = &self.port_bufs[n].payload {
+            let mut from: usize = 0; // current port number
+            while from < MAX_PORTS {
+                let from_buf = &mut self.port_bufs[from];
+                if let Some(port) = &from_buf.writer {
+                    if let Some(payload) = &from_buf.payload {
 
-                        let routes = &mut self.port_bufs[n].send_to;
+                        let routes = &mut from_buf.send_to;
                         if !routes.is_empty() {
                             let mut i: usize = 0; // current route index
                             while i < routes.len() {
                                 match routes[i] {
                                     Route::Nowhere => panic!("Route to Nowhere?!"),
                                     Route::Cell => {
-                                        if let Some(cell) = &self.cell_buf.reader {
+                                        let to_buf = &mut self.cell_buf;
+                                        if let Some(cell) = &to_buf.reader {
                                             cell.send(CellEvent::new_hub_to_cell_write(&payload));
-                                            self.cell_buf.reader = None;
+                                            to_buf.reader = None;
                                             routes.remove(i);
                                         } else {
                                             i += 1; // route not ready
                                         }
                                     },
                                     Route::Port(to) => {
-                                        if let Some(port) = &self.port_bufs[to].reader {
+                                        let to_buf = &mut self.port_bufs[to];
+                                        if let Some(port) = &to_buf.reader {
                                             port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
-                                            self.port_bufs[to].reader = None;
+                                            to_buf.reader = None;
                                             routes.remove(i);
                                         } else {
                                             i += 1; // route not ready
@@ -248,13 +254,13 @@ impl Hub {
                         } else {
                             // no more routes
                             port.send(PortEvent::new_hub_to_port_read(&myself)); // ack writer
-                            self.port_bufs[n].writer = None;
-                            self.port_bufs[n].payload = None;
+                            self.port_bufs[from].writer = None;
+                            self.port_bufs[from].payload = None;
                         }
 
                     }
                 }
-                n += 1; // next port
+                from += 1; // next port
             }
         }
     }
