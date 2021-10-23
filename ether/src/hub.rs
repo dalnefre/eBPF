@@ -49,7 +49,6 @@ struct CellBuf {
 }
 
 struct PortBuf {
-    port: Cap<PortEvent>, // persistent
     reader: Option<Cap<PortEvent>>, // outbound
     writer: Option<Cap<PortEvent>>, // inbound
     payload: Option<Payload>, // inbound
@@ -59,11 +58,16 @@ struct PortBuf {
 // Multi-Port Hub (Node)
 pub struct Hub {
     myself: Option<Cap<HubEvent>>,
+    ports: Vec<Cap<PortEvent>>,
     cell_buf: CellBuf,
     port_bufs: Vec<PortBuf>,
 }
 impl Hub {
     pub fn create(ports: &[Cap<PortEvent>]) -> Cap<HubEvent> {
+        let ports: Vec<_> = ports
+            .iter()
+            .map(|port| port.clone() )
+            .collect();
         let cell_buf = CellBuf {
             reader: None,
             writer: None,
@@ -73,7 +77,6 @@ impl Hub {
         let port_bufs: Vec<_> = ports
             .iter()
             .map(|port| PortBuf {
-                port: port.clone(),
                 reader: Some(port.clone()),
                 writer: None,
                 payload: None,
@@ -82,6 +85,7 @@ impl Hub {
             .collect();
         let hub = actor::create(Hub {
             myself: None,
+            ports,
             cell_buf,
             port_bufs,
         });
@@ -265,10 +269,10 @@ impl Hub {
         }
     }
     fn port_to_port_num(&mut self, port: &Cap<PortEvent>) -> usize {
-        self.port_bufs
+        self.ports
             .iter()
             .enumerate()
-            .find(|(_port_num, port_buf)| &port_buf.port == port)
+            .find(|(_port_num, port_cap)| *port_cap == port)
             .expect("unknown Port")
             .0
     }
