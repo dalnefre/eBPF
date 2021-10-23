@@ -178,7 +178,7 @@ fn start_node(
     let port = Port::create(&link);
     link.send(LinkEvent::new_start(&port)); // start Link
 
-    let hub = Hub::create(&port);
+    let hub = Hub::create(&[port]);
 
     let cell = Cell::create(&hub, &cell_tx, &cell_rx);
     cell.send(CellEvent::new_hub_to_cell_read()); // Cell ready to receive

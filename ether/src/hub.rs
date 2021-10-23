@@ -36,7 +36,7 @@ impl HubEvent {
 const MAX_PORTS: usize = 3;
 
 enum Route {
-    Nowhere,
+    //Nowhere,
     Cell,
     Port(usize),
 }
@@ -48,11 +48,14 @@ struct CellBuf {
     send_to: Vec<Route>, // outbound
 }
 
-struct PortBuf {
-    reader: Option<Cap<PortEvent>>, // outbound
+struct PortIn { // inbound from port
     writer: Option<Cap<PortEvent>>, // inbound
     payload: Option<Payload>, // inbound
     send_to: Vec<Route>, // inbound
+}
+
+struct PortOut { // outbound to port
+    reader: Option<Cap<PortEvent>>, // outbound
 }
 
 // Multi-Port Hub (Node)
@@ -60,7 +63,8 @@ pub struct Hub {
     myself: Option<Cap<HubEvent>>,
     ports: Vec<Cap<PortEvent>>,
     cell_buf: CellBuf,
-    port_bufs: Vec<PortBuf>,
+    port_in: Vec<PortIn>,
+    port_out: Vec<PortOut>,
 }
 impl Hub {
     pub fn create(ports: &[Cap<PortEvent>]) -> Cap<HubEvent> {
@@ -74,20 +78,26 @@ impl Hub {
             payload: None,
             send_to: Vec::with_capacity(MAX_PORTS),
         };
-        let port_bufs: Vec<_> = ports
+        let port_in: Vec<_> = ports
             .iter()
-            .map(|port| PortBuf {
-                reader: Some(port.clone()),
+            .map(|_port| PortIn {
                 writer: None,
                 payload: None,
                 send_to: Vec::with_capacity(MAX_PORTS),
+            })
+            .collect();
+        let port_out: Vec<_> = ports
+            .iter()
+            .map(|port| PortOut {
+                reader: Some(port.clone()),
             })
             .collect();
         let hub = actor::create(Hub {
             myself: None,
             ports,
             cell_buf,
-            port_bufs,
+            port_in,
+            port_out,
         });
         hub.send(HubEvent::new_init(&hub));
         hub
@@ -111,10 +121,11 @@ impl Actor for Hub {
             HubEvent::PortToHubWrite(cust, payload) => {
                 println!("Hub::PortToHubWrite");
                 let n = self.port_to_port_num(&cust);
-                match &self.port_bufs[n].writer {
+                let port_in = &mut self.port_in[n];
+                match &port_in.writer {
                     None => {
-                        self.port_bufs[n].writer = Some(cust.clone());
-                        self.port_bufs[n].payload = Some(payload.clone());
+                        port_in.writer = Some(cust.clone());
+                        port_in.payload = Some(payload.clone());
                         self.find_routes(Route::Port(n), &payload);
                         self.try_everyone();
                     }
@@ -124,9 +135,10 @@ impl Actor for Hub {
             HubEvent::PortToHubRead(cust) => {
                 println!("Hub::PortToHubRead");
                 let n = self.port_to_port_num(&cust);
-                match &self.port_bufs[n].reader {
+                let port_out = &mut self.port_out[n];
+                match &port_out.reader {
                     None => {
-                        self.port_bufs[n].reader = Some(cust.clone());
+                        port_out.reader = Some(cust.clone());
                         self.try_everyone();
                     }
                     Some(_cust) => panic!("Only one Port-to-Hub reader allowed"),
@@ -163,14 +175,14 @@ impl Hub {
         // The TreeId in the Payload should determine the routes, excluding `from`.
         let _tree_id = &payload.id;
         match from {
-            Route::Nowhere => panic!("Route from Nowhere?!"),
+            //Route::Nowhere => panic!("Route from Nowhere?!"),
             Route::Cell => {
                 let routes = &mut self.cell_buf.send_to;
                 assert!(routes.is_empty()); // there shouldn't be any left-over routes
                 routes.push(Route::Port(0)); // all Cell tokens route to Port(0)
             },
             Route::Port(n) => {
-                let routes = &mut self.port_bufs[n].send_to;
+                let routes = &mut self.port_in[n].send_to;
                 assert!(routes.is_empty()); // there shouldn't be any left-over routes
                 routes.push(Route::Cell); // all Port(_) tokens route to Cell
             },
@@ -188,7 +200,7 @@ impl Hub {
                         let mut i: usize = 0; // current route index
                         while i < routes.len() {
                             match routes[i] {
-                                Route::Nowhere => panic!("Route to Nowhere?!"),
+                                //Route::Nowhere => panic!("Route to Nowhere?!"),
                                 Route::Cell => {
                                     // FIXME: can't route from a Cell to itself...
                                     if let Some(cell) = &cell_buf.reader {
@@ -200,10 +212,10 @@ impl Hub {
                                     }
                                 },
                                 Route::Port(to) => {
-                                    let to_buf = &mut self.port_bufs[to];
-                                    if let Some(port) = &to_buf.reader {
+                                    let port_out = &mut self.port_out[to];
+                                    if let Some(port) = &port_out.reader {
                                         port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
-                                        to_buf.reader = None;
+                                        port_out.reader = None;
                                         routes.remove(i);
                                     } else {
                                         i += 1; // route not ready
@@ -223,16 +235,16 @@ impl Hub {
             // try sending from each Port
             let mut from: usize = 0; // current port number
             while from < MAX_PORTS {
-                let from_buf = &mut self.port_bufs[from];
-                if let Some(port) = &from_buf.writer {
-                    if let Some(payload) = &from_buf.payload {
+                let port_in = &mut self.port_in[from];
+                if let Some(port) = &port_in.writer {
+                    if let Some(payload) = &port_in.payload {
 
-                        let routes = &mut from_buf.send_to;
+                        let routes = &mut port_in.send_to;
                         if !routes.is_empty() {
                             let mut i: usize = 0; // current route index
                             while i < routes.len() {
                                 match routes[i] {
-                                    Route::Nowhere => panic!("Route to Nowhere?!"),
+                                    //Route::Nowhere => panic!("Route to Nowhere?!"),
                                     Route::Cell => {
                                         let to_buf = &mut self.cell_buf;
                                         if let Some(cell) = &to_buf.reader {
@@ -244,10 +256,10 @@ impl Hub {
                                         }
                                     },
                                     Route::Port(to) => {
-                                        let to_buf = &mut self.port_bufs[to];
-                                        if let Some(port) = &to_buf.reader {
+                                        let port_out = &mut self.port_out[to];
+                                        if let Some(port) = &port_out.reader {
                                             port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
-                                            to_buf.reader = None;
+                                            port_out.reader = None;
                                             routes.remove(i);
                                         } else {
                                             i += 1; // route not ready
@@ -258,8 +270,8 @@ impl Hub {
                         } else {
                             // no more routes
                             port.send(PortEvent::new_hub_to_port_read(&myself)); // ack writer
-                            self.port_bufs[from].writer = None;
-                            self.port_bufs[from].payload = None;
+                            port_in.writer = None;
+                            port_in.payload = None;
                         }
 
                     }
