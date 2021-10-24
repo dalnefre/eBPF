@@ -70,8 +70,8 @@ pub struct Hub {
     port_out: Vec<PortOut>,
 }
 impl Hub {
-    pub fn create(ports: &[Cap<PortEvent>]) -> Cap<HubEvent> {
-        let ports: Vec<_> = ports
+    pub fn create(port_set: &[Cap<PortEvent>]) -> Cap<HubEvent> {
+        let ports: Vec<_> = port_set
             .iter()
             .map(|port| port.clone() )
             .collect();
@@ -83,7 +83,7 @@ impl Hub {
             payload: None,
             send_to: Vec::with_capacity(MAX_PORTS),
         };
-        let port_in: Vec<_> = ports
+        let port_in: Vec<_> = port_set
             .iter()
             .map(|_port| PortIn {
                 writer: None,
@@ -91,12 +91,14 @@ impl Hub {
                 send_to: Vec::with_capacity(MAX_PORTS),
             })
             .collect();
-        let port_out: Vec<_> = ports
+        let port_out: Vec<_> = port_set
             .iter()
             .map(|port| PortOut {
                 reader: Some(port.clone()),
             })
             .collect();
+        assert_eq!(ports.len(), port_in.len());
+        assert_eq!(ports.len(), port_out.len());
         let hub = actor::create(Hub {
             myself: None,
             ports,
@@ -227,7 +229,7 @@ impl Hub {
             }
             // try sending from each Port
             let mut from: usize = 0; // current port number
-            while from < MAX_PORTS {
+            while from < self.ports.len() {
                 let port_in = &mut self.port_in[from];
                 if let Some(port) = &port_in.writer {
                     if let Some(payload) = &port_in.payload {
