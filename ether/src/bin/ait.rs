@@ -12,7 +12,7 @@ use ether::cell::{Cell, CellEvent};
 use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
 use ether::link::{Link, LinkEvent};
-use ether::port::{Port, PortEvent};
+use ether::port::Port;
 use ether::wire::{Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
@@ -179,7 +179,6 @@ fn start_node(
     link.send(LinkEvent::new_start(&port)); // start Link
 
     let hub = Hub::create(&[port.clone()]);
-    port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
 
     let cell = Cell::create(&hub, &cell_tx, &cell_rx);
     cell.send(CellEvent::new_hub_to_cell_read()); // Cell ready to receive

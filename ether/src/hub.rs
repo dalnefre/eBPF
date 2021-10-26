@@ -107,6 +107,9 @@ impl Hub {
             port_out,
         });
         hub.send(HubEvent::new_init(&hub));
+        for port in port_set {
+            port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
+        }
         hub
     }
 }
