@@ -6,6 +6,7 @@ use crate::link::{LinkEvent, LinkState};
 #[derive(Debug, Clone)]
 pub enum PortEvent {
     Init(Cap<PortEvent>),
+    Poll(Cap<HubEvent>),
     LinkStatus(LinkState, isize),
     LinkToPortWrite(Payload),               // inbound
     LinkToPortRead,                         // outbound-ready
@@ -15,6 +16,9 @@ pub enum PortEvent {
 impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
         PortEvent::Init(port.clone())
+    }
+    pub fn new_poll(hub: &Cap<HubEvent>) -> PortEvent {
+        PortEvent::Poll(hub.clone())
     }
     pub fn new_link_status(state: &LinkState, balance: &isize) -> PortEvent {
         PortEvent::LinkStatus(state.clone(), balance.clone())
@@ -38,12 +42,21 @@ pub struct PortState {
     pub link_state: LinkState,
     pub ait_balance: isize,
 }
+impl PortState {
+    pub fn new(link_state: &LinkState, ait_balance: isize) -> PortState {
+        PortState {
+            link_state: link_state.clone(),
+            ait_balance
+        }
+    }
+}
 
 pub struct Port {
     myself: Option<Cap<PortEvent>>,
     link: Cap<LinkEvent>,
     reader: Option<Cap<HubEvent>>,
     writer: Option<Cap<HubEvent>>,
+    pollster: Option<Cap<HubEvent>>,
 }
 impl Port {
     pub fn create(link: &Cap<LinkEvent>) -> Cap<PortEvent> {
@@ -52,6 +65,7 @@ impl Port {
             link: link.clone(),
             reader: None,
             writer: None,
+            pollster: None,
         });
         port.send(PortEvent::new_init(&port));
         port
@@ -68,8 +82,32 @@ impl Actor for Port {
                 }
                 Some(_) => panic!("Port::myself already set"),
             },
+            PortEvent::Poll(cust) => {
+                println!("Port::Poll");
+                if let Some(myself) = &self.myself {
+                    match &self.pollster {
+                        None => {
+                            self.pollster = Some(cust.clone());
+                            self.link.send(LinkEvent::new_poll(&myself));
+                        }
+                        Some(_cust) => panic!("Only one Hub-to-Port pollster allowed"),
+                    }
+                }
+            }
             PortEvent::LinkStatus(state, balance) => {
                 println!("Port::LinkStatus state={:?}, balance={}", state, balance);
+                if let Some(myself) = &self.myself {
+                    match &self.pollster {
+                        Some(hub) => {
+                            let state = PortState::new(&state, *balance);
+                            hub.send(HubEvent::new_port_status(&myself, &state));
+                            self.pollster = None;
+                        }
+                        None => {
+                            println!("Port::LinkStatus no pollster registered");
+                        },
+                    }
+                }
             }
             PortEvent::LinkToPortWrite(payload) => {
                 println!("Port::LinkToPortWrite");

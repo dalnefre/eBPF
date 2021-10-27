@@ -53,7 +53,19 @@ impl Actor for Cell {
     fn on_event(&mut self, event: Self::Event) {
         match &event {
             CellEvent::Init(myself) => match &self.myself {
-                None => self.myself = Some(myself.clone()),
+                None => {
+                    self.myself = Some(myself.clone()); // set self-reference
+
+                    // periodically poll for port liveness
+                    let cell = myself.clone(); // local copy moved into closure
+                    let hub = self.hub.clone(); // local copy moved into closure
+                    std::thread::spawn(move || {
+                        loop {
+                            std::thread::sleep(core::time::Duration::from_millis(500));
+                            hub.send(HubEvent::new_poll(&cell));
+                        }
+                    });
+                },
                 Some(_) => panic!("Cell::myself already set"),
             },
             CellEvent::HubToCellWrite(payload) => {

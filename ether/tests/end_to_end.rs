@@ -51,6 +51,9 @@ fn exactly_once_in_order_ait() {
                         },
                         Some(_) => panic!("Port::port already set"),
                     },
+                    PortEvent::Poll(cust) => {
+                        println!("Port::Poll cust={:?}", cust);
+                    },
                     PortEvent::LinkStatus(state, balance) => {
                         println!("Port::LinkStatus state={:?}, balance={}", state, balance);
                     }

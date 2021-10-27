@@ -6,6 +6,7 @@ use crate::port::{PortEvent, PortState};
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     Init(Cap<HubEvent>),
+    Poll(Cap<CellEvent>),
     PortStatus(Cap<PortEvent>, PortState),
     PortToHubWrite(Cap<PortEvent>, Payload),
     PortToHubRead(Cap<PortEvent>),
@@ -15,6 +16,9 @@ pub enum HubEvent {
 impl HubEvent {
     pub fn new_init(hub: &Cap<HubEvent>) -> HubEvent {
         HubEvent::Init(hub.clone())
+    }
+    pub fn new_poll(cell: &Cap<CellEvent>) -> HubEvent {
+        HubEvent::Poll(cell.clone())
     }
     pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> HubEvent {
         HubEvent::PortStatus(port.clone(), state.clone())
@@ -122,10 +126,19 @@ impl Actor for Hub {
                 None => self.myself = Some(myself.clone()),
                 Some(_) => panic!("Hub::myself already set"),
             },
-            HubEvent::PortStatus(_cust, state) => {
+            HubEvent::Poll(_cust) => {
+                println!("Hub::Poll");
+                if let Some(myself) = &self.myself {
+                    for port in &self.ports {
+                        port.send(PortEvent::new_poll(&myself));
+                    }
+                }
+            }
+            HubEvent::PortStatus(cust, state) => {
+                let n = self.port_to_port_num(&cust);
                 println!(
-                    "Hub::LinkStatus link_state={:?}, ait_balance={}",
-                    state.link_state, state.ait_balance
+                    "Hub::LinkStatus[{}] link_state={:?}, ait_balance={}",
+                    n, state.link_state, state.ait_balance
                 );
             }
             HubEvent::PortToHubWrite(cust, payload) => {
