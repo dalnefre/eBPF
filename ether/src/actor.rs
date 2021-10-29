@@ -30,6 +30,7 @@ pub trait Actor {
 }
 
 pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
+    //let id = &actor as *const _ as usize; // create a unique id from the address of the actor state
     let a = &actor as *const T; // create a unique id from the address of the actor state
     let id = a as usize;
     let (tx, rx) = channel::<T::Event>();
@@ -45,6 +46,85 @@ pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn capability_equality_implies_actor_identity() {
+        #[derive(Debug, Clone)]
+        enum AnEvent {
+            Myself(Cap<AnEvent>),
+            Another(Cap<AnEvent>),
+        }
+        impl AnEvent {
+            pub fn new_myself(cap: &Cap<AnEvent>) -> AnEvent {
+                AnEvent::Myself(cap.clone())
+            }
+            pub fn new_another(cap: &Cap<AnEvent>) -> AnEvent {
+                AnEvent::Another(cap.clone())
+            }
+        }
+
+        struct AnActor {
+            myself: Option<Cap<AnEvent>>,
+            label: isize,
+        }
+        impl AnActor {
+            pub fn create(label: isize) -> Cap<AnEvent> {
+                let actor = self::create(AnActor {
+                    myself: None,
+                    label
+                });
+                actor.send(AnEvent::new_myself(&actor));
+                actor
+            }
+        }
+        impl Actor for AnActor {
+            type Event = AnEvent;
+
+            fn on_event(&mut self, event: Self::Event) {
+                match &event {
+                    AnEvent::Myself(cap) => {
+                        println!("AnActor[{}]::Myself({:?})", self.label, cap);
+                        match &self.myself {
+                            Some(myself) => {
+                                assert_eq!(cap, myself);
+                            },
+                            None => {
+                                self.myself = Some(cap.clone());
+                            },
+                        }
+                    },
+                    AnEvent::Another(cap) => {
+                        println!("AnActor[{}]::Another({:?})", self.label, cap);
+                        if let Some(myself) = &self.myself {
+                            assert_ne!(cap, myself);
+                        }
+                    },
+                }
+            }
+        }
+
+        let a = AnActor::create(123);
+        let b = AnActor::create(456);
+        let c = a.clone();
+        let d = b.clone();
+/*
+        assert_eq!(a, a);
+        assert_ne!(a, b);
+        assert_eq!(a, c);
+
+        a.send(AnEvent::new_myself(&a));
+        a.send(AnEvent::new_another(&b));
+        a.send(AnEvent::new_myself(&c));
+*/
+        // keep test thread alive long enough to deliver events
+        std::thread::sleep(core::time::Duration::from_millis(10));
+
+        println!("ready to compare c={:?} with d={:?}", c, d);
+        c.send(AnEvent::new_another(&d));
+
+        // keep test thread alive long enough to deliver events
+        std::thread::sleep(core::time::Duration::from_millis(10));
+    }
 
     #[test]
     fn counting_actor_accumulates_correct_total() {
