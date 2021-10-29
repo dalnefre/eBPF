@@ -112,9 +112,13 @@ mod tests {
         }
 
         let a = AnActor::create(123);
+        println!("swiss_number(a={:?}) = {}", a, swiss_number(&a));
         let b = AnActor::create(456);
+        println!("swiss_number(b={:?}) = {}", b, swiss_number(&b));
         let c = a.clone();
+        println!("swiss_number(c={:?}) = {}", c, swiss_number(&c));
         let d = b.clone();
+        println!("swiss_number(d={:?}) = {}", d, swiss_number(&d));
 
         assert_eq!(a, a);
         assert_ne!(a, b);
