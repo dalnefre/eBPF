@@ -6,6 +6,7 @@ use std::marker::Send;
 //use std::sync::mpsc::{channel, Sender};
 use std::thread;
 //use tokio::task;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
@@ -30,9 +31,7 @@ pub trait Actor {
 }
 
 pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
-    //let id = &actor as *const _ as usize; // create a unique id from the address of the actor state
-    let a = &actor as *const T; // create a unique id from the address of the actor state
-    let id = a as usize;
+    //let id = &actor as *const _ as usize; // BAD CODE!! THIS IS JUST THE ADDRESS OF THE TEMPORARY!
     let (tx, rx) = channel::<T::Event>();
     thread::spawn(move || {
     //task::spawn_blocking(move || {
@@ -40,7 +39,16 @@ pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
             actor.on_event(event);
         }
     });
-    Cap { id, tx }
+    let mut cap = Cap { id: 0, tx };
+    cap.id = swiss_number(&cap);
+    cap
+}
+
+static SWISS_NUMBER: AtomicUsize = AtomicUsize::new(1);
+
+pub fn swiss_number<Event>(_cap: &Cap<Event>) -> usize {
+    //_cap as *const _ as usize // ALTERNATE IMPLEMENTATION
+    SWISS_NUMBER.fetch_add(1, Ordering::SeqCst)
 }
 
 #[cfg(test)]
@@ -71,7 +79,7 @@ mod tests {
             pub fn create(label: isize) -> Cap<AnEvent> {
                 let actor = self::create(AnActor {
                     myself: None,
-                    label
+                    label,
                 });
                 actor.send(AnEvent::new_myself(&actor));
                 actor
@@ -87,18 +95,18 @@ mod tests {
                         match &self.myself {
                             Some(myself) => {
                                 assert_eq!(cap, myself);
-                            },
+                            }
                             None => {
                                 self.myself = Some(cap.clone());
-                            },
+                            }
                         }
-                    },
+                    }
                     AnEvent::Another(cap) => {
                         println!("AnActor[{}]::Another({:?})", self.label, cap);
                         if let Some(myself) = &self.myself {
                             assert_ne!(cap, myself);
                         }
-                    },
+                    }
                 }
             }
         }
@@ -107,7 +115,7 @@ mod tests {
         let b = AnActor::create(456);
         let c = a.clone();
         let d = b.clone();
-/*
+
         assert_eq!(a, a);
         assert_ne!(a, b);
         assert_eq!(a, c);
@@ -115,7 +123,7 @@ mod tests {
         a.send(AnEvent::new_myself(&a));
         a.send(AnEvent::new_another(&b));
         a.send(AnEvent::new_myself(&c));
-*/
+
         // keep test thread alive long enough to deliver events
         std::thread::sleep(core::time::Duration::from_millis(10));
 
