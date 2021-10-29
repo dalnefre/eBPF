@@ -6,7 +6,7 @@ use std::marker::Send;
 //use std::sync::mpsc::{channel, Sender};
 use std::thread;
 //use tokio::task;
-use std::sync::atomic::{AtomicUsize, Ordering};
+//use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
@@ -44,11 +44,11 @@ pub fn create<T: Actor + Send + 'static>(mut actor: T) -> Cap<T::Event> {
     cap
 }
 
-static SWISS_NUMBER: AtomicUsize = AtomicUsize::new(1);
+//static SWISS_NUMBER: AtomicUsize = AtomicUsize::new(1);
 
 pub fn swiss_number<Event>(_cap: &Cap<Event>) -> usize {
-    //_cap as *const _ as usize // ALTERNATE IMPLEMENTATION
-    SWISS_NUMBER.fetch_add(1, Ordering::SeqCst)
+    _cap as *const _ as usize // ALTERNATE IMPLEMENTATION
+    //SWISS_NUMBER.fetch_add(1, Ordering::SeqCst)
 }
 
 #[cfg(test)]
