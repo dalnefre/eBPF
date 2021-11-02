@@ -181,8 +181,8 @@ fn start_node(
     let hub = Hub::create(&[port.clone()]);
 
     let cell = Cell::create(&hub, &cell_tx, &cell_rx);
-    cell.send(CellEvent::new_hub_to_cell_read()); // Cell ready to receive
-    hub.send(HubEvent::new_cell_to_hub_read(&cell)); // Hub ready to receive
+    cell.send(CellEvent::new_hub_to_cell_read()); // Hub ready to receive
+    hub.send(HubEvent::new_cell_to_hub_read(&cell)); // Cell ready to receive
 
     loop {
         // FIXME: there is no dispatch loop,
