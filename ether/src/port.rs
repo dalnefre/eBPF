@@ -2,11 +2,12 @@ use crate::actor::{self, Actor, Cap};
 use crate::frame::Payload;
 use crate::hub::HubEvent;
 use crate::link::{LinkEvent, LinkState};
+use crate::pollster::PollsterEvent;
 
 #[derive(Debug, Clone)]
 pub enum PortEvent {
     Init(Cap<PortEvent>),
-    Poll(Cap<HubEvent>),
+    Poll(Cap<PollsterEvent>),
     LinkStatus(LinkState, isize),
     LinkToPortWrite(Payload),               // inbound
     LinkToPortRead,                         // outbound-ready
@@ -17,8 +18,8 @@ impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
         PortEvent::Init(port.clone())
     }
-    pub fn new_poll(hub: &Cap<HubEvent>) -> PortEvent {
-        PortEvent::Poll(hub.clone())
+    pub fn new_poll(cust: &Cap<PollsterEvent>) -> PortEvent {
+        PortEvent::Poll(cust.clone())
     }
     pub fn new_link_status(state: &LinkState, balance: &isize) -> PortEvent {
         PortEvent::LinkStatus(state.clone(), balance.clone())
@@ -56,7 +57,7 @@ pub struct Port {
     link: Cap<LinkEvent>,
     reader: Option<Cap<HubEvent>>,
     writer: Option<Cap<HubEvent>>,
-    pollster: Option<Cap<HubEvent>>,
+    pollster: Option<Cap<PollsterEvent>>,
 }
 impl Port {
     pub fn create(link: &Cap<LinkEvent>) -> Cap<PortEvent> {
@@ -90,7 +91,7 @@ impl Actor for Port {
                             self.pollster = Some(cust.clone());
                             self.link.send(LinkEvent::new_poll(&myself));
                         }
-                        Some(_cust) => panic!("Only one Hub-to-Port pollster allowed"),
+                        Some(_cust) => panic!("Only one Pollster allowed"),
                     }
                 }
             }
@@ -98,13 +99,13 @@ impl Actor for Port {
                 println!("Port::LinkStatus state={:?}, balance={}", state, balance);
                 if let Some(myself) = &self.myself {
                     match &self.pollster {
-                        Some(hub) => {
+                        Some(cust) => {
                             let state = PortState::new(&state, *balance);
-                            hub.send(HubEvent::new_port_status(&myself, &state));
+                            cust.send(PollsterEvent::new_port_status(&myself, &state));
                             self.pollster = None;
                         }
                         None => {
-                            println!("Port::LinkStatus no pollster registered");
+                            println!("Port::LinkStatus no Pollster registered");
                         },
                     }
                 }

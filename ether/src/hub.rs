@@ -2,11 +2,11 @@ use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::Payload;
 use crate::port::{PortEvent, PortState};
+use crate::pollster::{Pollster, PollsterEvent};
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     Init(Cap<HubEvent>),
-    Poll(Cap<CellEvent>),
     PortStatus(Cap<PortEvent>, PortState),
     PortToHubWrite(Cap<PortEvent>, Payload),
     PortToHubRead(Cap<PortEvent>),
@@ -16,9 +16,6 @@ pub enum HubEvent {
 impl HubEvent {
     pub fn new_init(hub: &Cap<HubEvent>) -> HubEvent {
         HubEvent::Init(hub.clone())
-    }
-    pub fn new_poll(cell: &Cap<CellEvent>) -> HubEvent {
-        HubEvent::Poll(cell.clone())
     }
     pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> HubEvent {
         HubEvent::PortStatus(port.clone(), state.clone())
@@ -104,7 +101,7 @@ impl Hub {
         assert_eq!(ports.len(), port_out.len());
         let hub = actor::create(Hub {
             myself: None,
-            ports,
+            ports: ports.clone(),
             cell_in,
             cell_out,
             port_in,
@@ -114,6 +111,16 @@ impl Hub {
         for port in port_set {
             port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
         }
+        let pollster = Pollster::create(&hub, &ports); // create link-failure detector
+        // periodically poll ports for liveness
+        let cust = hub.clone(); // local copy moved into closure
+        std::thread::spawn(move || {
+            loop {
+                std::thread::sleep(core::time::Duration::from_millis(500));
+                pollster.send(PollsterEvent::new_poll(&cust));
+            }
+        });
+        // return Hub capability
         hub
     }
 }
@@ -126,14 +133,6 @@ impl Actor for Hub {
                 None => self.myself = Some(myself.clone()),
                 Some(_) => panic!("Hub::myself already set"),
             },
-            HubEvent::Poll(_cust) => {
-                println!("Hub::Poll");
-                if let Some(myself) = &self.myself {
-                    for port in &self.ports {
-                        port.send(PortEvent::new_poll(&myself));
-                    }
-                }
-            }
             HubEvent::PortStatus(cust, state) => {
                 let n = self.port_to_port_num(&cust);
                 println!(
