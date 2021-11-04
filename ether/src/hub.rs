@@ -111,7 +111,7 @@ impl Hub {
         for port in port_set {
             port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
         }
-        let pollster = Pollster::create(&hub, &ports); // create link-failure detector
+        let pollster = Pollster::create(&ports); // create link-failure detector
         // periodically poll ports for liveness
         let cust = hub.clone(); // local copy moved into closure
         std::thread::spawn(move || {

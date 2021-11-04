@@ -25,18 +25,19 @@ impl PollsterEvent {
 // link failure detector based on polling for port activity
 pub struct Pollster {
     myself: Option<Cap<PollsterEvent>>,
-    _hub: Cap<HubEvent>,
+    hub: Option<Cap<HubEvent>>,
     ports: Vec<Cap<PortEvent>>,
+    pending: usize,
 }
 impl Pollster {
     pub fn create(
-        hub: &Cap<HubEvent>, // FIXME: do we need to know this at creation?
         ports: &Vec<Cap<PortEvent>>,
     ) -> Cap<PollsterEvent> {
         let pollster = actor::create(Pollster {
             myself: None,
-            _hub: hub.clone(),
+            hub: None,
             ports: ports.clone(),
+            pending: 0,
         });
         pollster.send(PollsterEvent::new_init(&pollster));
         pollster
@@ -53,11 +54,15 @@ impl Actor for Pollster {
                 },
                 Some(_) => panic!("Pollster::myself already set"),
             },
-            PollsterEvent::Poll(_hub) => {
+            PollsterEvent::Poll(hub) => {
                 println!("Pollster::Poll");
                 if let Some(myself) = &self.myself {
-                    for port in &self.ports {
-                        port.send(PortEvent::new_poll(&myself));
+                    if self.hub.is_none() {
+                        self.hub = Some(hub.clone());
+                        self.pending = self.ports.len();
+                        for port in &self.ports {
+                            port.send(PortEvent::new_poll(&myself));
+                        }
                     }
                 }
             }
@@ -67,6 +72,11 @@ impl Actor for Pollster {
                     "Pollster::LinkStatus[{}] link_state={:?}, ait_balance={}",
                     n, state.link_state, state.ait_balance
                 );
+                assert!(self.pending > 0);
+                self.pending -= 1;
+                if self.pending == 0 {
+                    self.hub = None;
+                }
             }
         }
     }
