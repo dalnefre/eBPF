@@ -13,7 +13,8 @@ use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
 use ether::link::{Link, LinkEvent};
 use ether::port::Port;
-use ether::wire::{Wire, WireEvent};
+//use ether::wire::{Wire, WireEvent};
+use ether::wire::{FaultyWire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
     assert!(s.len() <= frame::PAYLOAD_SIZE);
@@ -169,7 +170,8 @@ fn start_node(
     wire_tx: &Sender<Frame>,
     wire_rx: &Receiver<Frame>,
 ) {
-    let wire = Wire::create(&wire_tx, &wire_rx);
+    //let wire = Wire::create(&wire_tx, &wire_rx);
+    let wire = FaultyWire::create(&wire_tx, &wire_rx, "Three");
     let nonce = rand::thread_rng().gen();
 
     let link = Link::create(&wire, nonce);
