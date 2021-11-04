@@ -7,6 +7,7 @@ use std::marker::Send;
 use std::thread;
 //use tokio::task;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
@@ -21,6 +22,12 @@ impl<Event> Cap<Event> {
 impl<Event> PartialEq for Cap<Event> {
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
+    }
+}
+impl<Event> Eq for Cap<Event> {}
+impl<Event> Hash for Cap<Event> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
     }
 }
 
