@@ -1,7 +1,9 @@
 use crate::actor::{self, Actor, Cap};
 use crate::hub::HubEvent;
+use crate::link::LinkState;
 use crate::port::{PortEvent, PortState};
 
+use std::collections::HashMap;
 //use pretty_hex::pretty_hex;
 
 #[derive(Debug, Clone)]
@@ -22,22 +24,38 @@ impl PollsterEvent {
     }
 }
 
+// polling information for each port
+struct PortPoll {
+    idle: usize, // idle state counter
+}
+
 // link failure detector based on polling for port activity
 pub struct Pollster {
     myself: Option<Cap<PollsterEvent>>,
     hub: Option<Cap<HubEvent>>,
     ports: Vec<Cap<PortEvent>>,
     pending: usize,
+    poll: HashMap<Cap<PortEvent>, PortPoll>,
 }
 impl Pollster {
     pub fn create(
         ports: &Vec<Cap<PortEvent>>,
     ) -> Cap<PollsterEvent> {
+        let mut poll: HashMap<Cap<PortEvent>, PortPoll> = HashMap::new();
+        for port in ports {
+            poll.insert(
+                port.clone(),
+                PortPoll {
+                    idle: 0
+                }
+            );
+        }
         let pollster = actor::create(Pollster {
             myself: None,
             hub: None,
             ports: ports.clone(),
             pending: 0,
+            poll,
         });
         pollster.send(PollsterEvent::new_init(&pollster));
         pollster
@@ -72,6 +90,14 @@ impl Actor for Pollster {
                     "Pollster::LinkStatus[{}] link_state={:?}, ait_balance={}",
                     n, state.link_state, state.ait_balance
                 );
+                if let Some(poll) = self.poll.get_mut(port) {
+                    if state.link_state == LinkState::Live {
+                        poll.idle =  0;
+                    } else {
+                        poll.idle += 1;
+                    }
+                    println!("Pollster::poll[{}].idle = {}", n, poll.idle);
+                }
                 assert!(self.pending > 0);
                 self.pending -= 1;
                 if self.pending == 0 {
