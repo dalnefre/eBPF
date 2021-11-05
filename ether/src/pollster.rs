@@ -88,6 +88,9 @@ impl Actor for Pollster {
                         self.pending = self.ports.len();
                         for port in &self.ports {
                             port.send(PortEvent::new_start(&myself));
+                            if let Some(poll) = self.poll.get_mut(port) {
+                                poll.idle =  0; // reset idle counter
+                            }
                         }
                     } else {
                         println!("pollster already polling...");
@@ -139,6 +142,17 @@ impl Actor for Pollster {
                 assert!(self.pending > 0);
                 self.pending -= 1;
                 if self.pending == 0 {
+                    let dead = self.poll
+                        .iter()
+                        .all(|(_k, v)| v.idle > 3);
+                    if dead {
+                        if let Some(myself) = &self.myself {
+                            if let Some(hub) = &self.hub {
+                                // attempt to re-start all ports
+                                myself.send(PollsterEvent::new_start(&hub));
+                            }
+                        }
+                    }
                     self.hub = None;
                 }
             }

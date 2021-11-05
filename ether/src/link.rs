@@ -112,7 +112,7 @@ impl Actor for Link {
                                     }
                                 }
                             }
-                            assert_eq!(self.balance, 0); // at this point, the balance should always be 0
+                            //assert_eq!(self.balance, 0); // at this point, the balance should always be 0
                             match &self.outbound {
                                 None => {
                                     let reply = Frame::new_entangled(
@@ -120,6 +120,7 @@ impl Actor for Link {
                                         i_state,
                                     );
                                     self.wire.send(WireEvent::new_frame(&reply));
+                                    self.balance = 0; // clear balance
                                 }
                                 Some(payload) => {
                                     let mut reply = Frame::new_entangled(
