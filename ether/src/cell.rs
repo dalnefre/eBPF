@@ -59,8 +59,8 @@ impl Actor for Cell {
                 Some(_) => panic!("Cell::myself already set"),
             },
             CellEvent::HubToCellWrite(payload) => {
-                //println!("Cell::HubToCellWrite");
                 if let Some(myself) = &self.myself {
+                    //println!("Cell{}::HubToCellWrite {:?}", myself, payload);
                     if self.tx.is_empty() {
                         // if all prior data has been consumed, we are ready for more
                         self.tx
@@ -74,8 +74,8 @@ impl Actor for Cell {
                 }
             }
             CellEvent::HubToCellRead => {
-                //println!("Cell::HubToCellRead");
                 if let Some(myself) = &self.myself {
+                    //println!("Cell{}::HubToCellRead", myself);
                     match self.rx.try_recv() {
                         Ok(payload) => {
                             // send next payload

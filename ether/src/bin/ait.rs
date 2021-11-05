@@ -36,16 +36,16 @@ fn monitor_node_out(tx: &Sender<Payload>) {
     }
 }
 
-fn monitor_node_in(rx: &Receiver<Payload>) {
+fn monitor_node_in(label: &str, rx: &Receiver<Payload>) {
     loop {
         //thread::sleep(std::time::Duration::from_micros(500));
         thread::sleep(std::time::Duration::from_millis(150));
         match rx.recv() {
             Ok(payload) => {
-                println!("Node::in {}", pretty_hex(&payload.data));
+                println!("Node[{}]::in {}", label, pretty_hex(&payload.data));
             }
             Err(e) => {
-                panic!("Node::in ERROR! {}", e);
+                panic!("Node[{}]::in ERROR! {}", label, e);
             }
         }
     }
@@ -58,29 +58,29 @@ fn sim_ait() {
     let (out_wire_tx, out_wire_rx) = channel::<Frame>();
 
     thread::spawn(move || {
-        let (in_port_tx, in_port_rx) = channel::<Payload>();
-        let (out_port_tx, out_port_rx) = channel::<Payload>();
-        insert_payload(&out_port_tx, "Uno");
-        insert_payload(&out_port_tx, "Dos");
-        insert_payload(&out_port_tx, "Tres");
+        let (in_cell_tx, in_cell_rx) = channel::<Payload>();
+        let (out_cell_tx, out_cell_rx) = channel::<Payload>();
+        insert_payload(&out_cell_tx, "Uno");
+        insert_payload(&out_cell_tx, "Dos");
+        insert_payload(&out_cell_tx, "Tres");
         thread::spawn(move || {
-            monitor_node_in(&in_port_rx);
+            monitor_node_in("alice", &in_cell_rx);
         });
-        start_node(&in_port_tx, &out_port_rx, &out_wire_tx, &in_wire_rx);
+        start_node(&in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
     });
 
     thread::spawn(move || {
-        let (in_port_tx, in_port_rx) = channel::<Payload>();
-        let (out_port_tx, out_port_rx) = channel::<Payload>();
-        insert_payload(&out_port_tx, "One");
-        insert_payload(&out_port_tx, "Two");
-        insert_payload(&out_port_tx, "Three");
-        insert_payload(&out_port_tx, "Four");
-        insert_payload(&out_port_tx, "Five");
+        let (in_cell_tx, in_cell_rx) = channel::<Payload>();
+        let (out_cell_tx, out_cell_rx) = channel::<Payload>();
+        insert_payload(&out_cell_tx, "One");
+        insert_payload(&out_cell_tx, "Two");
+        insert_payload(&out_cell_tx, "Three");
+        insert_payload(&out_cell_tx, "Four");
+        insert_payload(&out_cell_tx, "Five");
         thread::spawn(move || {
-            monitor_node_in(&in_port_rx);
+            monitor_node_in("bob", &in_cell_rx);
         });
-        start_node(&in_port_tx, &out_port_rx, &in_wire_tx, &out_wire_rx);
+        start_node(&in_cell_tx, &out_cell_rx, &in_wire_tx, &out_wire_rx);
     });
 
     // fail-safe exit after timeout
@@ -153,15 +153,15 @@ fn live_ait(if_name: &str) {
     });
 
     // Start Node in Main thread...
-    let (in_port_tx, in_port_rx) = channel::<Payload>();
-    let (out_port_tx, out_port_rx) = channel::<Payload>();
+    let (in_cell_tx, in_cell_rx) = channel::<Payload>();
+    let (out_cell_tx, out_cell_rx) = channel::<Payload>();
     thread::spawn(move || {
-        monitor_node_in(&in_port_rx);
+        monitor_node_in("local", &in_cell_rx);
     });
     thread::spawn(move || {
-        monitor_node_out(&out_port_tx);
+        monitor_node_out(&out_cell_tx);
     });
-    start_node(&in_port_tx, &out_port_rx, &out_wire_tx, &in_wire_rx);
+    start_node(&in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
 }
 
 fn start_node(
