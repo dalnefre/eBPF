@@ -8,6 +8,7 @@ use std::thread;
 //use tokio::task;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::hash::{Hash, Hasher};
+use std::fmt::{self, Display};
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {
@@ -28,6 +29,11 @@ impl<Event> Eq for Cap<Event> {}
 impl<Event> Hash for Cap<Event> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+    }
+}
+impl<Event> Display for Cap<Event> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@{}", self.id)
     }
 }
 
