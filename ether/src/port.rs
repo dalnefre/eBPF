@@ -7,7 +7,9 @@ use crate::pollster::PollsterEvent;
 #[derive(Debug, Clone)]
 pub enum PortEvent {
     Init(Cap<PortEvent>),
+    Start(Cap<PollsterEvent>),
     Poll(Cap<PollsterEvent>),
+    Stop(Cap<PollsterEvent>),
     LinkStatus(LinkState, isize),
     LinkToPortWrite(Payload),               // inbound
     LinkToPortRead,                         // outbound-ready
@@ -18,8 +20,14 @@ impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
         PortEvent::Init(port.clone())
     }
+    pub fn new_start(cust: &Cap<PollsterEvent>) -> PortEvent {
+        PortEvent::Start(cust.clone())
+    }
     pub fn new_poll(cust: &Cap<PollsterEvent>) -> PortEvent {
         PortEvent::Poll(cust.clone())
+    }
+    pub fn new_stop(cust: &Cap<PollsterEvent>) -> PortEvent {
+        PortEvent::Stop(cust.clone())
     }
     pub fn new_link_status(state: &LinkState, balance: &isize) -> PortEvent {
         PortEvent::LinkStatus(state.clone(), balance.clone())
@@ -69,7 +77,6 @@ impl Port {
             pollster: None,
         });
         port.send(PortEvent::new_init(&port));
-        link.send(LinkEvent::new_start(&port)); // start Link
         port
     }
 }
@@ -84,6 +91,18 @@ impl Actor for Port {
                 }
                 Some(_) => panic!("Port::myself already set"),
             },
+            PortEvent::Start(cust) => {
+                println!("Port::Start");
+                if let Some(myself) = &self.myself {
+                    match &self.pollster {
+                        None => {
+                            self.pollster = Some(cust.clone());
+                            self.link.send(LinkEvent::new_start(&myself));
+                        }
+                        Some(_cust) => panic!("Only one Pollster allowed"),
+                    }
+                }
+            }
             PortEvent::Poll(cust) => {
                 println!("Port::Poll");
                 if let Some(myself) = &self.myself {
@@ -91,6 +110,18 @@ impl Actor for Port {
                         None => {
                             self.pollster = Some(cust.clone());
                             self.link.send(LinkEvent::new_poll(&myself));
+                        }
+                        Some(_cust) => panic!("Only one Pollster allowed"),
+                    }
+                }
+            }
+            PortEvent::Stop(cust) => {
+                println!("Port::Stop");
+                if let Some(myself) = &self.myself {
+                    match &self.pollster {
+                        None => {
+                            self.pollster = Some(cust.clone());
+                            self.link.send(LinkEvent::new_stop(&myself));
                         }
                         Some(_cust) => panic!("Only one Pollster allowed"),
                     }

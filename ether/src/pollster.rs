@@ -9,15 +9,23 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub enum PollsterEvent {
     Init(Cap<PollsterEvent>),
+    Start(Cap<HubEvent>),
     Poll(Cap<HubEvent>),
+    Stop(Cap<HubEvent>),
     PortStatus(Cap<PortEvent>, PortState),
 }
 impl PollsterEvent {
     pub fn new_init(pollster: &Cap<PollsterEvent>) -> PollsterEvent {
         PollsterEvent::Init(pollster.clone())
     }
+    pub fn new_start(hub: &Cap<HubEvent>) -> PollsterEvent {
+        PollsterEvent::Start(hub.clone())
+    }
     pub fn new_poll(hub: &Cap<HubEvent>) -> PollsterEvent {
         PollsterEvent::Poll(hub.clone())
+    }
+    pub fn new_stop(hub: &Cap<HubEvent>) -> PollsterEvent {
+        PollsterEvent::Stop(hub.clone())
     }
     pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> PollsterEvent {
         PollsterEvent::PortStatus(port.clone(), state.clone())
@@ -72,6 +80,20 @@ impl Actor for Pollster {
                 },
                 Some(_) => panic!("Pollster::myself already set"),
             },
+            PollsterEvent::Start(hub) => {
+                println!("Pollster::Start");
+                if let Some(myself) = &self.myself {
+                    if self.hub.is_none() {
+                        self.hub = Some(hub.clone());
+                        self.pending = self.ports.len();
+                        for port in &self.ports {
+                            port.send(PortEvent::new_start(&myself));
+                        }
+                    } else {
+                        println!("pollster already polling...");
+                    }
+                }
+            }
             PollsterEvent::Poll(hub) => {
                 println!("Pollster::Poll");
                 if let Some(myself) = &self.myself {
@@ -81,6 +103,22 @@ impl Actor for Pollster {
                         for port in &self.ports {
                             port.send(PortEvent::new_poll(&myself));
                         }
+                    } else {
+                        println!("pollster already polling...");
+                    }
+                }
+            }
+            PollsterEvent::Stop(hub) => {
+                println!("Pollster::Stop");
+                if let Some(myself) = &self.myself {
+                    if self.hub.is_none() {
+                        self.hub = Some(hub.clone());
+                        self.pending = self.ports.len();
+                        for port in &self.ports {
+                            port.send(PortEvent::new_stop(&myself));
+                        }
+                    } else {
+                        println!("pollster already polling...");
                     }
                 }
             }

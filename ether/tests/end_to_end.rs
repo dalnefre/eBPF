@@ -53,12 +53,6 @@ fn exactly_once_in_order_ait_port_to_port() {
                         },
                         Some(_) => panic!("Port::port already set"),
                     },
-                    PortEvent::Poll(cust) => {
-                        println!("Port::Poll cust={:?}", cust);
-                    },
-                    PortEvent::LinkStatus(state, balance) => {
-                        println!("Port::LinkStatus state={:?}, balance={}", state, balance);
-                    }
                     PortEvent::LinkToPortWrite(payload) => {
                         if let Some(myself) = &self.myself {
                             self.n_recv += 1;
@@ -84,6 +78,9 @@ fn exactly_once_in_order_ait_port_to_port() {
                     },
                     PortEvent::HubToPortRead(cust) => {
                         println!("Port::HubToPortRead cust={:?}", cust);
+                    },
+                    _ => {
+                        println!("Port::on_event {:?}", port_event);
                     },
                 },
                 PortMockEvent::Ctrl(_verify_event) => {
