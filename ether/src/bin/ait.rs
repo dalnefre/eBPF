@@ -11,7 +11,7 @@ use rand::Rng;
 use ether::cell::{Cell, CellEvent};
 use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
-use ether::link::{Link, LinkEvent};
+use ether::link::Link;
 use ether::port::Port;
 //use ether::wire::{Wire, WireEvent};
 use ether::wire::{FaultyWire, WireEvent};
@@ -178,7 +178,6 @@ fn start_node(
     wire.send(WireEvent::new_listen(&link)); // start listening on Wire
 
     let port = Port::create(&link);
-    link.send(LinkEvent::new_start(&port)); // start Link
 
     let hub = Hub::create(&[port.clone()]);
 

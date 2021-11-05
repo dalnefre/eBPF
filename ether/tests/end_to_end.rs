@@ -286,7 +286,6 @@ fn exactly_once_in_order_ait_cell_to_cell() {
     let a_link = Link::create(&a_wire, a_nonce);
     a_wire.send(WireEvent::new_listen(&a_link)); // start listening
     let a_port = Port::create(&a_link);
-    a_link.send(LinkEvent::new_start(&a_port)); // start Link
     let a_hub = Hub::create(&[a_port.clone()]);
     let a_cell_mock = CellMock::create(&a_hub);
     let a_cell_ctrl = CellCtrlFacet::create(&a_cell_mock);
@@ -300,7 +299,6 @@ fn exactly_once_in_order_ait_cell_to_cell() {
     let b_link = Link::create(&b_wire, b_nonce);
     b_wire.send(WireEvent::new_listen(&b_link)); // start listening
     let b_port = Port::create(&b_link);
-    b_link.send(LinkEvent::new_start(&b_port)); // start Link
     let b_hub = Hub::create(&[b_port.clone()]);
     let b_cell_mock = CellMock::create(&b_hub);
     let b_cell_ctrl = CellCtrlFacet::create(&b_cell_mock);

@@ -69,6 +69,7 @@ impl Port {
             pollster: None,
         });
         port.send(PortEvent::new_init(&port));
+        link.send(LinkEvent::new_start(&port)); // start Link
         port
     }
 }
