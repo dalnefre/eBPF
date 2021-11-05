@@ -186,14 +186,17 @@ fn exactly_once_in_order_ait_cell_to_cell() {
         in_order: bool,
     }
     impl CellMock {
-        pub fn create(hub: &Cap<HubEvent>) -> Cap<CellMockEvent> {
-            actor::create(CellMock {
+        pub fn create(hub: &Cap<HubEvent>) -> (Cap<CellEvent>, Cap<VerifyEvent>) {
+            let mock = actor::create(CellMock {
                 myself: None,
                 hub: hub.clone(),
                 n_send: 0,
                 n_recv: 0,
                 in_order: true,
-            })
+            });
+            let cell = CellMockFacet::create(&mock);
+            let ctrl = CellCtrlFacet::create(&mock);
+            (cell, ctrl)
         }
     }
     impl Actor for CellMock {
@@ -284,9 +287,7 @@ fn exactly_once_in_order_ait_cell_to_cell() {
     a_wire.send(WireEvent::new_listen(&a_link)); // start listening
     let a_port = Port::create(&a_link);
     let a_hub = Hub::create(&[a_port.clone()]);
-    let a_cell_mock = CellMock::create(&a_hub);
-    let a_cell_ctrl = CellCtrlFacet::create(&a_cell_mock);
-    let a_cell = CellMockFacet::create(&a_cell_mock);
+    let (a_cell, a_cell_ctrl) = CellMock::create(&a_hub);
     a_cell.send(CellEvent::new_hub_to_cell_read()); // Hub ready to receive
     a_hub.send(HubEvent::new_cell_to_hub_read(&a_cell)); // Cell ready to receive
 
@@ -297,9 +298,7 @@ fn exactly_once_in_order_ait_cell_to_cell() {
     b_wire.send(WireEvent::new_listen(&b_link)); // start listening
     let b_port = Port::create(&b_link);
     let b_hub = Hub::create(&[b_port.clone()]);
-    let b_cell_mock = CellMock::create(&b_hub);
-    let b_cell_ctrl = CellCtrlFacet::create(&b_cell_mock);
-    let b_cell = CellMockFacet::create(&b_cell_mock);
+    let (b_cell, b_cell_ctrl) = CellMock::create(&b_hub);
     b_cell.send(CellEvent::new_hub_to_cell_read()); // Hub ready to receive
     b_hub.send(HubEvent::new_cell_to_hub_read(&b_cell)); // Cell ready to receive
 
