@@ -1,6 +1,7 @@
 use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::Payload;
+use crate::link::LinkState;
 use crate::port::{FailoverInfo, PortEvent, PortState};
 use crate::pollster::{Pollster, PollsterEvent};
 
@@ -140,7 +141,13 @@ impl Actor for Hub {
             },
             HubEvent::Failover(cust, info) => {
                 let n = self.port_to_port_num(&cust);
-                println!("Hub::Failover[{}] cust={} info={:?}", n, cust, info);
+                //let myself = &self.myself.expect("Hub::myself not set!"); // cannot move out of `self.myself`...
+                if let Some(myself) = &self.myself {
+                    println!("Hub::Failover[{}] cust={} info={:?}", n, cust, info);
+                    if info.link_state == LinkState::Stop {
+                        cust.send(PortEvent::new_start(&myself));
+                    }
+                }
             }
             HubEvent::PortStatus(cust, state) => {
                 let n = self.port_to_port_num(&cust);
