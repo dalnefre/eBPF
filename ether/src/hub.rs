@@ -137,12 +137,12 @@ impl Actor for Hub {
             HubEvent::PortStatus(cust, state) => {
                 let n = self.port_to_port_num(&cust);
                 println!(
-                    "Hub::LinkStatus[{}] link_state={:?}, ait_balance={}",
-                    n, state.link_state, state.ait_balance
+                    "Hub::LinkStatus[{}] cust={} link_state={:?}, ait_balance={}",
+                    n, cust, state.link_state, state.ait_balance
                 );
             }
             HubEvent::PortToHubWrite(cust, payload) => {
-                println!("Hub::PortToHubWrite");
+                println!("Hub::PortToHubWrite cust={}", cust);
                 let n = self.port_to_port_num(&cust);
                 let port_in = &mut self.port_in[n];
                 match &port_in.writer {
@@ -156,7 +156,7 @@ impl Actor for Hub {
                 }
             }
             HubEvent::PortToHubRead(cust) => {
-                println!("Hub::PortToHubRead");
+                println!("Hub::PortToHubRead cust={}", cust);
                 let n = self.port_to_port_num(&cust);
                 let port_out = &mut self.port_out[n];
                 match &port_out.reader {
@@ -168,7 +168,7 @@ impl Actor for Hub {
                 }
             }
             HubEvent::CellToHubWrite(cust, payload) => {
-                println!("Hub::CellToHubWrite");
+                println!("Hub::CellToHubWrite cust={}", cust);
                 match &self.cell_out.writer {
                     None => {
                         self.cell_out.writer = Some(cust.clone());
@@ -180,7 +180,7 @@ impl Actor for Hub {
                 }
             }
             HubEvent::CellToHubRead(cust) => {
-                println!("Hub::CellToHubRead");
+                println!("Hub::CellToHubRead cust={}", cust);
                 match &self.cell_in.reader {
                     None => {
                         self.cell_in.reader = Some(cust.clone());

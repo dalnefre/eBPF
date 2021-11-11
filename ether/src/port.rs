@@ -11,6 +11,7 @@ pub enum PortEvent {
     Poll(Cap<PollsterEvent>),
     Stop(Cap<PollsterEvent>),
     LinkStatus(LinkState, isize),
+    Failover(FailoverInfo),
     LinkToPortWrite(Payload),               // inbound
     LinkToPortRead,                         // outbound-ready
     HubToPortWrite(Cap<HubEvent>, Payload), // outbound
@@ -31,6 +32,9 @@ impl PortEvent {
     }
     pub fn new_link_status(state: &LinkState, balance: &isize) -> PortEvent {
         PortEvent::LinkStatus(state.clone(), balance.clone())
+    }
+    pub fn new_failover(info: &FailoverInfo) -> PortEvent {
+        PortEvent::Failover(info.clone())
     }
     pub fn new_link_to_port_write(payload: &Payload) -> PortEvent {
         PortEvent::LinkToPortWrite(payload.clone())
@@ -56,6 +60,31 @@ impl PortState {
         PortState {
             link_state: link_state.clone(),
             ait_balance
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FailoverInfo {
+    pub link_state: LinkState,
+    pub ait_balance: isize,
+    //pub reader: Option<Cap<PortEvent>>,
+    pub inbound: Option<Payload>,
+    //pub writer: Option<Cap<PortEvent>>,
+    pub outbound: Option<Payload>,
+}
+impl FailoverInfo {
+    pub fn new(
+        link_state: &LinkState,
+        ait_balance: isize,
+        inbound: &Option<Payload>,
+        outbound: &Option<Payload>,
+    ) -> FailoverInfo {
+        FailoverInfo {
+            link_state: link_state.clone(),
+            ait_balance,
+            inbound: inbound.clone(),
+            outbound: outbound.clone(),
         }
     }
 }
@@ -92,8 +121,8 @@ impl Actor for Port {
                 Some(_) => panic!("Port::myself already set"),
             },
             PortEvent::Start(cust) => {
-                println!("Port::Start");
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::Start", myself);
                     match &self.pollster {
                         None => {
                             self.pollster = Some(cust.clone());
@@ -104,8 +133,8 @@ impl Actor for Port {
                 }
             }
             PortEvent::Poll(cust) => {
-                println!("Port::Poll");
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::Poll", myself);
                     match &self.pollster {
                         None => {
                             self.pollster = Some(cust.clone());
@@ -116,8 +145,8 @@ impl Actor for Port {
                 }
             }
             PortEvent::Stop(cust) => {
-                println!("Port::Stop");
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::Stop", myself);
                     match &self.pollster {
                         None => {
                             self.pollster = Some(cust.clone());
@@ -128,8 +157,8 @@ impl Actor for Port {
                 }
             }
             PortEvent::LinkStatus(state, balance) => {
-                println!("Port::LinkStatus state={:?}, balance={}", state, balance);
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::LinkStatus state={:?}, balance={}", myself, state, balance);
                     match &self.pollster {
                         Some(cust) => {
                             let state = PortState::new(&state, *balance);
@@ -142,9 +171,14 @@ impl Actor for Port {
                     }
                 }
             }
-            PortEvent::LinkToPortWrite(payload) => {
-                println!("Port::LinkToPortWrite");
+            PortEvent::Failover(info) => {
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::Failover info={:?}", myself, info);
+                }
+            }
+            PortEvent::LinkToPortWrite(payload) => {
+                if let Some(myself) = &self.myself {
+                    println!("Port{}::LinkToPortWrite", myself);
                     match &self.reader {
                         Some(hub) => {
                             hub.send(HubEvent::new_port_to_hub_write(&myself, &payload));
@@ -155,8 +189,8 @@ impl Actor for Port {
                 }
             }
             PortEvent::LinkToPortRead => {
-                println!("Port::LinkToPortRead");
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::LinkToPortRead", myself);
                     match &self.writer {
                         Some(hub) => {
                             hub.send(HubEvent::new_port_to_hub_read(&myself));
@@ -167,8 +201,8 @@ impl Actor for Port {
                 }
             }
             PortEvent::HubToPortWrite(cust, payload) => {
-                println!("Port::HubToPortWrite");
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::HubToPortWrite cust={}", myself, cust);
                     match &self.writer {
                         None => {
                             self.writer = Some(cust.clone());
@@ -179,8 +213,8 @@ impl Actor for Port {
                 }
             }
             PortEvent::HubToPortRead(cust) => {
-                println!("Port::HubToPortRead");
                 if let Some(myself) = &self.myself {
+                    println!("Port{}::HubToPortRead cust={}", myself, cust);
                     match &self.reader {
                         None => {
                             self.reader = Some(cust.clone());

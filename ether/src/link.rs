@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::{self, Frame, Payload};
-use crate::port::PortEvent;
+use crate::port::{FailoverInfo, PortEvent};
 use crate::wire::WireEvent;
 use rand::Rng;
 
@@ -155,8 +155,7 @@ impl Actor for Link {
                                     );
                                     reply.set_payload(&payload);
                                     self.wire.send(WireEvent::new_frame(&reply));
-                                    //self.balance = 0; // balance already clear?
-                                    assert_eq!(self.balance, 0);
+                                    //self.balance = 0; // balance unchanged
                                 }
                             }
                         }
@@ -208,6 +207,13 @@ impl Actor for Link {
             LinkEvent::Stop(cust) => {
                 self.state = LinkState::Stop;
                 cust.send(PortEvent::new_link_status(&self.state, &self.balance));
+                let info = FailoverInfo::new(
+                    &self.state,
+                    self.balance,
+                    &self.inbound,
+                    &self.outbound,
+                );
+                cust.send(PortEvent::new_failover(&info));
             }
             LinkEvent::Read(cust) => match &self.reader {
                 None => {

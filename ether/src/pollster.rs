@@ -148,6 +148,8 @@ impl Actor for Pollster {
                     if dead {
                         if let Some(myself) = &self.myself {
                             if let Some(hub) = &self.hub {
+                                // attempt to stop all ports
+                                //myself.send(PollsterEvent::new_stop(&hub));
                                 // attempt to re-start all ports
                                 myself.send(PollsterEvent::new_start(&hub));
                             }
