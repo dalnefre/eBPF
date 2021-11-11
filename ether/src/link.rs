@@ -196,17 +196,6 @@ impl Actor for Link {
                 let init = Frame::new_reset(self.nonce);
                 self.wire.send(WireEvent::new_frame(&init)); // send init/reset
                 self.state = LinkState::Init;
-                cust.send(PortEvent::new_link_status(&self.state, &self.balance));
-            }
-            LinkEvent::Poll(cust) => {
-                cust.send(PortEvent::new_link_status(&self.state, &self.balance));
-                if self.state == LinkState::Live {
-                    self.state = LinkState::Run; // clear Live status
-                }
-            }
-            LinkEvent::Stop(cust) => {
-                self.state = LinkState::Stop;
-                cust.send(PortEvent::new_link_status(&self.state, &self.balance));
                 let info = FailoverInfo::new(
                     &self.state,
                     self.balance,
@@ -214,6 +203,22 @@ impl Actor for Link {
                     &self.outbound,
                 );
                 cust.send(PortEvent::new_failover(&info));
+            }
+            LinkEvent::Stop(cust) => {
+                self.state = LinkState::Stop;
+                let info = FailoverInfo::new(
+                    &self.state,
+                    self.balance,
+                    &self.inbound,
+                    &self.outbound,
+                );
+                cust.send(PortEvent::new_failover(&info));
+            }
+            LinkEvent::Poll(cust) => {
+                cust.send(PortEvent::new_poll_reply(&self.state, &self.balance));
+                if self.state == LinkState::Live {
+                    self.state = LinkState::Run; // clear Live status
+                }
             }
             LinkEvent::Read(cust) => match &self.reader {
                 None => {

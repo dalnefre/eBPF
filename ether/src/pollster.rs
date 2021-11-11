@@ -9,23 +9,15 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub enum PollsterEvent {
     Init(Cap<PollsterEvent>),
-    Start(Cap<HubEvent>),
     Poll(Cap<HubEvent>),
-    Stop(Cap<HubEvent>),
     PortStatus(Cap<PortEvent>, PortState),
 }
 impl PollsterEvent {
     pub fn new_init(pollster: &Cap<PollsterEvent>) -> PollsterEvent {
         PollsterEvent::Init(pollster.clone())
     }
-    pub fn new_start(hub: &Cap<HubEvent>) -> PollsterEvent {
-        PollsterEvent::Start(hub.clone())
-    }
     pub fn new_poll(hub: &Cap<HubEvent>) -> PollsterEvent {
         PollsterEvent::Poll(hub.clone())
-    }
-    pub fn new_stop(hub: &Cap<HubEvent>) -> PollsterEvent {
-        PollsterEvent::Stop(hub.clone())
     }
     pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> PollsterEvent {
         PollsterEvent::PortStatus(port.clone(), state.clone())
@@ -46,17 +38,10 @@ pub struct Pollster {
     poll: HashMap<Cap<PortEvent>, PortPoll>,
 }
 impl Pollster {
-    pub fn create(
-        ports: &Vec<Cap<PortEvent>>,
-    ) -> Cap<PollsterEvent> {
+    pub fn create(ports: &Vec<Cap<PortEvent>>) -> Cap<PollsterEvent> {
         let mut poll: HashMap<Cap<PortEvent>, PortPoll> = HashMap::new();
         for port in ports {
-            poll.insert(
-                port.clone(),
-                PortPoll {
-                    idle: 0
-                }
-            );
+            poll.insert(port.clone(), PortPoll { idle: 0 });
         }
         let pollster = actor::create(Pollster {
             myself: None,
@@ -77,28 +62,12 @@ impl Actor for Pollster {
             PollsterEvent::Init(myself) => match &self.myself {
                 None => {
                     self.myself = Some(myself.clone()); // set self-reference
-                },
+                }
                 Some(_) => panic!("Pollster::myself already set"),
             },
-            PollsterEvent::Start(hub) => {
-                println!("Pollster::Start");
-                if let Some(myself) = &self.myself {
-                    if self.hub.is_none() {
-                        self.hub = Some(hub.clone());
-                        self.pending = self.ports.len();
-                        for port in &self.ports {
-                            port.send(PortEvent::new_start(&myself));
-                            if let Some(poll) = self.poll.get_mut(port) {
-                                poll.idle =  0; // reset idle counter
-                            }
-                        }
-                    } else {
-                        println!("pollster already polling...");
-                    }
-                }
-            }
             PollsterEvent::Poll(hub) => {
-                println!("Pollster::Poll");
+                println!("Pollster::Poll hub={}", hub);
+                //let myself = &self.myself.expect("NO SELF!?"); // an alternative to avoid nesting...
                 if let Some(myself) = &self.myself {
                     if self.hub.is_none() {
                         self.hub = Some(hub.clone());
@@ -111,29 +80,15 @@ impl Actor for Pollster {
                     }
                 }
             }
-            PollsterEvent::Stop(hub) => {
-                println!("Pollster::Stop");
-                if let Some(myself) = &self.myself {
-                    if self.hub.is_none() {
-                        self.hub = Some(hub.clone());
-                        self.pending = self.ports.len();
-                        for port in &self.ports {
-                            port.send(PortEvent::new_stop(&myself));
-                        }
-                    } else {
-                        println!("pollster already polling...");
-                    }
-                }
-            }
             PollsterEvent::PortStatus(port, state) => {
                 let n = self.port_to_port_num(&port);
                 println!(
-                    "Pollster::LinkStatus[{}] link_state={:?}, ait_balance={}",
-                    n, state.link_state, state.ait_balance
+                    "Pollster::LinkStatus[{}] port={}, link_state={:?}, ait_balance={}",
+                    n, port, state.link_state, state.ait_balance
                 );
                 if let Some(poll) = self.poll.get_mut(port) {
                     if state.link_state == LinkState::Live {
-                        poll.idle =  0;
+                        poll.idle = 0;
                     } else {
                         poll.idle += 1;
                     }
@@ -142,18 +97,16 @@ impl Actor for Pollster {
                 assert!(self.pending > 0);
                 self.pending -= 1;
                 if self.pending == 0 {
-                    let dead = self.poll
-                        .iter()
-                        .all(|(_k, v)| v.idle > 3);
-                    if dead {
-                        if let Some(myself) = &self.myself {
-                            if let Some(hub) = &self.hub {
-                                // attempt to stop all ports
-                                //myself.send(PollsterEvent::new_stop(&hub));
-                                // attempt to re-start all ports
-                                myself.send(PollsterEvent::new_start(&hub));
-                            }
-                        }
+                    if let Some(hub) = &self.hub {
+                        self.poll
+                            .iter()
+                            .filter(|(_port, poll)| poll.idle > 3)
+                            .for_each(|(port, _poll)| {
+                                // attempt to stop the dead port
+                                port.send(PortEvent::new_stop(&hub));
+                                // attempt to re-start the dead port
+                                //port.send(PortEvent::new_start(hub));
+                            });
                     }
                     self.hub = None;
                 }

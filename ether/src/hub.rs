@@ -1,12 +1,13 @@
 use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::Payload;
-use crate::port::{PortEvent, PortState};
+use crate::port::{FailoverInfo, PortEvent, PortState};
 use crate::pollster::{Pollster, PollsterEvent};
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     Init(Cap<HubEvent>),
+    Failover(Cap<PortEvent>, FailoverInfo),
     PortStatus(Cap<PortEvent>, PortState),
     PortToHubWrite(Cap<PortEvent>, Payload),
     PortToHubRead(Cap<PortEvent>),
@@ -16,6 +17,9 @@ pub enum HubEvent {
 impl HubEvent {
     pub fn new_init(hub: &Cap<HubEvent>) -> HubEvent {
         HubEvent::Init(hub.clone())
+    }
+    pub fn new_failover(port: &Cap<PortEvent>, info: &FailoverInfo) -> HubEvent {
+        HubEvent::Failover(port.clone(), info.clone())
     }
     pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> HubEvent {
         HubEvent::PortStatus(port.clone(), state.clone())
@@ -109,10 +113,10 @@ impl Hub {
         });
         hub.send(HubEvent::new_init(&hub));
         for port in port_set {
+            port.send(PortEvent::new_start(&hub)); // attempt to start Port
             port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
         }
         let pollster = Pollster::create(&ports); // create link-failure detector
-        pollster.send(PollsterEvent::new_start(&hub));
         // periodically poll ports for liveness
         let cust = hub.clone(); // local copy moved into closure
         std::thread::spawn(move || {
@@ -134,10 +138,14 @@ impl Actor for Hub {
                 None => self.myself = Some(myself.clone()),
                 Some(_) => panic!("Hub::myself already set"),
             },
+            HubEvent::Failover(cust, info) => {
+                let n = self.port_to_port_num(&cust);
+                println!("Hub::Failover[{}] cust={} info={:?}", n, cust, info);
+            }
             HubEvent::PortStatus(cust, state) => {
                 let n = self.port_to_port_num(&cust);
                 println!(
-                    "Hub::LinkStatus[{}] cust={} link_state={:?}, ait_balance={}",
+                    "Hub::PortStatus[{}] cust={} link_state={:?}, ait_balance={}",
                     n, cust, state.link_state, state.ait_balance
                 );
             }

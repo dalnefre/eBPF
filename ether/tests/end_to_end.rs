@@ -355,7 +355,7 @@ fn detect_link_failure_by_harvesting_events() {
 
         fn on_event(&mut self, event: Self::Event) {
             match &event {
-                PortEvent::LinkStatus(state, balance) => {
+                PortEvent::PollReply(state, balance) => {
                     //println!("Port::LinkStatus state={:?}, balance={}", state, balance);
                     self.log.send(LogEvent::new_link_status(state, balance));
                 }
