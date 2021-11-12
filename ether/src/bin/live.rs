@@ -49,7 +49,7 @@ mod wire {
 
         pub fn send_proto_frame(&mut self, i: u8, u: u8) {
             // Construct and send a protocol packet.
-            let frame = Frame::new_entangled(i, u);
+            let frame = Frame::new_entangled(0, i, u);
             println!("SEND_PROTO {}", pretty_hex(&frame.data));
             self.tx.send_to(&frame.data, None);
         }

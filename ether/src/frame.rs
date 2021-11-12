@@ -9,7 +9,7 @@
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+           MAC source          +
    |Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z Z|   2   1   .
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |   Ethertype = 0x88b5/0x88b6   |     Reserved (Checksum?)      |   3   .   .
+   |   Ethertype = 0x88b5/0x88b6   |    Reserved (Sequence #?)     |   3   .   .
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+---------------+---------------+
    |                                                               |   4   2   1
    +               +               +               +               +
@@ -108,9 +108,10 @@ impl Frame {
         frame.set_nonce(nonce);
         frame
     }
-    pub fn new_entangled(i: u8, u: u8) -> Frame {
+    pub fn new_entangled(seq: u16, i: u8, u: u8) -> Frame {
         let mut frame = Self::default();
         frame.set_entangled();
+        frame.set_sequence(seq);
         frame.set_i_state(i);
         frame.set_u_state(u);
         frame
@@ -170,6 +171,17 @@ impl Frame {
     }
     pub fn get_u_state(&self) -> u8 {
         self.data[6]
+    }
+
+    pub fn set_sequence(&mut self, sequence: u16) {
+        // `copy_from_slice` will not panic because
+        // the slice is the same size as `sequence` (2 octets)
+        self.data[14..16].copy_from_slice(&sequence.to_be_bytes());
+    }
+    pub fn get_sequence(&self) -> u16 {
+        let mut sequence = [0; 2];
+        sequence.copy_from_slice(&self.data[14..16]);
+        u16::from_be_bytes(sequence)
     }
 
     pub fn set_payload(&mut self, payload: &Payload) {
