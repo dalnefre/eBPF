@@ -66,7 +66,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("alice", &in_cell_rx);
         });
-        start_node(&in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
+        start_node(12345, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
     });
 
     thread::spawn(move || {
@@ -80,7 +80,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("bob", &in_cell_rx);
         });
-        start_node(&in_cell_tx, &out_cell_rx, &in_wire_tx, &out_wire_rx);
+        start_node(67890, &in_cell_tx, &out_cell_rx, &in_wire_tx, &out_wire_rx);
     });
 
     // fail-safe exit after timeout
@@ -161,10 +161,12 @@ fn live_ait(if_name: &str) {
     thread::spawn(move || {
         monitor_node_out(&out_cell_tx);
     });
-    start_node(&in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
+    let nonce = rand::thread_rng().gen();
+    start_node(nonce, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
 }
 
 fn start_node(
+    nonce: u32,
     cell_tx: &Sender<Payload>,
     cell_rx: &Receiver<Payload>,
     wire_tx: &Sender<Frame>,
@@ -172,7 +174,6 @@ fn start_node(
 ) {
     //let wire = Wire::create(&wire_tx, &wire_rx);
     let wire = FaultyWire::create(&wire_tx, &wire_rx, "Three");
-    let nonce = rand::thread_rng().gen();
 
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link)); // start listening on Wire
