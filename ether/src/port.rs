@@ -66,8 +66,7 @@ impl PortState {
 
 #[derive(Debug, Clone)]
 pub struct FailoverInfo {
-    pub link_state: LinkState,
-    pub ait_balance: isize,
+    pub port_state: PortState,
     //pub reader: Option<Cap<PortEvent>>,
     pub inbound: Option<Payload>,
     //pub writer: Option<Cap<PortEvent>>,
@@ -75,14 +74,12 @@ pub struct FailoverInfo {
 }
 impl FailoverInfo {
     pub fn new(
-        link_state: &LinkState,
-        ait_balance: isize,
+        port_state: &PortState,
         inbound: &Option<Payload>,
         outbound: &Option<Payload>,
     ) -> FailoverInfo {
         FailoverInfo {
-            link_state: link_state.clone(),
-            ait_balance,
+            port_state: port_state.clone(),
             inbound: inbound.clone(),
             outbound: outbound.clone(),
         }

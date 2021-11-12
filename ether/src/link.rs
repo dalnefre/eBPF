@@ -212,9 +212,9 @@ impl Actor for Link {
                 let init = Frame::new_reset(self.nonce);
                 self.wire.send(WireEvent::new_frame(&init)); // send init/reset
                 self.state = LinkState::Init;
+                let state = PortState::new(&self.state, self.balance);
                 let info = FailoverInfo::new(
-                    &self.state,
-                    self.balance,
+                    &state,
                     &self.inbound,
                     &self.outbound,
                 );
@@ -222,9 +222,9 @@ impl Actor for Link {
             }
             LinkEvent::Stop(cust) => {
                 self.state = LinkState::Stop;
+                let state = PortState::new(&self.state, self.balance);
                 let info = FailoverInfo::new(
-                    &self.state,
-                    self.balance,
+                    &state,
                     &self.inbound,
                     &self.outbound,
                 );

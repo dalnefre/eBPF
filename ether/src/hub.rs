@@ -144,7 +144,7 @@ impl Actor for Hub {
                 //let myself = &self.myself.expect("Hub::myself not set!"); // cannot move out of `self.myself`...
                 if let Some(myself) = &self.myself {
                     println!("Hub::Failover[{}] cust={} info={:?}", n, cust, info);
-                    if info.link_state == LinkState::Stop {
+                    if info.port_state.link_state == LinkState::Stop {
                         cust.send(PortEvent::new_start(&myself));
                     }
                 }
