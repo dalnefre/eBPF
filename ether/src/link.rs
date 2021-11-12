@@ -212,7 +212,7 @@ impl Actor for Link {
                 let init = Frame::new_reset(self.nonce);
                 self.wire.send(WireEvent::new_frame(&init)); // send init/reset
                 self.state = LinkState::Init;
-                let state = PortState::new(&self.state, self.balance);
+                let state = PortState::new(&self.state, self.balance, self.sequence);
                 let info = FailoverInfo::new(
                     &state,
                     &self.inbound,
@@ -222,7 +222,7 @@ impl Actor for Link {
             }
             LinkEvent::Stop(cust) => {
                 self.state = LinkState::Stop;
-                let state = PortState::new(&self.state, self.balance);
+                let state = PortState::new(&self.state, self.balance, self.sequence);
                 let info = FailoverInfo::new(
                     &state,
                     &self.inbound,
@@ -231,7 +231,7 @@ impl Actor for Link {
                 cust.send(PortEvent::new_failover(&info));
             }
             LinkEvent::Poll(cust) => {
-                let state = PortState::new(&self.state, self.balance);
+                let state = PortState::new(&self.state, self.balance, self.sequence);
                 cust.send(PortEvent::new_poll_reply(&state));
                 if self.state == LinkState::Live {
                     self.state = LinkState::Run; // clear Live status

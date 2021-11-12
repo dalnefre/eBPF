@@ -54,12 +54,14 @@ impl PortEvent {
 pub struct PortState {
     pub link_state: LinkState,
     pub ait_balance: isize,
+    pub sequence: u16,
 }
 impl PortState {
-    pub fn new(link_state: &LinkState, ait_balance: isize) -> PortState {
+    pub fn new(link_state: &LinkState, ait_balance: isize, sequence: u16) -> PortState {
         PortState {
             link_state: link_state.clone(),
-            ait_balance
+            ait_balance,
+            sequence,
         }
     }
 }
