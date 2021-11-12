@@ -3,7 +3,7 @@ use crate::frame::{self, Frame};
 use crate::link::LinkEvent;
 
 use crossbeam::crossbeam_channel::{Receiver, Sender};
-//use pretty_hex::pretty_hex;
+use pretty_hex::pretty_hex;
 
 #[derive(Debug, Clone)]
 pub enum WireEvent {
@@ -79,8 +79,11 @@ impl Actor for FaultyWire {
             WireEvent::Frame(frame) => {
                 //println!("Wire::outbound {}", pretty_hex(&frame.data));
                 if self.filter == frame.get_payload().data {
-                    println!("Wire::outbound seq={} i={} u={} filtered...",
-                        frame.get_sequence(), frame.get_i_state(), frame.get_u_state());
+                    println!("Wire::outbound seq={} i={} u={} FILTERED {}",
+                        frame.get_sequence(),
+                        frame.get_i_state(),
+                        frame.get_u_state(),
+                        pretty_hex(&frame.data));
                     self.filter = [0_u8; frame::PAYLOAD_SIZE]; // reset filter
                 } else {
                     self.tx.send(frame.clone()).expect("Wire::send failed");

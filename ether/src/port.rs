@@ -147,7 +147,7 @@ impl Actor for Port {
             }
             PortEvent::Failover(info) => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::Failover info={:?}", myself, info);
+                    println!("Port{}::Failover {:?}", myself, info);
                     match &self.hub {
                         Some(cust) => {
                             cust.send(HubEvent::new_failover(&myself, &info));
@@ -173,7 +173,7 @@ impl Actor for Port {
             }
             PortEvent::PollReply(state) => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::PollReply state={:?}", myself, state);
+                    println!("Port{}::PollReply {:?}", myself, state);
                     match &self.pollster {
                         Some(cust) => {
                             cust.send(PollsterEvent::new_port_status(&myself, &state));
@@ -187,7 +187,7 @@ impl Actor for Port {
             }
             PortEvent::LinkToPortWrite(payload) => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::LinkToPortWrite", myself);
+                    println!("Port{}::LinkToPortWrite link={}", myself, self.link);
                     match &self.reader {
                         Some(hub) => {
                             hub.send(HubEvent::new_port_to_hub_write(&myself, &payload));
@@ -199,7 +199,7 @@ impl Actor for Port {
             }
             PortEvent::LinkToPortRead => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::LinkToPortRead", myself);
+                    println!("Port{}::LinkToPortRead link={}", myself, self.link);
                     match &self.writer {
                         Some(hub) => {
                             hub.send(HubEvent::new_port_to_hub_read(&myself));
@@ -211,7 +211,7 @@ impl Actor for Port {
             }
             PortEvent::HubToPortWrite(cust, payload) => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::HubToPortWrite cust={}", myself, cust);
+                    println!("Port{}::HubToPortWrite hub={}", myself, cust);
                     match &self.writer {
                         None => {
                             self.writer = Some(cust.clone());
@@ -223,7 +223,7 @@ impl Actor for Port {
             }
             PortEvent::HubToPortRead(cust) => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::HubToPortRead cust={}", myself, cust);
+                    println!("Port{}::HubToPortRead hub={}", myself, cust);
                     match &self.reader {
                         None => {
                             self.reader = Some(cust.clone());
