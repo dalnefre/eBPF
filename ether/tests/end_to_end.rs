@@ -5,8 +5,8 @@ use ether::actor::{self, Actor, Cap};
 use ether::cell::CellEvent;
 use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
-use ether::link::{Link, LinkEvent, LinkState};
-use ether::port::{Port, PortEvent};
+use ether::link::{Link, LinkEvent};
+use ether::port::{Port, PortEvent, PortState};
 use ether::wire::{Wire, WireEvent};
 
 #[test]
@@ -315,12 +315,12 @@ fn exactly_once_in_order_ait_cell_to_cell() {
 fn detect_link_failure_by_harvesting_events() {
     #[derive(Debug, Clone)]
     pub enum LogEvent {
-        LinkStatus(LinkState, isize),
+        PortStatus(PortState),
         UnexpectedEvent,
     }
     impl LogEvent {
-        pub fn new_link_status(state: &LinkState, balance: &isize) -> LogEvent {
-            LogEvent::LinkStatus(state.clone(), balance.clone())
+        pub fn new_port_status(state: &PortState) -> LogEvent {
+            LogEvent::PortStatus(state.clone())
         }
         pub fn new_unexpected_event() -> LogEvent {
             LogEvent::UnexpectedEvent
@@ -355,9 +355,9 @@ fn detect_link_failure_by_harvesting_events() {
 
         fn on_event(&mut self, event: Self::Event) {
             match &event {
-                PortEvent::PollReply(state, balance) => {
-                    //println!("Port::LinkStatus state={:?}, balance={}", state, balance);
-                    self.log.send(LogEvent::new_link_status(state, balance));
+                PortEvent::PollReply(state) => {
+                    //println!("Port::LinkStatus state={:?}", state);
+                    self.log.send(LogEvent::new_port_status(state));
                 }
                 _ => {
                     self.log.send(LogEvent::new_unexpected_event());

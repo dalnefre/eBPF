@@ -11,7 +11,7 @@ pub enum PortEvent {
     Stop(Cap<HubEvent>),
     Failover(FailoverInfo),
     Poll(Cap<PollsterEvent>),
-    PollReply(LinkState, isize),
+    PollReply(PortState),
     LinkToPortWrite(Payload),               // inbound
     LinkToPortRead,                         // outbound-ready
     HubToPortWrite(Cap<HubEvent>, Payload), // outbound
@@ -33,8 +33,8 @@ impl PortEvent {
     pub fn new_poll(cust: &Cap<PollsterEvent>) -> PortEvent {
         PortEvent::Poll(cust.clone())
     }
-    pub fn new_poll_reply(state: &LinkState, balance: &isize) -> PortEvent {
-        PortEvent::PollReply(state.clone(), balance.clone())
+    pub fn new_poll_reply(state: &PortState) -> PortEvent {
+        PortEvent::PollReply(state.clone())
     }
     pub fn new_link_to_port_write(payload: &Payload) -> PortEvent {
         PortEvent::LinkToPortWrite(payload.clone())
@@ -172,12 +172,11 @@ impl Actor for Port {
                     }
                 }
             }
-            PortEvent::PollReply(state, balance) => {
+            PortEvent::PollReply(state) => {
                 if let Some(myself) = &self.myself {
-                    println!("Port{}::PollReply state={:?}, balance={}", myself, state, balance);
+                    println!("Port{}::PollReply state={:?}", myself, state);
                     match &self.pollster {
                         Some(cust) => {
-                            let state = PortState::new(&state, *balance);
                             cust.send(PollsterEvent::new_port_status(&myself, &state));
                             self.pollster = None;
                         }

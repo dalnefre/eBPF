@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::{self, Frame, Payload};
-use crate::port::{FailoverInfo, PortEvent};
+use crate::port::{PortEvent, PortState, FailoverInfo};
 use crate::wire::WireEvent;
 use rand::Rng;
 
@@ -231,7 +231,8 @@ impl Actor for Link {
                 cust.send(PortEvent::new_failover(&info));
             }
             LinkEvent::Poll(cust) => {
-                cust.send(PortEvent::new_poll_reply(&self.state, &self.balance));
+                let state = PortState::new(&self.state, self.balance);
+                cust.send(PortEvent::new_poll_reply(&state));
                 if self.state == LinkState::Live {
                     self.state = LinkState::Run; // clear Live status
                 }
