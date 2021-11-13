@@ -85,8 +85,8 @@ impl Actor for Link {
                         println!("waiting...");
                     } else if self.nonce > nonce {
                         println!("entangle...");
-                        self.sequence += 1; // next sequence number
-                        let reply = Frame::new_entangled(self.sequence, frame::TICK, frame::TICK);
+                        let seq = frame.get_sequence() + 1; // next sequence number
+                        let reply = Frame::new_entangled(seq, frame::TICK, frame::TICK);
                         self.wire.send(WireEvent::new_frame(&reply));
                     } else {
                         println!("collision...");
@@ -95,6 +95,8 @@ impl Actor for Link {
                         self.wire.send(WireEvent::new_frame(&reply));
                     }
                 } else if frame.is_entangled() {
+                    //assert_eq!(self.sequence + 1, frame.get_sequence);
+                    self.sequence = frame.get_sequence();
                     self.state = LinkState::Live;
                     let i_state = frame.get_i_state();
                     //println!("entangled i={}", i_state);
@@ -119,9 +121,9 @@ impl Actor for Link {
                             //assert_eq!(self.balance, 0); // at this point, the balance should always be 0
                             match &self.outbound {
                                 None => {
-                                    self.sequence += 1; // next sequence number
+                                    let seq = frame.get_sequence() + 1; // next sequence number
                                     let reply = Frame::new_entangled(
-                                        self.sequence,
+                                        seq,
                                         frame::TICK, // liveness
                                         i_state,
                                     );
@@ -129,9 +131,9 @@ impl Actor for Link {
                                     self.balance = 0; // clear balance
                                 }
                                 Some(payload) => {
-                                    self.sequence += 1; // next sequence number
+                                    let seq = frame.get_sequence() + 1; // next sequence number
                                     let mut reply = Frame::new_entangled(
-                                        self.sequence,
+                                        seq,
                                         frame::TECK, // begin AIT
                                         i_state,
                                     );
@@ -148,9 +150,9 @@ impl Actor for Link {
                                 Some(_cust) => {
                                     // reader ready
                                     self.inbound = Some(payload);
-                                    self.sequence += 1; // next sequence number
+                                    let seq = frame.get_sequence() + 1; // next sequence number
                                     let reply = Frame::new_entangled(
-                                        self.sequence,
+                                        seq,
                                         frame::TACK, // Ack AIT
                                         i_state,
                                     );
@@ -159,9 +161,9 @@ impl Actor for Link {
                                 }
                                 None => {
                                     // no reader ready
-                                    self.sequence += 1; // next sequence number
+                                    let seq = frame.get_sequence() + 1; // next sequence number
                                     let mut reply = Frame::new_entangled(
-                                        self.sequence,
+                                        seq,
                                         frame::RTECK, // reject AIT
                                         i_state,
                                     );
@@ -180,9 +182,9 @@ impl Actor for Link {
                                 self.writer = None; // writer satisfied
                                 self.outbound = None; // clear outbound
                                 self.balance = 0; // clear balance
-                                self.sequence += 1; // next sequence number
+                                let seq = frame.get_sequence() + 1; // next sequence number
                                 let reply = Frame::new_entangled(
-                                    self.sequence,
+                                    seq,
                                     frame::TICK, // liveness (Ack Ack)
                                     i_state,
                                 );
@@ -191,9 +193,9 @@ impl Actor for Link {
                         }
                         frame::RTECK => {
                             println!("RTECK rcvd."); // Reject AIT recv'd
-                            self.sequence += 1; // next sequence number
+                            let seq = frame.get_sequence() + 1; // next sequence number
                             let reply = Frame::new_entangled(
-                                self.sequence,
+                                seq,
                                 frame::TICK, // liveness
                                 i_state,
                             );
