@@ -173,7 +173,10 @@ fn start_node(
     wire_rx: &Receiver<Frame>,
 ) {
     //let wire = Wire::create(&wire_tx, &wire_rx);
+    /*
     let wire = FaultyWire::create(&wire_tx, &wire_rx, "Three");
+    */
+    let wire = FaultyWire::create(&wire_tx, &wire_rx, 17); // drop 17th packet
 
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link)); // start listening on Wire
