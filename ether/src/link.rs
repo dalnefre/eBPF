@@ -231,6 +231,11 @@ impl Actor for Link {
                     &self.outbound,
                 );
                 cust.send(PortEvent::new_failover(&info));
+                // reset link state after reporting fail-over info
+                self.balance = 0;
+                self.inbound = None;
+                self.outbound = None;
+                // FIXME: what should we do about self.reader and self.writer?
             }
             LinkEvent::Poll(cust) => {
                 let state = PortState::new(&self.state, self.balance, self.sequence);

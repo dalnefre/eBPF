@@ -67,7 +67,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("alice", &in_cell_rx);
         });
-        start_2port(12345,
+        start_2port_hub(12345,
             &in_cell_tx, &out_cell_rx,
             &out_wire0_tx, &in_wire0_rx,
             &out_wire1_tx, &in_wire1_rx,
@@ -85,7 +85,7 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("bob", &in_cell_rx);
         });
-        start_2port(67890,
+        start_2port_hub(67890,
             &in_cell_tx, &out_cell_rx,
             &in_wire0_tx, &out_wire0_rx,
             &in_wire1_tx, &out_wire1_rx,
@@ -171,10 +171,10 @@ fn live_ait(if_name: &str) {
         monitor_node_out(&out_cell_tx);
     });
     let nonce = rand::thread_rng().gen();
-    start_1port(nonce, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
+    start_1port_hub(nonce, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
 }
 
-fn start_1port(
+fn start_1port_hub(
     nonce: u32,
     cell_tx: &Sender<Payload>,
     cell_rx: &Receiver<Payload>,
@@ -185,7 +185,7 @@ fn start_1port(
     /*
     let wire = FaultyWire::create(&wire_tx, &wire_rx, "Three");
     */
-    //let wire = FaultyWire::create(&wire_tx, &wire_rx, 17); // drop 17th packet
+    //let wire = FaultyWire::create(&wire_tx, &wire_rx, 17); // drop 17th frame
 
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link)); // start listening on Wire
@@ -205,7 +205,7 @@ fn start_1port(
     }
 }
 
-fn start_2port(
+fn start_2port_hub(
     nonce: u32,
     cell_tx: &Sender<Payload>,
     cell_rx: &Receiver<Payload>,
@@ -218,7 +218,8 @@ fn start_2port(
     /*
     let wire = FaultyWire::create(&wire0_tx, &wire0_rx, "Three");
     */
-    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th packet
+    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th frame
+    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 18); // drop 18th frame
     let wire1 = Wire::create(&wire1_tx, &wire1_rx);
 
     let link0 = Link::create(&wire0, nonce);
