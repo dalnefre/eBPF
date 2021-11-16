@@ -145,11 +145,11 @@ impl Actor for Hub {
                 let n = self.port_to_port_num(&cust);
                 //let myself = &self.myself.expect("Hub::myself not set!"); // cannot move out of `self.myself`...
                 if let Some(myself) = &self.myself {
-                    println!("Hub::Failover[{}] port={} info={:?}", n, cust, info);
+                    println!("Hub{}::Failover[{}] port={} info={:?}", myself, n, cust, info);
                     if info.port_state.link_state == LinkState::Stop {
                         let mut m = n + 1;
                         if m >= self.ports.len() { m = 0; } // wrap-around fail-over port numbers
-                        println!("Hub::Failover reroute from Port({}) to Port({})", n, m);
+                        println!("Hub{}::Failover REROUTE from Port({}) to Port({})", myself, n, m);
                         self.route_port = m;
                         if n == m {
                             // FIXME: temporary special-case for 1-port hubs
