@@ -13,8 +13,7 @@ use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
 use ether::link::Link;
 use ether::port::Port;
-//use ether::wire::{Wire, WireEvent};
-use ether::wire::{FaultyWire, WireEvent};
+use ether::wire::{Wire, FaultyWire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
     assert!(s.len() <= frame::PAYLOAD_SIZE);
@@ -54,8 +53,10 @@ fn monitor_node_in(label: &str, rx: &Receiver<Payload>) {
 fn sim_ait() {
     println!("SIM_AIT");
 
-    let (in_wire_tx, in_wire_rx) = channel::<Frame>();
-    let (out_wire_tx, out_wire_rx) = channel::<Frame>();
+    let (in_wire0_tx, in_wire0_rx) = channel::<Frame>();
+    let (out_wire0_tx, out_wire0_rx) = channel::<Frame>();
+    let (in_wire1_tx, in_wire1_rx) = channel::<Frame>();
+    let (out_wire1_tx, out_wire1_rx) = channel::<Frame>();
 
     thread::spawn(move || {
         let (in_cell_tx, in_cell_rx) = channel::<Payload>();
@@ -66,7 +67,11 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("alice", &in_cell_rx);
         });
-        start_node(12345, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
+        start_2port(12345,
+            &in_cell_tx, &out_cell_rx,
+            &out_wire0_tx, &in_wire0_rx,
+            &out_wire1_tx, &in_wire1_rx,
+        );
     });
 
     thread::spawn(move || {
@@ -80,7 +85,11 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("bob", &in_cell_rx);
         });
-        start_node(67890, &in_cell_tx, &out_cell_rx, &in_wire_tx, &out_wire_rx);
+        start_2port(67890,
+            &in_cell_tx, &out_cell_rx,
+            &in_wire0_tx, &out_wire0_rx,
+            &in_wire1_tx, &out_wire1_rx,
+        );
     });
 
     // fail-safe exit after timeout
@@ -162,10 +171,10 @@ fn live_ait(if_name: &str) {
         monitor_node_out(&out_cell_tx);
     });
     let nonce = rand::thread_rng().gen();
-    start_node(nonce, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
+    start_1port(nonce, &in_cell_tx, &out_cell_rx, &out_wire_tx, &in_wire_rx);
 }
 
-fn start_node(
+fn start_1port(
     nonce: u32,
     cell_tx: &Sender<Payload>,
     cell_rx: &Receiver<Payload>,
@@ -184,6 +193,43 @@ fn start_node(
     let port = Port::create(&link);
 
     let hub = Hub::create(&[port.clone()]);
+
+    let cell = Cell::create(&hub, &cell_tx, &cell_rx);
+    cell.send(CellEvent::new_hub_to_cell_read()); // Hub ready to receive
+    hub.send(HubEvent::new_cell_to_hub_read(&cell)); // Cell ready to receive
+
+    loop {
+        // FIXME: there is no dispatch loop,
+        // but we have to keep this thread alive
+        // to avoid killing the actor threads
+    }
+}
+
+fn start_2port(
+    nonce: u32,
+    cell_tx: &Sender<Payload>,
+    cell_rx: &Receiver<Payload>,
+    wire0_tx: &Sender<Frame>,
+    wire0_rx: &Receiver<Frame>,
+    wire1_tx: &Sender<Frame>,
+    wire1_rx: &Receiver<Frame>,
+) {
+    let wire0 = Wire::create(&wire0_tx, &wire0_rx);
+    /*
+    let wire = FaultyWire::create(&wire0_tx, &wire0_rx, "Three");
+    */
+    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th packet
+    let wire1 = Wire::create(&wire1_tx, &wire1_rx);
+
+    let link0 = Link::create(&wire0, nonce);
+    wire0.send(WireEvent::new_listen(&link0)); // start listening on Wire
+    let link1 = Link::create(&wire1, nonce);
+    wire1.send(WireEvent::new_listen(&link1)); // start listening on Wire
+
+    let port0 = Port::create(&link0);
+    let port1 = Port::create(&link1);
+
+    let hub = Hub::create(&[port0.clone(), port1.clone()]);
 
     let cell = Cell::create(&hub, &cell_tx, &cell_rx);
     cell.send(CellEvent::new_hub_to_cell_read()); // Hub ready to receive
