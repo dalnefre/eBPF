@@ -78,6 +78,7 @@ pub struct Hub {
     cell_out: CellOut,
     port_in: Vec<PortIn>,
     port_out: Vec<PortOut>,
+    route_port: usize, // outbound port for all trees
 }
 impl Hub {
     pub fn create(port_set: &[Cap<PortEvent>]) -> Cap<HubEvent> {
@@ -111,6 +112,7 @@ impl Hub {
             cell_out,
             port_in,
             port_out,
+            route_port: 0,
         });
         hub.send(HubEvent::new_init(&hub));
         for port in port_set {
@@ -145,7 +147,14 @@ impl Actor for Hub {
                 if let Some(myself) = &self.myself {
                     println!("Hub::Failover[{}] port={} info={:?}", n, cust, info);
                     if info.port_state.link_state == LinkState::Stop {
-                        cust.send(PortEvent::new_start(&myself));
+                        let mut m = n + 1;
+                        if m >= self.ports.len() { m = 0; } // wrap-around fail-over port numbers
+                        println!("Hub::Failover reroute from Port({}) to Port({})", n, m);
+                        self.route_port = m;
+                        if n == m {
+                            // FIXME: temporary special-case for 1-port hubs
+                            cust.send(PortEvent::new_start(&myself));
+                        }
                     }
                 }
             }
@@ -224,7 +233,7 @@ impl Hub {
             Route::Cell => {
                 let routes = &mut self.cell_out.send_to;
                 assert!(routes.is_empty()); // there shouldn't be any left-over routes
-                routes.push(Route::Port(0)); // all Cell tokens route to Port(0)
+                routes.push(Route::Port(self.route_port)); // all Cell tokens route to same Port
             }
             Route::Port(n) => {
                 let routes = &mut self.port_in[n].send_to;
