@@ -99,13 +99,14 @@ impl Actor for Pollster {
                 if self.pending == 0 {
                     if let Some(hub) = &self.hub {
                         self.poll
-                            .iter()
+                            .iter_mut()
                             .filter(|(_port, poll)| poll.idle > 3)
-                            .for_each(|(port, _poll)| {
+                            .for_each(|(port, poll)| {
                                 // attempt to stop the dead port
                                 port.send(PortEvent::new_stop(&hub));
                                 // attempt to re-start the dead port
                                 //port.send(PortEvent::new_start(hub));
+                                poll.idle = 0; // reset idle counter
                             });
                     }
                     self.hub = None;

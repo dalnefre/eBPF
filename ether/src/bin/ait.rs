@@ -181,11 +181,11 @@ fn start_1port(
     wire_tx: &Sender<Frame>,
     wire_rx: &Receiver<Frame>,
 ) {
-    //let wire = Wire::create(&wire_tx, &wire_rx);
+    let wire = Wire::create(&wire_tx, &wire_rx);
     /*
     let wire = FaultyWire::create(&wire_tx, &wire_rx, "Three");
     */
-    let wire = FaultyWire::create(&wire_tx, &wire_rx, 17); // drop 17th packet
+    //let wire = FaultyWire::create(&wire_tx, &wire_rx, 17); // drop 17th packet
 
     let link = Link::create(&wire, nonce);
     wire.send(WireEvent::new_listen(&link)); // start listening on Wire
@@ -214,11 +214,11 @@ fn start_2port(
     wire1_tx: &Sender<Frame>,
     wire1_rx: &Receiver<Frame>,
 ) {
-    let wire0 = Wire::create(&wire0_tx, &wire0_rx);
+    //let wire0 = Wire::create(&wire0_tx, &wire0_rx);
     /*
     let wire = FaultyWire::create(&wire0_tx, &wire0_rx, "Three");
     */
-    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th packet
+    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th packet
     let wire1 = Wire::create(&wire1_tx, &wire1_rx);
 
     let link0 = Link::create(&wire0, nonce);
