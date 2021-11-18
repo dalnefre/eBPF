@@ -128,6 +128,7 @@ impl Actor for Port {
                         None => {
                             self.hub = Some(cust.clone());
                             self.link.send(LinkEvent::new_start(&myself));
+                            myself.send(PortEvent::new_hub_to_port_read(&cust)); // Port ready to receive
                         }
                         Some(_cust) => panic!("Only one start/stop allowed"),
                     }
@@ -152,6 +153,11 @@ impl Actor for Port {
                         Some(cust) => {
                             cust.send(HubEvent::new_failover(&myself, &info));
                             self.hub = None;
+                            if info.port_state.link_state == LinkState::Stop {
+                                // clear pending reader/writer on Stop
+                                self.reader = None;
+                                self.writer = None;
+                            }
                         }
                         None => {
                             println!("Port::Failover no hub registered");

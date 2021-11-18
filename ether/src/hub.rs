@@ -117,7 +117,7 @@ impl Hub {
         hub.send(HubEvent::new_init(&hub));
         for port in port_set {
             port.send(PortEvent::new_start(&hub)); // attempt to start Port
-            port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
+            //port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
         }
         let pollster = Pollster::create(&ports); // create link-failure detector
         // periodically poll ports for liveness
@@ -143,17 +143,37 @@ impl Actor for Hub {
             },
             HubEvent::Failover(cust, info) => {
                 let n = self.port_to_port_num(&cust);
-                //let myself = &self.myself.expect("Hub::myself not set!"); // cannot move out of `self.myself`...
+                //let myself = self.myself.as_ref().expect("Hub::myself not set!");
                 if let Some(myself) = &self.myself {
                     println!("Hub{}::Failover[{}] port={} info={:?}", myself, n, cust, info);
                     if info.port_state.link_state == LinkState::Stop {
-                        let mut m = n + 1;
-                        if m >= self.ports.len() { m = 0; } // wrap-around fail-over port numbers
+                        let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
                         println!("Hub{}::Failover REROUTE from Port({}) to Port({})", myself, n, m);
                         self.route_port = m;
-                        if n == m {
-                            // FIXME: temporary special-case for 1-port hubs
-                            cust.send(PortEvent::new_start(&myself));
+                        // re-route waiting token from cell
+                        let routes = &mut self.cell_out.send_to;
+                        for i in 0..routes.len() {
+                            match routes[i] {
+                                Route::Cell => {},
+                                Route::Port(p) => {
+                                    if p == n {
+                                        routes[i] = Route::Port(m);
+                                        println!("Hub{}::Failover rerouting cell-out from {} to {}", myself, n, m);
+                                    }
+                                },
+                            }
+                        }
+                        // attempt to restart stopped link
+                        cust.send(PortEvent::new_start(&myself));
+                        // re-send on the new port
+                        if let Some(port) = &self.port_out[m].reader {
+                            if let Some(payload) = &info.outbound {
+                                port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
+                                self.port_out[m].reader = None;
+                            }
+                            // else, there was no token to forward on fail-over
+                        } else {
+                            panic!("Hub::Failover new Port {} not ready!?", m);
                         }
                     }
                 }
@@ -323,4 +343,31 @@ impl Hub {
             }
         }
     }
+}
+
+/*
+ * Modular increment
+ * where `i` in [0, `m`).
+ * Returns (`i`+1) % `m`.
+ */
+pub fn mod_inc(i: usize, m: usize) -> usize {
+    //mod_add(i, 1, m)
+    let mut n = i + 1;
+    if n >= m {
+        n = 0;
+    };
+    n
+}
+
+/*
+ * Modular addition
+ * where `i` and `j` in [0, `m`).
+ * Returns (`i`+`j`) % `m`.
+ */
+pub fn mod_add(i: usize, j: usize, m: usize) -> usize {
+    let mut n = i + j;
+    while n >= m {
+        n -= m;
+    };
+    n
 }

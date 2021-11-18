@@ -223,6 +223,8 @@ impl Actor for Link {
                 cust.send(PortEvent::new_failover(&info));
             }
             LinkEvent::Stop(cust) => {
+                // FIXME: possible race if the Link gets activity (from the Wire)
+                //        before the Port tells the Link to Stop.
                 self.state = LinkState::Stop;
                 let state = PortState::new(&self.state, self.balance, self.sequence);
                 let info = FailoverInfo::new(
@@ -233,7 +235,9 @@ impl Actor for Link {
                 cust.send(PortEvent::new_failover(&info));
                 // reset link state after reporting fail-over info
                 self.balance = 0;
+                self.reader = None;
                 self.inbound = None;
+                self.writer = None;
                 self.outbound = None;
                 // FIXME: what should we do about self.reader and self.writer?
             }
