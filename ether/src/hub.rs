@@ -142,39 +142,37 @@ impl Actor for Hub {
                 Some(_) => panic!("Hub::myself already set"),
             },
             HubEvent::Failover(cust, info) => {
+                let myself = self.myself.as_ref().expect("Hub::myself not set!");
                 let n = self.port_to_port_num(&cust);
-                //let myself = self.myself.as_ref().expect("Hub::myself not set!");
-                if let Some(myself) = &self.myself {
-                    println!("Hub{}::Failover[{}] port={} info={:?}", myself, n, cust, info);
-                    if info.port_state.link_state == LinkState::Stop {
-                        let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
-                        println!("Hub{}::Failover REROUTE from Port({}) to Port({})", myself, n, m);
-                        self.route_port = m;
-                        // re-route waiting token from cell
-                        let routes = &mut self.cell_out.send_to;
-                        for i in 0..routes.len() {
-                            match routes[i] {
-                                Route::Cell => {},
-                                Route::Port(p) => {
-                                    if p == n {
-                                        routes[i] = Route::Port(m);
-                                        println!("Hub{}::Failover rerouting cell-out from {} to {}", myself, n, m);
-                                    }
-                                },
-                            }
+                println!("Hub{}::Failover[{}] port={} info={:?}", myself, n, cust, info);
+                if info.port_state.link_state == LinkState::Stop {
+                    let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
+                    println!("Hub{}::Failover REROUTE from Port({}) to Port({})", myself, n, m);
+                    self.route_port = m;
+                    // re-route waiting token from cell
+                    let routes = &mut self.cell_out.send_to;
+                    for i in 0..routes.len() {
+                        match routes[i] {
+                            Route::Cell => {},
+                            Route::Port(p) => {
+                                if p == n {
+                                    routes[i] = Route::Port(m);
+                                    println!("Hub{}::Failover rerouting cell-out from {} to {}", myself, n, m);
+                                }
+                            },
                         }
-                        // attempt to restart stopped link
-                        cust.send(PortEvent::new_start(&myself));
-                        // re-send on the new port
-                        if let Some(port) = &self.port_out[m].reader {
-                            if let Some(payload) = &info.outbound {
-                                port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
-                                self.port_out[m].reader = None;
-                            }
-                            // else, there was no token to forward on fail-over
-                        } else {
-                            panic!("Hub::Failover new Port {} not ready!?", m);
+                    }
+                    // attempt to restart stopped link
+                    cust.send(PortEvent::new_start(&myself));
+                    // re-send on the new port
+                    if let Some(port) = &self.port_out[m].reader {
+                        if let Some(payload) = &info.outbound {
+                            port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
+                            self.port_out[m].reader = None;
                         }
+                        // else, there was no token to forward on fail-over
+                    } else {
+                        panic!("Hub::Failover new Port {} not ready!?", m);
                     }
                 }
             }
@@ -237,7 +235,7 @@ impl Actor for Hub {
     }
 }
 impl Hub {
-    fn port_to_port_num(&mut self, port: &Cap<PortEvent>) -> usize {
+    fn port_to_port_num(&self, port: &Cap<PortEvent>) -> usize {
         self.ports
             .iter()
             .enumerate()
@@ -294,12 +292,35 @@ impl Hub {
         }
     }
     fn try_everyone(&mut self) {
-        if let Some(myself) = &self.myself {
-            // try sending from Cell
-            let cell_out = &mut self.cell_out;
-            if let Some(cell) = &cell_out.writer {
-                if let Some(payload) = &cell_out.payload {
-                    let routes = &mut cell_out.send_to;
+        let myself = self.myself.as_ref().expect("Hub::myself not set!");
+        // try sending from Cell
+        let cell_out = &mut self.cell_out;
+        if let Some(cell) = &cell_out.writer {
+            if let Some(payload) = &cell_out.payload {
+                let routes = &mut cell_out.send_to;
+                if !routes.is_empty() {
+                    Self::send_to_routes(
+                        &myself,
+                        &payload,
+                        routes,
+                        &mut self.cell_in,
+                        &mut self.port_out,
+                    );
+                } else {
+                    // no more routes
+                    cell.send(CellEvent::new_hub_to_cell_read()); // ack writer
+                    cell_out.writer = None;
+                    cell_out.payload = None;
+                }
+            }
+        }
+        // try sending from each Port
+        let mut from: usize = 0; // current port number
+        while from < self.ports.len() {
+            let port_in = &mut self.port_in[from];
+            if let Some(port) = &port_in.writer {
+                if let Some(payload) = &port_in.payload {
+                    let routes = &mut port_in.send_to;
                     if !routes.is_empty() {
                         Self::send_to_routes(
                             &myself,
@@ -310,37 +331,13 @@ impl Hub {
                         );
                     } else {
                         // no more routes
-                        cell.send(CellEvent::new_hub_to_cell_read()); // ack writer
-                        cell_out.writer = None;
-                        cell_out.payload = None;
+                        port.send(PortEvent::new_hub_to_port_read(&myself)); // ack writer
+                        port_in.writer = None;
+                        port_in.payload = None;
                     }
                 }
             }
-            // try sending from each Port
-            let mut from: usize = 0; // current port number
-            while from < self.ports.len() {
-                let port_in = &mut self.port_in[from];
-                if let Some(port) = &port_in.writer {
-                    if let Some(payload) = &port_in.payload {
-                        let routes = &mut port_in.send_to;
-                        if !routes.is_empty() {
-                            Self::send_to_routes(
-                                &myself,
-                                &payload,
-                                routes,
-                                &mut self.cell_in,
-                                &mut self.port_out,
-                            );
-                        } else {
-                            // no more routes
-                            port.send(PortEvent::new_hub_to_port_read(&myself)); // ack writer
-                            port_in.writer = None;
-                            port_in.payload = None;
-                        }
-                    }
-                }
-                from += 1; // next port
-            }
+            from += 1; // next port
         }
     }
 }
