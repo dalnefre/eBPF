@@ -122,121 +122,112 @@ impl Actor for Port {
                 Some(_) => panic!("Port::myself already set"),
             },
             PortEvent::Start(cust) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::Start cust={}", myself, cust);
-                    match &self.hub {
-                        None => {
-                            self.hub = Some(cust.clone());
-                            self.link.send(LinkEvent::new_start(&myself));
-                            myself.send(PortEvent::new_hub_to_port_read(&cust)); // Port ready to receive
-                        }
-                        Some(_cust) => panic!("Only one start/stop allowed"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::Start cust={}", myself, cust);
+                match &self.hub {
+                    None => {
+                        self.hub = Some(cust.clone());
+                        self.link.send(LinkEvent::new_start(&myself));
+                        myself.send(PortEvent::new_hub_to_port_read(&cust)); // Port ready to receive
                     }
+                    Some(_cust) => panic!("Only one start/stop allowed"),
                 }
             }
             PortEvent::Stop(cust) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::Stop cust={}", myself, cust);
-                    match &self.hub {
-                        None => {
-                            self.hub = Some(cust.clone());
-                            self.link.send(LinkEvent::new_stop(&myself));
-                        }
-                        Some(_cust) => panic!("Only one start/stop allowed"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::Stop cust={}", myself, cust);
+                match &self.hub {
+                    None => {
+                        self.hub = Some(cust.clone());
+                        self.link.send(LinkEvent::new_stop(&myself));
                     }
+                    Some(_cust) => panic!("Only one start/stop allowed"),
                 }
             }
             PortEvent::Failover(info) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::Failover {:?}", myself, info);
-                    match &self.hub {
-                        Some(cust) => {
-                            cust.send(HubEvent::new_failover(&myself, &info));
-                            self.hub = None;
-                            if info.port_state.link_state == LinkState::Stop {
-                                // clear pending reader/writer on Stop
-                                self.reader = None;
-                                self.writer = None;
-                            }
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::Failover {:?}", myself, info);
+                match &self.hub {
+                    Some(cust) => {
+                        cust.send(HubEvent::new_failover(&myself, &info));
+                        self.hub = None;
+                        if info.port_state.link_state == LinkState::Stop {
+                            // clear pending reader/writer on Stop
+                            self.reader = None;
+                            self.writer = None;
                         }
-                        None => {
-                            println!("Port::Failover no hub registered");
-                        }
+                    }
+                    None => {
+                        println!("Port::Failover no hub registered");
                     }
                 }
             }
             PortEvent::Poll(cust) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::Poll cust={}", myself, cust);
-                    match &self.pollster {
-                        None => {
-                            self.pollster = Some(cust.clone());
-                            self.link.send(LinkEvent::new_poll(&myself));
-                        }
-                        Some(_cust) => panic!("Only one poll allowed"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::Poll cust={}", myself, cust);
+                match &self.pollster {
+                    None => {
+                        self.pollster = Some(cust.clone());
+                        self.link.send(LinkEvent::new_poll(&myself));
                     }
+                    Some(_cust) => panic!("Only one poll allowed"),
                 }
             }
             PortEvent::PollReply(state) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::PollReply {:?}", myself, state);
-                    match &self.pollster {
-                        Some(cust) => {
-                            cust.send(PollsterEvent::new_port_status(&myself, &state));
-                            self.pollster = None;
-                        }
-                        None => {
-                            println!("Port::PollReply no Pollster registered");
-                        },
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::PollReply {:?}", myself, state);
+                match &self.pollster {
+                    Some(cust) => {
+                        cust.send(PollsterEvent::new_port_status(&myself, &state));
+                        self.pollster = None;
                     }
+                    None => {
+                        println!("Port::PollReply no Pollster registered");
+                    },
                 }
             }
             PortEvent::LinkToPortWrite(payload) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::LinkToPortWrite link={}", myself, self.link);
-                    match &self.reader {
-                        Some(hub) => {
-                            hub.send(HubEvent::new_port_to_hub_write(&myself, &payload));
-                            self.reader = None;
-                        }
-                        None => panic!("Reader (hub) not ready"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::LinkToPortWrite link={}", myself, self.link);
+                match &self.reader {
+                    Some(hub) => {
+                        hub.send(HubEvent::new_port_to_hub_write(&myself, &payload));
+                        self.reader = None;
                     }
+                    None => panic!("Reader (hub) not ready"),
                 }
             }
             PortEvent::LinkToPortRead => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::LinkToPortRead link={}", myself, self.link);
-                    match &self.writer {
-                        Some(hub) => {
-                            hub.send(HubEvent::new_port_to_hub_read(&myself));
-                            self.writer = None;
-                        }
-                        None => panic!("Writer (hub) not ready"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::LinkToPortRead link={}", myself, self.link);
+                match &self.writer {
+                    Some(hub) => {
+                        hub.send(HubEvent::new_port_to_hub_read(&myself));
+                        self.writer = None;
                     }
+                    None => panic!("Writer (hub) not ready"),
                 }
             }
             PortEvent::HubToPortWrite(cust, payload) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::HubToPortWrite hub={}", myself, cust);
-                    match &self.writer {
-                        None => {
-                            self.writer = Some(cust.clone());
-                            self.link.send(LinkEvent::new_write(&myself, &payload));
-                        }
-                        Some(_cust) => panic!("Only one Hub-to-Port writer allowed"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::HubToPortWrite hub={}", myself, cust);
+                match &self.writer {
+                    None => {
+                        self.writer = Some(cust.clone());
+                        self.link.send(LinkEvent::new_write(&myself, &payload));
                     }
+                    Some(_cust) => panic!("Only one Hub-to-Port writer allowed"),
                 }
             }
             PortEvent::HubToPortRead(cust) => {
-                if let Some(myself) = &self.myself {
-                    println!("Port{}::HubToPortRead hub={}", myself, cust);
-                    match &self.reader {
-                        None => {
-                            self.reader = Some(cust.clone());
-                            self.link.send(LinkEvent::new_read(&myself));
-                        }
-                        Some(_cust) => panic!("Only one Hub-to-Port reader allowed"),
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                //println!("Port{}::HubToPortRead hub={}", myself, cust);
+                match &self.reader {
+                    None => {
+                        self.reader = Some(cust.clone());
+                        self.link.send(LinkEvent::new_read(&myself));
                     }
+                    Some(_cust) => panic!("Only one Hub-to-Port reader allowed"),
                 }
             }
         }
