@@ -6,4 +6,5 @@ pub mod link;
 pub mod pollster;
 pub mod port;
 pub mod rendezvous;
+pub mod util;
 pub mod wire;
