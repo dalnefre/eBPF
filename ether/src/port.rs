@@ -128,7 +128,11 @@ impl Actor for Port {
                     None => {
                         self.hub = Some(cust.clone());
                         self.link.send(LinkEvent::new_start(&myself));
-                        myself.send(PortEvent::new_hub_to_port_read(&cust)); // Port ready to receive
+                        // Port ready to receive
+                        if self.reader.is_none() {
+                            self.reader = Some(cust.clone());
+                            self.link.send(LinkEvent::new_read(&myself));
+                        }
                     }
                     Some(_cust) => panic!("Only one start/stop allowed"),
                 }
@@ -148,10 +152,20 @@ impl Actor for Port {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 //println!("Port{}::Failover {:?}", myself, info);
                 match &self.hub {
-                    Some(cust) => {
-                        cust.send(HubEvent::new_failover(&myself, &info));
+                    Some(hub) => {
+                        hub.send(HubEvent::new_failover(&myself, &info));
                         self.hub = None;
                         if info.port_state.link_state == LinkState::Stop {
+                            // on surplus, release inbound token
+                            if info.port_state.ait_balance > 0 {
+                                if let Some(payload) = &info.inbound {
+                                    if let Some(cust) = &self.reader {
+                                        cust.send(HubEvent::new_port_to_hub_write(&myself, &payload));
+                                    } else {
+                                        println!("Port::Failover no reader for inbound release");
+                                    }
+                                }
+                            }
                             // clear pending reader/writer on Stop
                             self.reader = None;
                             self.writer = None;
@@ -227,7 +241,10 @@ impl Actor for Port {
                         self.reader = Some(cust.clone());
                         self.link.send(LinkEvent::new_read(&myself));
                     }
-                    Some(_cust) => panic!("Only one Hub-to-Port reader allowed"),
+                    //Some(_cust) => panic!("Only one Hub-to-Port reader allowed"),
+                    Some(_cust) => {
+                        println!("Port{}::HubToPortRead hub={} CONFLICT w/reader={}", myself, cust, _cust);
+                    },
                 }
             }
         }
