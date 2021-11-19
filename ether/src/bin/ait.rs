@@ -218,8 +218,10 @@ fn start_2port_hub(
     /*
     let wire = FaultyWire::create(&wire0_tx, &wire0_rx, "Three");
     */
-    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th frame
-    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 18); // drop 18th frame
+    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th frame (AIT 1)
+    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 18); // drop 18th frame (AIT 2)
+    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 19); // drop 19th frame (AIT 3)
+    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 20); // drop 20th frame (AIT 4)
     let wire1 = Wire::create(&wire1_tx, &wire1_rx);
 
     let link0 = Link::create(&wire0, nonce);
