@@ -9,7 +9,7 @@ pub enum PortEvent {
     Init(Cap<PortEvent>),                   // self-init on creation
     Start(Cap<HubEvent>),                   // start request
     Stop(Cap<HubEvent>),                    // stop request
-    Failover(FailoverInfo),                 // port status report
+    Status(PortStatus),                     // status report
     Poll(Cap<PollsterEvent>),               // poll for activity
     Activity(PortActivity),                 // activity report
     LinkToPortWrite(Payload),               // inbound token
@@ -27,8 +27,8 @@ impl PortEvent {
     pub fn new_stop(cust: &Cap<HubEvent>) -> PortEvent {
         PortEvent::Stop(cust.clone())
     }
-    pub fn new_failover(info: &FailoverInfo) -> PortEvent {
-        PortEvent::Failover(info.clone())
+    pub fn new_status(status: &PortStatus) -> PortEvent {
+        PortEvent::Status(status.clone())
     }
     pub fn new_poll(cust: &Cap<PollsterEvent>) -> PortEvent {
         PortEvent::Poll(cust.clone())
@@ -67,21 +67,19 @@ impl PortActivity {
 }
 
 #[derive(Debug, Clone)]
-pub struct FailoverInfo {
+pub struct PortStatus {
     pub activity: PortActivity,
-    //pub reader: Option<Cap<PortEvent>>,
     pub inbound: Option<Payload>,
-    //pub writer: Option<Cap<PortEvent>>,
     pub outbound: Option<Payload>,
 }
-impl FailoverInfo {
+impl PortStatus {
     pub fn new(
-        port_state: &PortActivity,
+        activity: &PortActivity,
         inbound: &Option<Payload>,
         outbound: &Option<Payload>,
-    ) -> FailoverInfo {
-        FailoverInfo {
-            activity: port_state.clone(),
+    ) -> PortStatus {
+        PortStatus {
+            activity: activity.clone(),
             inbound: inbound.clone(),
             outbound: outbound.clone(),
         }
@@ -148,21 +146,21 @@ impl Actor for Port {
                     Some(_cust) => panic!("Only one start/stop allowed"),
                 }
             }
-            PortEvent::Failover(info) => {
+            PortEvent::Status(status) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                //println!("Port{}::Failover {:?}", myself, info);
+                //println!("Port{}::Status {:?}", myself, info);
                 match &self.hub {
                     Some(hub) => {
-                        hub.send(HubEvent::new_failover(&myself, &info));
+                        hub.send(HubEvent::new_status(&myself, &status));
                         self.hub = None;
-                        if info.activity.link_state == LinkState::Stop {
+                        if status.activity.link_state == LinkState::Stop {
                             // on surplus, release inbound token
-                            if info.activity.ait_balance > 0 {
-                                if let Some(payload) = &info.inbound {
+                            if status.activity.ait_balance > 0 {
+                                if let Some(payload) = &status.inbound {
                                     if let Some(cust) = &self.reader {
                                         cust.send(HubEvent::new_port_to_hub_write(&myself, &payload));
                                     } else {
-                                        println!("Port::Failover no reader for inbound release");
+                                        println!("Port::Status no reader for inbound release");
                                     }
                                 }
                             }
@@ -172,7 +170,7 @@ impl Actor for Port {
                         }
                     }
                     None => {
-                        println!("Port::Failover no hub registered");
+                        println!("Port::Status no hub registered");
                     }
                 }
             }
@@ -187,12 +185,12 @@ impl Actor for Port {
                     Some(_cust) => panic!("Only one Poll allowed"),
                 }
             }
-            PortEvent::Activity(state) => {
+            PortEvent::Activity(activity) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 //println!("Port{}::Activity {:?}", myself, state);
                 match &self.pollster {
                     Some(cust) => {
-                        cust.send(PollsterEvent::new_port_status(&myself, &state));
+                        cust.send(PollsterEvent::new_port_status(&myself, &activity));
                         self.pollster = None;
                     }
                     None => {

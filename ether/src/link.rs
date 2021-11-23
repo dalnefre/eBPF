@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::{self, Frame, Payload};
-use crate::port::{PortEvent, PortActivity, FailoverInfo};
+use crate::port::{PortEvent, PortActivity, PortStatus};
 use crate::wire::WireEvent;
 use rand::Rng;
 
@@ -38,7 +38,7 @@ impl LinkEvent {
 pub enum LinkState {
     Stop, // link is disabled
     Init, // ready to become entangled
-    Run,  // entangled, but quiet
+    Run,  // entangled, no activity since last Poll
     Live, // entangled with recent activity
 }
 
@@ -214,32 +214,31 @@ impl Actor for Link {
                 let init = Frame::new_reset(self.nonce);
                 self.wire.send(WireEvent::new_frame(&init)); // send init/reset
                 self.state = LinkState::Init;
-                let state = PortActivity::new(&self.state, self.balance, self.sequence);
-                let info = FailoverInfo::new(
-                    &state,
+                let activity = PortActivity::new(&self.state, self.balance, self.sequence);
+                let status = PortStatus::new(
+                    &activity,
                     &self.inbound,
                     &self.outbound,
                 );
-                cust.send(PortEvent::new_failover(&info));
+                cust.send(PortEvent::new_status(&status));
             }
             LinkEvent::Stop(cust) => {
                 // FIXME: possible race if the Link gets activity (from the Wire)
                 //        before the Port tells the Link to Stop.
                 self.state = LinkState::Stop;
-                let state = PortActivity::new(&self.state, self.balance, self.sequence);
-                let info = FailoverInfo::new(
-                    &state,
+                let activity = PortActivity::new(&self.state, self.balance, self.sequence);
+                let status = PortStatus::new(
+                    &activity,
                     &self.inbound,
                     &self.outbound,
                 );
-                cust.send(PortEvent::new_failover(&info));
-                // reset link state after reporting fail-over info
+                cust.send(PortEvent::new_status(&status));
+                // reset link state after reporting status
                 self.balance = 0;
                 self.reader = None;
                 self.inbound = None;
                 self.writer = None;
                 self.outbound = None;
-                // FIXME: what should we do about self.reader and self.writer?
             }
             LinkEvent::Poll(cust) => {
                 let activity = PortActivity::new(&self.state, self.balance, self.sequence);

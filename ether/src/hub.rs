@@ -2,14 +2,14 @@ use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::Payload;
 use crate::link::LinkState;
-use crate::port::{FailoverInfo, PortEvent, PortActivity};
+use crate::port::{PortStatus, PortEvent, PortActivity};
 use crate::pollster::{Pollster, PollsterEvent};
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     Init(Cap<HubEvent>),
-    Failover(Cap<PortEvent>, FailoverInfo),
-    PortStatus(Cap<PortEvent>, PortActivity),
+    Status(Cap<PortEvent>, PortStatus),
+    Activity(Cap<PortEvent>, PortActivity),
     PortToHubWrite(Cap<PortEvent>, Payload),
     PortToHubRead(Cap<PortEvent>),
     CellToHubWrite(Cap<CellEvent>, Payload),
@@ -19,11 +19,11 @@ impl HubEvent {
     pub fn new_init(hub: &Cap<HubEvent>) -> HubEvent {
         HubEvent::Init(hub.clone())
     }
-    pub fn new_failover(port: &Cap<PortEvent>, info: &FailoverInfo) -> HubEvent {
-        HubEvent::Failover(port.clone(), info.clone())
+    pub fn new_status(port: &Cap<PortEvent>, status: &PortStatus) -> HubEvent {
+        HubEvent::Status(port.clone(), status.clone())
     }
-    pub fn new_port_status(port: &Cap<PortEvent>, state: &PortActivity) -> HubEvent {
-        HubEvent::PortStatus(port.clone(), state.clone())
+    pub fn new_activity(port: &Cap<PortEvent>, activity: &PortActivity) -> HubEvent {
+        HubEvent::Activity(port.clone(), activity.clone())
     }
     pub fn new_port_to_hub_write(port: &Cap<PortEvent>, payload: &Payload) -> HubEvent {
         HubEvent::PortToHubWrite(port.clone(), payload.clone())
@@ -78,7 +78,7 @@ pub struct Hub {
     cell_out: CellOut,
     port_in: Vec<PortIn>,
     port_out: Vec<PortOut>,
-    route_port: usize, // outbound port for all trees
+    route_port: usize, // outbound port # for all trees
 }
 impl Hub {
     pub fn create(port_set: &[Cap<PortEvent>]) -> Cap<HubEvent> {
@@ -120,7 +120,7 @@ impl Hub {
             //port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
         }
         let pollster = Pollster::create(&ports); // create link-failure detector
-        // periodically poll ports for liveness
+        // periodically poll ports for activity
         let cust = hub.clone(); // local copy moved into closure
         std::thread::spawn(move || {
             loop {
@@ -141,13 +141,13 @@ impl Actor for Hub {
                 None => self.myself = Some(myself.clone()),
                 Some(_) => panic!("Hub::myself already set"),
             },
-            HubEvent::Failover(cust, info) => {
+            HubEvent::Status(cust, status) => {
                 let myself = self.myself.as_ref().expect("Hub::myself not set!");
                 let n = self.port_to_port_num(&cust);
-                println!("Hub{}::Failover[{}] port={} info={:?}", myself, n, cust, info);
-                if info.activity.link_state == LinkState::Stop {
+                println!("Hub{}::Status[{}] port={} status={:?}", myself, n, cust, status);
+                if status.activity.link_state == LinkState::Stop {
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
-                    println!("Hub{}::Failover REROUTE from Port({}) to Port({})", myself, n, m);
+                    println!("Hub{}::Status REROUTE from Port({}) to Port({})", myself, n, m);
                     self.route_port = m;
                     // re-route waiting token from cell
                     let routes = &mut self.cell_out.send_to;
@@ -157,7 +157,7 @@ impl Actor for Hub {
                             Route::Port(p) => {
                                 if p == n {
                                     routes[i] = Route::Port(m);
-                                    println!("Hub{}::Failover rerouting cell-out from {} to {}", myself, n, m);
+                                    println!("Hub{}::Status rerouting cell-out from {} to {}", myself, n, m);
                                 }
                             },
                         }
@@ -169,21 +169,22 @@ impl Actor for Hub {
                     cust.send(PortEvent::new_start(&myself));
                     // re-send on the new port
                     if let Some(port) = &self.port_out[m].reader {
-                        if let Some(payload) = &info.outbound {
+                        if let Some(payload) = &status.outbound {
                             port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
                             self.port_out[m].reader = None;
                         }
                         // else, there was no token to forward on fail-over
                     } else {
-                        panic!("Hub::Failover new Port {} not ready!?", m);
+                        panic!("Hub::Status new Port {} not ready!?", m);
                     }
                 }
             }
-            HubEvent::PortStatus(cust, state) => {
+            HubEvent::Activity(cust, activity) => {
+                // FIXME: is this event ever used, or does it just go to the Pollster?
                 let n = self.port_to_port_num(&cust);
                 println!(
-                    "Hub::PortStatus[{}] port={} link_state={:?} ait_balance={}",
-                    n, cust, state.link_state, state.ait_balance
+                    "Hub::Activity[{}] port={} activity={:?}",
+                    n, cust, activity
                 );
             }
             HubEvent::PortToHubWrite(cust, payload) => {
