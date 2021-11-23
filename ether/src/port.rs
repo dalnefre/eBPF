@@ -6,15 +6,15 @@ use crate::pollster::PollsterEvent;
 
 #[derive(Debug, Clone)]
 pub enum PortEvent {
-    Init(Cap<PortEvent>),
-    Start(Cap<HubEvent>),
-    Stop(Cap<HubEvent>),
-    Failover(FailoverInfo),
-    Poll(Cap<PollsterEvent>),
-    PollReply(PortState),
-    LinkToPortWrite(Payload),               // inbound
+    Init(Cap<PortEvent>),                   // self-init on creation
+    Start(Cap<HubEvent>),                   // start request
+    Stop(Cap<HubEvent>),                    // stop request
+    Failover(FailoverInfo),                 // port status report
+    Poll(Cap<PollsterEvent>),               // poll for activity
+    Activity(PortActivity),                 // activity report
+    LinkToPortWrite(Payload),               // inbound token
     LinkToPortRead,                         // outbound-ready
-    HubToPortWrite(Cap<HubEvent>, Payload), // outbound
+    HubToPortWrite(Cap<HubEvent>, Payload), // outbound token
     HubToPortRead(Cap<HubEvent>),           // inbound-credit
 }
 impl PortEvent {
@@ -33,8 +33,8 @@ impl PortEvent {
     pub fn new_poll(cust: &Cap<PollsterEvent>) -> PortEvent {
         PortEvent::Poll(cust.clone())
     }
-    pub fn new_poll_reply(state: &PortState) -> PortEvent {
-        PortEvent::PollReply(state.clone())
+    pub fn new_activity(activity: &PortActivity) -> PortEvent {
+        PortEvent::Activity(activity.clone())
     }
     pub fn new_link_to_port_write(payload: &Payload) -> PortEvent {
         PortEvent::LinkToPortWrite(payload.clone())
@@ -51,14 +51,14 @@ impl PortEvent {
 }
 
 #[derive(Debug, Clone)]
-pub struct PortState {
+pub struct PortActivity {
     pub link_state: LinkState,
     pub ait_balance: isize,
     pub sequence: u16,
 }
-impl PortState {
-    pub fn new(link_state: &LinkState, ait_balance: isize, sequence: u16) -> PortState {
-        PortState {
+impl PortActivity {
+    pub fn new(link_state: &LinkState, ait_balance: isize, sequence: u16) -> PortActivity {
+        PortActivity {
             link_state: link_state.clone(),
             ait_balance,
             sequence,
@@ -68,7 +68,7 @@ impl PortState {
 
 #[derive(Debug, Clone)]
 pub struct FailoverInfo {
-    pub port_state: PortState,
+    pub activity: PortActivity,
     //pub reader: Option<Cap<PortEvent>>,
     pub inbound: Option<Payload>,
     //pub writer: Option<Cap<PortEvent>>,
@@ -76,12 +76,12 @@ pub struct FailoverInfo {
 }
 impl FailoverInfo {
     pub fn new(
-        port_state: &PortState,
+        port_state: &PortActivity,
         inbound: &Option<Payload>,
         outbound: &Option<Payload>,
     ) -> FailoverInfo {
         FailoverInfo {
-            port_state: port_state.clone(),
+            activity: port_state.clone(),
             inbound: inbound.clone(),
             outbound: outbound.clone(),
         }
@@ -155,9 +155,9 @@ impl Actor for Port {
                     Some(hub) => {
                         hub.send(HubEvent::new_failover(&myself, &info));
                         self.hub = None;
-                        if info.port_state.link_state == LinkState::Stop {
+                        if info.activity.link_state == LinkState::Stop {
                             // on surplus, release inbound token
-                            if info.port_state.ait_balance > 0 {
+                            if info.activity.ait_balance > 0 {
                                 if let Some(payload) = &info.inbound {
                                     if let Some(cust) = &self.reader {
                                         cust.send(HubEvent::new_port_to_hub_write(&myself, &payload));
@@ -184,19 +184,19 @@ impl Actor for Port {
                         self.pollster = Some(cust.clone());
                         self.link.send(LinkEvent::new_poll(&myself));
                     }
-                    Some(_cust) => panic!("Only one poll allowed"),
+                    Some(_cust) => panic!("Only one Poll allowed"),
                 }
             }
-            PortEvent::PollReply(state) => {
+            PortEvent::Activity(state) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                //println!("Port{}::PollReply {:?}", myself, state);
+                //println!("Port{}::Activity {:?}", myself, state);
                 match &self.pollster {
                     Some(cust) => {
                         cust.send(PollsterEvent::new_port_status(&myself, &state));
                         self.pollster = None;
                     }
                     None => {
-                        println!("Port::PollReply no Pollster registered");
+                        println!("Port::Activity no Pollster registered");
                     },
                 }
             }
@@ -241,9 +241,10 @@ impl Actor for Port {
                         self.reader = Some(cust.clone());
                         self.link.send(LinkEvent::new_read(&myself));
                     }
+                    // FIXME: we should not get overlapping reads, but we do on re-start...
                     //Some(_cust) => panic!("Only one Hub-to-Port reader allowed"),
                     Some(_cust) => {
-                        println!("Port{}::HubToPortRead hub={} CONFLICT w/reader={}", myself, cust, _cust);
+                        println!("Port{}::HubToPortRead hub={} CONFLICT? reader={}", myself, cust, _cust);
                     },
                 }
             }

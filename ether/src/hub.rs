@@ -2,14 +2,14 @@ use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::Payload;
 use crate::link::LinkState;
-use crate::port::{FailoverInfo, PortEvent, PortState};
+use crate::port::{FailoverInfo, PortEvent, PortActivity};
 use crate::pollster::{Pollster, PollsterEvent};
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     Init(Cap<HubEvent>),
     Failover(Cap<PortEvent>, FailoverInfo),
-    PortStatus(Cap<PortEvent>, PortState),
+    PortStatus(Cap<PortEvent>, PortActivity),
     PortToHubWrite(Cap<PortEvent>, Payload),
     PortToHubRead(Cap<PortEvent>),
     CellToHubWrite(Cap<CellEvent>, Payload),
@@ -22,7 +22,7 @@ impl HubEvent {
     pub fn new_failover(port: &Cap<PortEvent>, info: &FailoverInfo) -> HubEvent {
         HubEvent::Failover(port.clone(), info.clone())
     }
-    pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> HubEvent {
+    pub fn new_port_status(port: &Cap<PortEvent>, state: &PortActivity) -> HubEvent {
         HubEvent::PortStatus(port.clone(), state.clone())
     }
     pub fn new_port_to_hub_write(port: &Cap<PortEvent>, payload: &Payload) -> HubEvent {
@@ -145,7 +145,7 @@ impl Actor for Hub {
                 let myself = self.myself.as_ref().expect("Hub::myself not set!");
                 let n = self.port_to_port_num(&cust);
                 println!("Hub{}::Failover[{}] port={} info={:?}", myself, n, cust, info);
-                if info.port_state.link_state == LinkState::Stop {
+                if info.activity.link_state == LinkState::Stop {
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
                     println!("Hub{}::Failover REROUTE from Port({}) to Port({})", myself, n, m);
                     self.route_port = m;
@@ -163,6 +163,9 @@ impl Actor for Hub {
                         }
                     }
                     // attempt to restart stopped link
+                    // FIXME: we want to re-start the port,
+                    //        but it should only get a read-credit
+                    //        if port_in[n] is empty (the inbound token buffer)
                     cust.send(PortEvent::new_start(&myself));
                     // re-send on the new port
                     if let Some(port) = &self.port_out[m].reader {
@@ -179,7 +182,7 @@ impl Actor for Hub {
             HubEvent::PortStatus(cust, state) => {
                 let n = self.port_to_port_num(&cust);
                 println!(
-                    "Hub::PortStatus[{}] port={} link_state={:?}, ait_balance={}",
+                    "Hub::PortStatus[{}] port={} link_state={:?} ait_balance={}",
                     n, cust, state.link_state, state.ait_balance
                 );
             }

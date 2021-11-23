@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::{self, Frame, Payload};
-use crate::port::{PortEvent, PortState, FailoverInfo};
+use crate::port::{PortEvent, PortActivity, FailoverInfo};
 use crate::wire::WireEvent;
 use rand::Rng;
 
@@ -8,7 +8,7 @@ use rand::Rng;
 pub enum LinkEvent {
     Frame(Frame),                   // inbound frame received
     Start(Cap<PortEvent>),          // start link activity
-    Poll(Cap<PortEvent>),           // link status check
+    Poll(Cap<PortEvent>),           // link status/activity check
     Stop(Cap<PortEvent>),           // stop link activity
     Read(Cap<PortEvent>),           // reader ready (port-to-link)
     Write(Cap<PortEvent>, Payload), // writer full (port-to-link)
@@ -214,7 +214,7 @@ impl Actor for Link {
                 let init = Frame::new_reset(self.nonce);
                 self.wire.send(WireEvent::new_frame(&init)); // send init/reset
                 self.state = LinkState::Init;
-                let state = PortState::new(&self.state, self.balance, self.sequence);
+                let state = PortActivity::new(&self.state, self.balance, self.sequence);
                 let info = FailoverInfo::new(
                     &state,
                     &self.inbound,
@@ -226,7 +226,7 @@ impl Actor for Link {
                 // FIXME: possible race if the Link gets activity (from the Wire)
                 //        before the Port tells the Link to Stop.
                 self.state = LinkState::Stop;
-                let state = PortState::new(&self.state, self.balance, self.sequence);
+                let state = PortActivity::new(&self.state, self.balance, self.sequence);
                 let info = FailoverInfo::new(
                     &state,
                     &self.inbound,
@@ -242,10 +242,10 @@ impl Actor for Link {
                 // FIXME: what should we do about self.reader and self.writer?
             }
             LinkEvent::Poll(cust) => {
-                let state = PortState::new(&self.state, self.balance, self.sequence);
-                cust.send(PortEvent::new_poll_reply(&state));
+                let activity = PortActivity::new(&self.state, self.balance, self.sequence);
+                cust.send(PortEvent::new_activity(&activity));
                 if self.state == LinkState::Live {
-                    self.state = LinkState::Run; // clear Live status
+                    self.state = LinkState::Run; // On each Poll, Live -> Run
                 }
             }
             LinkEvent::Read(cust) => match &self.reader {

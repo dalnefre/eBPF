@@ -1,7 +1,7 @@
 use crate::actor::{self, Actor, Cap};
 use crate::hub::HubEvent;
 use crate::link::LinkState;
-use crate::port::{PortEvent, PortState};
+use crate::port::{PortEvent, PortActivity};
 
 use std::collections::HashMap;
 //use pretty_hex::pretty_hex;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 pub enum PollsterEvent {
     Init(Cap<PollsterEvent>),
     Poll(Cap<HubEvent>),
-    PortStatus(Cap<PortEvent>, PortState),
+    PortStatus(Cap<PortEvent>, PortActivity),
 }
 impl PollsterEvent {
     pub fn new_init(pollster: &Cap<PollsterEvent>) -> PollsterEvent {
@@ -19,7 +19,7 @@ impl PollsterEvent {
     pub fn new_poll(hub: &Cap<HubEvent>) -> PollsterEvent {
         PollsterEvent::Poll(hub.clone())
     }
-    pub fn new_port_status(port: &Cap<PortEvent>, state: &PortState) -> PollsterEvent {
+    pub fn new_port_status(port: &Cap<PortEvent>, state: &PortActivity) -> PollsterEvent {
         PollsterEvent::PortStatus(port.clone(), state.clone())
     }
 }

@@ -6,7 +6,7 @@ use ether::cell::CellEvent;
 use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
 use ether::link::{Link, LinkEvent};
-use ether::port::{Port, PortEvent, PortState};
+use ether::port::{Port, PortEvent, PortActivity};
 use ether::wire::{Wire, WireEvent};
 
 #[test]
@@ -315,11 +315,11 @@ fn exactly_once_in_order_ait_cell_to_cell() {
 fn detect_link_failure_by_harvesting_events() {
     #[derive(Debug, Clone)]
     pub enum LogEvent {
-        PortStatus(PortState),
+        PortStatus(PortActivity),
         UnexpectedEvent,
     }
     impl LogEvent {
-        pub fn new_port_status(state: &PortState) -> LogEvent {
+        pub fn new_port_status(state: &PortActivity) -> LogEvent {
             LogEvent::PortStatus(state.clone())
         }
         pub fn new_unexpected_event() -> LogEvent {
@@ -355,7 +355,7 @@ fn detect_link_failure_by_harvesting_events() {
 
         fn on_event(&mut self, event: Self::Event) {
             match &event {
-                PortEvent::PollReply(state) => {
+                PortEvent::Activity(state) => {
                     //println!("Port::LinkStatus state={:?}", state);
                     self.log.send(LogEvent::new_port_status(state));
                 }
