@@ -23,6 +23,6 @@ pub fn mod_add(i: usize, j: usize, m: usize) -> usize {
     let mut n = i + j;
     while n >= m {
         n -= m;
-    };
+    }
     n
 }

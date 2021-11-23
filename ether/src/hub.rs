@@ -2,8 +2,8 @@ use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::Payload;
 use crate::link::LinkState;
-use crate::port::{PortStatus, PortEvent, PortActivity};
 use crate::pollster::{Pollster, PollsterEvent};
+use crate::port::{PortActivity, PortEvent, PortStatus};
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
@@ -122,11 +122,9 @@ impl Hub {
         let pollster = Pollster::create(&ports); // create link-failure detector
         // periodically poll ports for activity
         let cust = hub.clone(); // local copy moved into closure
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(core::time::Duration::from_millis(500));
-                pollster.send(PollsterEvent::new_poll(&cust));
-            }
+        std::thread::spawn(move || loop {
+            std::thread::sleep(core::time::Duration::from_millis(500));
+            pollster.send(PollsterEvent::new_poll(&cust));
         });
         // return Hub capability
         hub
@@ -144,22 +142,31 @@ impl Actor for Hub {
             HubEvent::Status(cust, status) => {
                 let myself = self.myself.as_ref().expect("Hub::myself not set!");
                 let n = self.port_to_port_num(&cust);
-                println!("Hub{}::Status[{}] port={} status={:?}", myself, n, cust, status);
+                println!(
+                    "Hub{}::Status[{}] port={} status={:?}",
+                    myself, n, cust, status
+                );
                 if status.activity.link_state == LinkState::Stop {
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
-                    println!("Hub{}::Status REROUTE from Port({}) to Port({})", myself, n, m);
+                    println!(
+                        "Hub{}::Status REROUTE from Port({}) to Port({})",
+                        myself, n, m
+                    );
                     self.route_port = m;
                     // re-route waiting token from cell
                     let routes = &mut self.cell_out.send_to;
                     for i in 0..routes.len() {
                         match routes[i] {
-                            Route::Cell => {},
+                            Route::Cell => {}
                             Route::Port(p) => {
                                 if p == n {
                                     routes[i] = Route::Port(m);
-                                    println!("Hub{}::Status rerouting cell-out from {} to {}", myself, n, m);
+                                    println!(
+                                        "Hub{}::Status rerouting cell-out from {} to {}",
+                                        myself, n, m
+                                    );
                                 }
-                            },
+                            }
                         }
                     }
                     // attempt to restart stopped link
@@ -182,10 +189,7 @@ impl Actor for Hub {
             HubEvent::Activity(cust, activity) => {
                 // FIXME: is this event ever used, or does it just go to the Pollster?
                 let n = self.port_to_port_num(&cust);
-                println!(
-                    "Hub::Activity[{}] port={} activity={:?}",
-                    n, cust, activity
-                );
+                println!("Hub::Activity[{}] port={} activity={:?}", n, cust, activity);
             }
             HubEvent::PortToHubWrite(cust, payload) => {
                 println!("Hub::PortToHubWrite port={}", cust);

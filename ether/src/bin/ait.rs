@@ -13,7 +13,7 @@ use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
 use ether::link::Link;
 use ether::port::Port;
-use ether::wire::{Wire, FaultyWire, WireEvent};
+use ether::wire::{FaultyWire, Wire, WireEvent};
 
 fn insert_payload(tx: &Sender<Payload>, s: &str) {
     assert!(s.len() <= frame::PAYLOAD_SIZE);
@@ -67,10 +67,14 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("alice", &in_cell_rx);
         });
-        start_2port_hub(12345,
-            &in_cell_tx, &out_cell_rx,
-            &out_wire0_tx, &in_wire0_rx,
-            &out_wire1_tx, &in_wire1_rx,
+        start_2port_hub(
+            12345,
+            &in_cell_tx,
+            &out_cell_rx,
+            &out_wire0_tx,
+            &in_wire0_rx,
+            &out_wire1_tx,
+            &in_wire1_rx,
         );
     });
 
@@ -85,10 +89,14 @@ fn sim_ait() {
         thread::spawn(move || {
             monitor_node_in("bob", &in_cell_rx);
         });
-        start_2port_hub(67890,
-            &in_cell_tx, &out_cell_rx,
-            &in_wire0_tx, &out_wire0_rx,
-            &in_wire1_tx, &out_wire1_rx,
+        start_2port_hub(
+            67890,
+            &in_cell_tx,
+            &out_cell_rx,
+            &in_wire0_tx,
+            &out_wire0_rx,
+            &in_wire1_tx,
+            &out_wire1_rx,
         );
     });
 

@@ -158,7 +158,9 @@ impl Actor for Port {
                             if status.activity.ait_balance > 0 {
                                 if let Some(payload) = &status.inbound {
                                     if let Some(cust) = &self.reader {
-                                        cust.send(HubEvent::new_port_to_hub_write(&myself, &payload));
+                                        cust.send(HubEvent::new_port_to_hub_write(
+                                            &myself, &payload,
+                                        ));
                                     } else {
                                         println!("Port::Status no reader for inbound release");
                                     }
@@ -195,7 +197,7 @@ impl Actor for Port {
                     }
                     None => {
                         println!("Port::Activity no Pollster registered");
-                    },
+                    }
                 }
             }
             PortEvent::LinkToPortWrite(payload) => {
@@ -242,8 +244,11 @@ impl Actor for Port {
                     // FIXME: we should not get overlapping reads, but we do on re-start...
                     //Some(_cust) => panic!("Only one Hub-to-Port reader allowed"),
                     Some(_cust) => {
-                        println!("Port{}::HubToPortRead hub={} CONFLICT? reader={}", myself, cust, _cust);
-                    },
+                        println!(
+                            "Port{}::HubToPortRead hub={} CONFLICT? reader={}",
+                            myself, cust, _cust
+                        );
+                    }
                 }
             }
         }

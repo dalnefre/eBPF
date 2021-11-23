@@ -6,9 +6,9 @@ use std::marker::Send;
 //use std::sync::mpsc::{channel, Sender};
 use std::thread;
 //use tokio::task;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::hash::{Hash, Hasher};
 use std::fmt::{self, Display};
+use std::hash::{Hash, Hasher};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone)]
 pub struct Cap<Event> {

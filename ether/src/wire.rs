@@ -100,11 +100,13 @@ impl Actor for FaultyWire {
                 */
                 if let Some(filter) = self.filter {
                     if filter == frame.get_sequence() {
-                        println!("Wire::outbound #{} ({},{}) FILTERED {}",
+                        println!(
+                            "Wire::outbound #{} ({},{}) FILTERED {}",
                             frame.get_sequence(),
                             frame.get_i_state(),
                             frame.get_u_state(),
-                            pretty_hex(&frame.data));
+                            pretty_hex(&frame.data)
+                        );
                         /*
                         self.filter = [0_u8; frame::PAYLOAD_SIZE]; // reset filter
                         */

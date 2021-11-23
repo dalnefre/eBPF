@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::frame::{self, Frame, Payload};
-use crate::port::{PortEvent, PortActivity, PortStatus};
+use crate::port::{PortActivity, PortEvent, PortStatus};
 use crate::wire::WireEvent;
 use rand::Rng;
 
@@ -215,11 +215,7 @@ impl Actor for Link {
                 self.wire.send(WireEvent::new_frame(&init)); // send init/reset
                 self.state = LinkState::Init;
                 let activity = PortActivity::new(&self.state, self.balance, self.sequence);
-                let status = PortStatus::new(
-                    &activity,
-                    &self.inbound,
-                    &self.outbound,
-                );
+                let status = PortStatus::new(&activity, &self.inbound, &self.outbound);
                 cust.send(PortEvent::new_status(&status));
             }
             LinkEvent::Stop(cust) => {
@@ -227,11 +223,7 @@ impl Actor for Link {
                 //        before the Port tells the Link to Stop.
                 self.state = LinkState::Stop;
                 let activity = PortActivity::new(&self.state, self.balance, self.sequence);
-                let status = PortStatus::new(
-                    &activity,
-                    &self.inbound,
-                    &self.outbound,
-                );
+                let status = PortStatus::new(&activity, &self.inbound, &self.outbound);
                 cust.send(PortEvent::new_status(&status));
                 // reset link state after reporting status
                 self.balance = 0;

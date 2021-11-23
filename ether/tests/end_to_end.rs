@@ -6,7 +6,7 @@ use ether::cell::CellEvent;
 use ether::frame::{self, Frame, Payload, TreeId};
 use ether::hub::{Hub, HubEvent};
 use ether::link::{Link, LinkEvent};
-use ether::port::{Port, PortEvent, PortActivity};
+use ether::port::{Port, PortActivity, PortEvent};
 use ether::wire::{Wire, WireEvent};
 
 #[test]
@@ -50,7 +50,7 @@ fn exactly_once_in_order_ait_port_to_port() {
                     PortEvent::Init(myself) => match &self.myself {
                         None => {
                             self.myself = Some(myself.clone());
-                        },
+                        }
                         Some(_) => panic!("Port::port already set"),
                     },
                     PortEvent::LinkToPortWrite(payload) => {
@@ -75,13 +75,13 @@ fn exactly_once_in_order_ait_port_to_port() {
                     }
                     PortEvent::HubToPortWrite(cust, payload) => {
                         println!("Port::HubToPortWrite cust={:?} payload={:?}", cust, payload);
-                    },
+                    }
                     PortEvent::HubToPortRead(cust) => {
                         println!("Port::HubToPortRead cust={:?}", cust);
-                    },
+                    }
                     _ => {
                         println!("Port::on_event {:?}", port_event);
-                    },
+                    }
                 },
                 PortMockEvent::Ctrl(_verify_event) => {
                     println!("VERIFYING...");
@@ -208,7 +208,7 @@ fn exactly_once_in_order_ait_cell_to_cell() {
                     CellEvent::Init(myself) => match &self.myself {
                         None => {
                             self.myself = Some(myself.clone());
-                        },
+                        }
                         Some(_) => panic!("Cell::cell already set"),
                     },
                     CellEvent::HubToCellWrite(payload) => {
@@ -219,7 +219,7 @@ fn exactly_once_in_order_ait_cell_to_cell() {
                             }
                             self.hub.send(HubEvent::new_cell_to_hub_read(&myself));
                         }
-                    },
+                    }
                     CellEvent::HubToCellRead => {
                         if let Some(myself) = &self.myself {
                             if self.n_send < N_END {
@@ -227,10 +227,11 @@ fn exactly_once_in_order_ait_cell_to_cell() {
                                 let tree_id = TreeId::new(144); // FIXME: fake TreeId
                                 let data = [self.n_send; frame::PAYLOAD_SIZE];
                                 let payload = Payload::new(&tree_id, &data);
-                                self.hub.send(HubEvent::new_cell_to_hub_write(&myself, &payload));
+                                self.hub
+                                    .send(HubEvent::new_cell_to_hub_write(&myself, &payload));
                             }
                         }
-                    },
+                    }
                 },
                 CellMockEvent::Ctrl(_verify_event) => {
                     println!("VERIFYING...");

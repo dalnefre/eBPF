@@ -1,7 +1,7 @@
 use crate::actor::{self, Actor, Cap};
 use crate::hub::HubEvent;
 use crate::link::LinkState;
-use crate::port::{PortEvent, PortActivity};
+use crate::port::{PortActivity, PortEvent};
 
 use std::collections::HashMap;
 //use pretty_hex::pretty_hex;

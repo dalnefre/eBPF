@@ -55,7 +55,7 @@ impl Actor for Cell {
             CellEvent::Init(myself) => match &self.myself {
                 None => {
                     self.myself = Some(myself.clone()); // set self-reference
-                },
+                }
                 Some(_) => panic!("Cell::myself already set"),
             },
             CellEvent::HubToCellWrite(payload) => {
