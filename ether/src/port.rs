@@ -16,6 +16,7 @@ pub enum PortEvent {
     LinkToPortRead,                         // outbound-ready
     HubToPortWrite(Cap<HubEvent>, Payload), // outbound token
     HubToPortRead(Cap<HubEvent>),           // inbound-credit
+    Control(Cap<HubEvent>, Payload),        // control message from hub
 }
 impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
@@ -47,6 +48,9 @@ impl PortEvent {
     }
     pub fn new_hub_to_port_read(hub: &Cap<HubEvent>) -> PortEvent {
         PortEvent::HubToPortRead(hub.clone())
+    }
+    pub fn new_control(hub: &Cap<HubEvent>, payload: &Payload) -> PortEvent {
+        PortEvent::Control(hub.clone(), payload.clone())
     }
 }
 
@@ -93,6 +97,8 @@ pub struct Port {
     pollster: Option<Cap<PollsterEvent>>,
     reader: Option<Cap<HubEvent>>,
     writer: Option<Cap<HubEvent>>,
+    ctrl_hub: Option<Cap<HubEvent>>,
+    ctrl_msg: Option<Payload>,
 }
 impl Port {
     pub fn create(link: &Cap<LinkEvent>) -> Cap<PortEvent> {
@@ -103,6 +109,8 @@ impl Port {
             pollster: None,
             reader: None,
             writer: None,
+            ctrl_hub: None,
+            ctrl_msg: None,
         });
         port.send(PortEvent::new_init(&port));
         port
@@ -214,12 +222,18 @@ impl Actor for Port {
             PortEvent::LinkToPortRead => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 //println!("Port{}::LinkToPortRead link={}", myself, self.link);
-                match &self.writer {
-                    Some(hub) => {
-                        hub.send(HubEvent::new_port_to_hub_read(&myself));
-                        self.writer = None;
+                if let Some(_hub) = &self.ctrl_hub {
+                    if let Some(payload) = &self.ctrl_msg {
+                        self.link.send(LinkEvent::new_write(&myself, &payload));
+                        self.ctrl_msg = None;
+                    } else {
+                        self.ctrl_hub = None;
                     }
-                    None => panic!("Writer (hub) not ready"),
+                } else if let Some(hub) = &self.writer {
+                    hub.send(HubEvent::new_port_to_hub_read(&myself));
+                    self.writer = None;
+                } else {
+                    panic!("Writer (hub) not ready");
                 }
             }
             PortEvent::HubToPortWrite(cust, payload) => {
@@ -249,6 +263,22 @@ impl Actor for Port {
                             myself, cust, _cust
                         );
                     }
+                }
+            }
+            PortEvent::Control(cust, payload) => {
+                let myself = self.myself.as_ref().expect("Port::myself not set!");
+                println!("Port{}::Control hub={} payload={:?}", myself, cust, payload);
+                assert!(payload.ctrl); // control message expected
+                match &self.ctrl_hub {
+                    None => {
+                        self.ctrl_hub = Some(cust.clone());
+                        if self.writer.is_none() {
+                            self.link.send(LinkEvent::new_write(&myself, &payload));
+                        } else {
+                            self.ctrl_msg = Some(payload.clone());
+                        }
+                    },
+                    Some(hub) => panic!("Port{}::Control OVERLAP! hub={}", myself, hub),
                 }
             }
         }

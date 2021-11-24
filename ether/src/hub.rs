@@ -1,6 +1,6 @@
 use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
-use crate::frame::Payload;
+use crate::frame::{self, Payload, TreeId};
 use crate::link::LinkState;
 use crate::pollster::{Pollster, PollsterEvent};
 use crate::port::{PortActivity, PortEvent, PortStatus};
@@ -153,6 +153,16 @@ impl Actor for Hub {
                         myself, n, m
                     );
                     self.route_port = m;
+                    // send failover control message
+                    let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
+                    let msg = Payload::ctrl_msg(
+                        &id,
+                        frame::FAILOVER_R,
+                        status.activity.ait_balance as u8,
+                        status.activity.sequence,
+                        0x44556677
+                    );
+                    self.ports[m].send(PortEvent::new_control(&myself, &msg));
                     // re-route waiting token from cell
                     let routes = &mut self.cell_out.send_to;
                     for i in 0..routes.len() {
@@ -169,7 +179,8 @@ impl Actor for Hub {
                             }
                         }
                     }
-                    // attempt to restart stopped link
+                    /* FIXME: re-start and re-send should occur in FAILOVER_D handling...
+                    // attempt to re-start stopped link
                     // FIXME: we want to re-start the port,
                     //        but it should only get a read-credit
                     //        if port_in[n] is empty (the inbound token buffer)
@@ -184,6 +195,7 @@ impl Actor for Hub {
                     } else {
                         panic!("Hub::Status new Port {} not ready!?", m);
                     }
+                    */
                 }
             }
             HubEvent::Activity(cust, activity) => {
@@ -193,16 +205,26 @@ impl Actor for Hub {
             }
             HubEvent::PortToHubWrite(cust, payload) => {
                 println!("Hub::PortToHubWrite port={}", cust);
-                let n = self.port_to_port_num(&cust);
-                let port_in = &mut self.port_in[n];
-                match &port_in.writer {
-                    None => {
-                        port_in.writer = Some(cust.clone());
-                        port_in.payload = Some(payload.clone());
-                        self.find_routes(Route::Port(n), &payload);
-                        self.try_everyone();
+                if payload.ctrl {
+                    let myself = self.myself.as_ref().expect("Hub::myself not set!");
+                    println!("Hub{}::Control port={} msg={:?}", myself, cust, payload);
+                    if payload.get_op() == frame::FAILOVER_R {
+                        let bal = payload.get_u8() as i8 as isize;
+                        let seq = payload.get_u16();
+                        println!("Hub{}::Control FAILOVER_R bal={} seq={}", myself, bal, seq);
                     }
-                    Some(_cust) => panic!("Only one Port-to-Hub writer allowed"),
+                } else {
+                    let n = self.port_to_port_num(&cust);
+                    let port_in = &mut self.port_in[n];
+                    match &port_in.writer {
+                        None => {
+                            port_in.writer = Some(cust.clone());
+                            port_in.payload = Some(payload.clone());
+                            self.find_routes(Route::Port(n), &payload);
+                            self.try_everyone();
+                        }
+                        Some(_cust) => panic!("Only one Port-to-Hub writer allowed"),
+                    }
                 }
             }
             HubEvent::PortToHubRead(cust) => {

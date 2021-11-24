@@ -58,7 +58,7 @@ pub const RTECK: u8 = 0x0B;
 pub const TACK: u8 = 0x0F;
 pub const CTRL: u8 = 0x80;
 
-pub const FAILOVER: u8 = 0x1E;
+pub const FAILOVER_R: u8 = 0x1E;
 pub const FAILOVER_D: u8 = 0xE1;
 
 #[derive(Debug, Clone)]
@@ -88,16 +88,24 @@ impl Payload {
         Payload { ctrl, id, data }
     }
     pub fn ctrl(id: &TreeId, data: &[u8]) -> Payload {
-        let ctrl = true;
-        let id = id.clone();
-        let data = data.try_into().expect("44 octet payload required");
-        Payload { ctrl, id, data }
+        let mut payload = Payload::new(&id, &data);
+        payload.ctrl = true;
+        payload
+    }
+    pub fn ctrl_msg(id: &TreeId, op: u8, b: u8, n: u16, w: u32) -> Payload {
+        let data = [0xFF_u8; PAYLOAD_SIZE];
+        let mut payload = Payload::ctrl(&id, &data);
+        payload.set_op(op);
+        payload.set_u8(b);
+        payload.set_u16(n);
+        payload.set_u32(w);
+        payload
     }
 
-    pub fn set_op_code(&mut self, op: u8) {
+    pub fn set_op(&mut self, op: u8) {
         self.data[42] = op;
     }
-    pub fn get_op_code(&self) -> u8 {
+    pub fn get_op(&self) -> u8 {
         self.data[42]
     }
 
