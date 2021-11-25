@@ -3,13 +3,12 @@ use crate::cell::CellEvent;
 use crate::frame::{self, Payload, TreeId};
 use crate::link::LinkState;
 use crate::pollster::{Pollster, PollsterEvent};
-use crate::port::{PortActivity, PortEvent, PortStatus};
+use crate::port::{PortEvent, PortStatus};
 
 #[derive(Debug, Clone)]
 pub enum HubEvent {
     Init(Cap<HubEvent>),
     Status(Cap<PortEvent>, PortStatus),
-    Activity(Cap<PortEvent>, PortActivity),
     PortToHubWrite(Cap<PortEvent>, Payload),
     PortToHubRead(Cap<PortEvent>),
     CellToHubWrite(Cap<CellEvent>, Payload),
@@ -21,9 +20,6 @@ impl HubEvent {
     }
     pub fn new_status(port: &Cap<PortEvent>, status: &PortStatus) -> HubEvent {
         HubEvent::Status(port.clone(), status.clone())
-    }
-    pub fn new_activity(port: &Cap<PortEvent>, activity: &PortActivity) -> HubEvent {
-        HubEvent::Activity(port.clone(), activity.clone())
     }
     pub fn new_port_to_hub_write(port: &Cap<PortEvent>, payload: &Payload) -> HubEvent {
         HubEvent::PortToHubWrite(port.clone(), payload.clone())
@@ -146,7 +142,8 @@ impl Actor for Hub {
                     "Hub{}::Status[{}] port={} status={:?}",
                     myself, n, cust, status
                 );
-                if status.activity.link_state == LinkState::Stop {
+                let activity = &status.activity;
+                if activity.link_state == LinkState::Stop {
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
                     println!(
                         "Hub{}::Status REROUTE from Port({}) to Port({})",
@@ -158,8 +155,8 @@ impl Actor for Hub {
                     let msg = Payload::ctrl_msg(
                         &id,
                         frame::FAILOVER_R,
-                        status.activity.ait_balance as u8,
-                        status.activity.sequence,
+                        activity.ait_balance as u8,
+                        activity.sequence,
                         0x44556677
                     );
                     self.ports[m].send(PortEvent::new_control(&myself, &msg));
@@ -198,13 +195,9 @@ impl Actor for Hub {
                     */
                 }
             }
-            HubEvent::Activity(cust, activity) => {
-                // FIXME: is this event ever used, or does it just go to the Pollster?
-                let n = self.port_to_port_num(&cust);
-                println!("Hub::Activity[{}] port={} activity={:?}", n, cust, activity);
-            }
             HubEvent::PortToHubWrite(cust, payload) => {
-                println!("Hub::PortToHubWrite port={}", cust);
+                let n = self.port_to_port_num(&cust);
+                println!("Hub::PortToHubWrite[{}] port={}", n, cust);
                 if payload.ctrl {
                     let myself = self.myself.as_ref().expect("Hub::myself not set!");
                     println!("Hub{}::Control port={} msg={:?}", myself, cust, payload);
@@ -214,7 +207,6 @@ impl Actor for Hub {
                         println!("Hub{}::Control FAILOVER_R bal={} seq={}", myself, bal, seq);
                     }
                 } else {
-                    let n = self.port_to_port_num(&cust);
                     let port_in = &mut self.port_in[n];
                     match &port_in.writer {
                         None => {
@@ -228,8 +220,8 @@ impl Actor for Hub {
                 }
             }
             HubEvent::PortToHubRead(cust) => {
-                println!("Hub::PortToHubRead port={}", cust);
                 let n = self.port_to_port_num(&cust);
+                println!("Hub::PortToHubRead[{}] port={}", n, cust);
                 let port_out = &mut self.port_out[n];
                 match &port_out.reader {
                     None => {
