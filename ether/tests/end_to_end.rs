@@ -47,12 +47,10 @@ fn exactly_once_in_order_ait_port_to_port() {
         fn on_event(&mut self, event: Self::Event) {
             match &event {
                 PortMockEvent::Mock(port_event) => match &port_event {
-                    PortEvent::Init(myself) => match &self.myself {
-                        None => {
-                            self.myself = Some(myself.clone());
-                        }
-                        Some(_) => panic!("Port::port already set"),
-                    },
+                    PortEvent::Init(myself, _parent) => {
+                        assert!(self.myself.is_none());
+                        self.myself = Some(myself.clone());
+                    }
                     PortEvent::LinkToPortWrite(payload) => {
                         if let Some(myself) = &self.myself {
                             self.n_recv += 1;
@@ -94,13 +92,23 @@ fn exactly_once_in_order_ait_port_to_port() {
         }
     }
 
+    struct DummyHub;
+    impl Actor for DummyHub {
+        type Event = HubEvent;
+
+        fn on_event(&mut self, _event: Self::Event) {
+            panic!("Unexpected event for DummyHub");
+        }
+    }
+
     struct PortMockFacet {
         mock: Cap<PortMockEvent>,
     }
     impl PortMockFacet {
         pub fn create(mock: &Cap<PortMockEvent>) -> Cap<PortEvent> {
             let port = actor::create(PortMockFacet { mock: mock.clone() });
-            port.send(PortEvent::new_init(&port));
+            let hub = actor::create(DummyHub);
+            port.send(PortEvent::new_init(&port, &hub));
             port
         }
     }

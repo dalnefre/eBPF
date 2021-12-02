@@ -112,6 +112,7 @@ impl Hub {
         });
         hub.send(HubEvent::new_init(&hub));
         for port in port_set {
+            port.send(PortEvent::new_init(&port, &hub)); // connect Port to Hub
             port.send(PortEvent::new_start(&hub)); // attempt to start Port
             //port.send(PortEvent::new_hub_to_port_read(&hub)); // Port ready to receive
         }

@@ -6,7 +6,7 @@ use crate::pollster::PollsterEvent;
 
 #[derive(Debug, Clone)]
 pub enum PortEvent {
-    Init(Cap<PortEvent>),                   // self-init on creation
+    Init(Cap<PortEvent>, Cap<HubEvent>),    // init from parent
     Start(Cap<HubEvent>),                   // start request
     Stop(Cap<HubEvent>),                    // stop request
     Status(PortStatus),                     // status report
@@ -19,8 +19,8 @@ pub enum PortEvent {
     Control(Cap<HubEvent>, Payload),        // control message from hub
 }
 impl PortEvent {
-    pub fn new_init(port: &Cap<PortEvent>) -> PortEvent {
-        PortEvent::Init(port.clone())
+    pub fn new_init(port: &Cap<PortEvent>, hub: &Cap<HubEvent>) -> PortEvent {
+        PortEvent::Init(port.clone(), hub.clone())
     }
     pub fn new_start(cust: &Cap<HubEvent>) -> PortEvent {
         PortEvent::Start(cust.clone())
@@ -92,8 +92,8 @@ impl PortStatus {
 
 pub struct Port {
     myself: Option<Cap<PortEvent>>,
-    link: Cap<LinkEvent>,
     hub: Option<Cap<HubEvent>>,
+    link: Cap<LinkEvent>,
     pollster: Option<Cap<PollsterEvent>>,
     reader: Option<Cap<HubEvent>>,
     writer: Option<Cap<HubEvent>>,
@@ -104,15 +104,15 @@ impl Port {
     pub fn create(link: &Cap<LinkEvent>) -> Cap<PortEvent> {
         let port = actor::create(Port {
             myself: None,
-            link: link.clone(),
             hub: None,
+            link: link.clone(),
             pollster: None,
             reader: None,
             writer: None,
             ctrl_hub: None,
             ctrl_msg: None,
         });
-        port.send(PortEvent::new_init(&port));
+        //port.send(PortEvent::new_init(&port)); // NOTE: this is done in Hub::create() now...
         port
     }
 }
@@ -121,67 +121,52 @@ impl Actor for Port {
 
     fn on_event(&mut self, event: Self::Event) {
         match &event {
-            PortEvent::Init(myself) => match &self.myself {
-                None => {
-                    self.myself = Some(myself.clone());
-                }
-                Some(_) => panic!("Port::myself already set"),
-            },
+            PortEvent::Init(myself, parent) => {
+                assert!(self.myself.is_none());
+                self.myself = Some(myself.clone());
+                assert!(self.hub.is_none());
+                self.hub = Some(parent.clone());
+            }
             PortEvent::Start(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 //println!("Port{}::Start cust={}", myself, cust);
-                match &self.hub {
-                    None => {
-                        self.hub = Some(cust.clone());
-                        self.link.send(LinkEvent::new_start(&myself));
-                        // Port ready to receive
-                        if self.reader.is_none() {
-                            self.reader = Some(cust.clone());
-                            self.link.send(LinkEvent::new_read(&myself));
-                        }
-                    }
-                    Some(_cust) => panic!("Only one start/stop allowed"),
+                let hub = self.hub.as_ref().expect("Port::hub not set!");
+                assert_eq!(hub, cust);
+                self.link.send(LinkEvent::new_start(&myself));
+                // Port ready to receive
+                if self.reader.is_none() {
+                    self.reader = Some(cust.clone());
+                    self.link.send(LinkEvent::new_read(&myself));
                 }
             }
             PortEvent::Stop(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 //println!("Port{}::Stop cust={}", myself, cust);
-                match &self.hub {
-                    None => {
-                        self.hub = Some(cust.clone());
-                        self.link.send(LinkEvent::new_stop(&myself));
-                    }
-                    Some(_cust) => panic!("Only one start/stop allowed"),
-                }
+                let hub = self.hub.as_ref().expect("Port::hub not set!");
+                assert_eq!(hub, cust);
+                self.link.send(LinkEvent::new_stop(&myself));
             }
             PortEvent::Status(status) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 //println!("Port{}::Status {:?}", myself, info);
-                match &self.hub {
-                    Some(hub) => {
-                        hub.send(HubEvent::new_status(&myself, &status));
-                        self.hub = None;
-                        if status.activity.link_state == LinkState::Stop {
-                            // on surplus, release inbound token
-                            if status.activity.ait_balance > 0 {
-                                if let Some(payload) = &status.inbound {
-                                    if let Some(cust) = &self.reader {
-                                        cust.send(HubEvent::new_port_to_hub_write(
-                                            &myself, &payload,
-                                        ));
-                                    } else {
-                                        println!("Port::Status no reader for inbound release");
-                                    }
-                                }
+                let hub = self.hub.as_ref().expect("Port::hub not set!");
+                hub.send(HubEvent::new_status(&myself, &status));
+                if status.activity.link_state == LinkState::Stop {
+                    // on surplus, release inbound token
+                    if status.activity.ait_balance > 0 {
+                        if let Some(payload) = &status.inbound {
+                            if let Some(cust) = &self.reader {
+                                cust.send(HubEvent::new_port_to_hub_write(
+                                    &myself, &payload,
+                                ));
+                            } else {
+                                println!("Port::Status no reader for inbound release");
                             }
-                            // clear pending reader/writer on Stop
-                            self.reader = None;
-                            self.writer = None;
                         }
                     }
-                    None => {
-                        println!("Port::Status no hub registered");
-                    }
+                    // clear pending reader/writer on Stop
+                    self.reader = None;
+                    self.writer = None;
                 }
             }
             PortEvent::Poll(cust) => {
