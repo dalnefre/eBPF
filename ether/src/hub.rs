@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use crate::actor::{self, Actor, Cap};
 use crate::cell::CellEvent;
 use crate::frame::{self, Payload, TreeId};
@@ -64,6 +66,7 @@ struct PortIn {
 struct PortOut {
     // Outbound to port
     reader: Option<Cap<PortEvent>>,
+    ctrl_msgs: VecDeque<Payload>,
 }
 
 // Multi-Port Hub (Node)
@@ -97,6 +100,7 @@ impl Hub {
             .iter()
             .map(|port| PortOut {
                 reader: Some(port.clone()),
+                ctrl_msgs: VecDeque::new(),
             })
             .collect();
         assert_eq!(ports.len(), port_in.len());
@@ -329,6 +333,16 @@ impl Hub {
     }
     fn try_everyone(&mut self) {
         let myself = self.myself.as_ref().expect("Hub::myself not set!");
+        // try sending control messages to each Port
+        let mut it = self.port_out.iter_mut();
+        while let Some(port_out) = it.next() {
+            if let Some(port) = &port_out.reader {
+                if let Some(payload) = &port_out.ctrl_msgs.pop_front() {
+                    port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
+                    port_out.reader = None;
+                }
+            }
+        }
         // try sending from Cell
         let cell_out = &mut self.cell_out;
         if let Some(cell) = &cell_out.writer {
