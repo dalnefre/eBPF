@@ -258,12 +258,16 @@ impl Actor for Port {
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 assert_eq!(hub, cust);
                 assert!(payload.ctrl); // control message expected
-                if self.writer.is_none() {
-                    // writer available, send immediately...
-                    self.link.send(LinkEvent::new_write(&myself, &payload));
-                } else {
-                    // no writer available, add to queue...
-                    self.ctrl_msgs.push_back(payload.clone());
+                match &self.writer {
+                    None => {
+                        // no write in progress, send immediately...
+                        self.writer = Some(cust.clone());
+                        self.link.send(LinkEvent::new_write(&myself, &payload));
+                    }
+                    Some(_cust) => {
+                        // write in progress, add to queue...
+                        self.ctrl_msgs.push_back(payload.clone());
+                    },
                 }
             }
         }
