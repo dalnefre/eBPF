@@ -201,10 +201,23 @@ impl Actor for Hub {
                 if payload.ctrl {
                     let myself = self.myself.as_ref().expect("Hub::myself not set!");
                     println!("Hub{}::Control port={} msg={:?}", myself, cust, payload);
+                    cust.send(PortEvent::new_hub_to_port_read(&myself)); // ack control msg
                     if payload.get_op() == frame::FAILOVER_R {
                         let bal = payload.get_u8() as i8 as isize;
                         let seq = payload.get_u16();
                         println!("Hub{}::Control FAILOVER_R bal={} seq={}", myself, bal, seq);
+                        // send failover done message
+                        let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
+                        let msg = Payload::ctrl_msg(
+                            &id,
+                            frame::FAILOVER_D,
+                            0x11, //activity.ait_balance as u8,
+                            0x2233, //activity.sequence,
+                            0x44556677
+                        );
+                        cust.send(PortEvent::new_control(&myself, &msg));
+                    } else if payload.get_op() == frame::FAILOVER_D {
+                        println!("Hub{}::Control FAILOVER_D ... do nothing?", myself);
                     }
                 } else {
                     let port_in = &mut self.port_in[n];

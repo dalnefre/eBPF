@@ -67,17 +67,15 @@ impl Actor for Pollster {
             },
             PollsterEvent::Poll(hub) => {
                 println!("Pollster::Poll hub={}", hub);
-                //let myself = &self.myself.expect("NO SELF!?"); // an alternative to avoid nesting...
-                if let Some(myself) = &self.myself {
-                    if self.hub.is_none() {
-                        self.hub = Some(hub.clone());
-                        self.pending = self.ports.len();
-                        for port in &self.ports {
-                            port.send(PortEvent::new_poll(&myself));
-                        }
-                    } else {
-                        println!("pollster already polling...");
+                let myself = self.myself.as_ref().expect("Pollster::myself not set!");
+                if self.hub.is_none() {
+                    self.hub = Some(hub.clone());
+                    self.pending = self.ports.len();
+                    for port in &self.ports {
+                        port.send(PortEvent::new_poll(&myself));
                     }
+                } else {
+                    println!("pollster already polling...");
                 }
             }
             PollsterEvent::PortStatus(port, state) => {
