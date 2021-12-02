@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use crate::actor::{self, Actor, Cap};
 use crate::frame::Payload;
 use crate::hub::HubEvent;
@@ -18,7 +16,6 @@ pub enum PortEvent {
     LinkToPortRead,                         // outbound-ready
     HubToPortWrite(Cap<HubEvent>, Payload), // outbound token
     HubToPortRead(Cap<HubEvent>),           // inbound-credit
-    Control(Cap<HubEvent>, Payload),        // control message from hub
 }
 impl PortEvent {
     pub fn new_init(port: &Cap<PortEvent>, hub: &Cap<HubEvent>) -> PortEvent {
@@ -50,9 +47,6 @@ impl PortEvent {
     }
     pub fn new_hub_to_port_read(hub: &Cap<HubEvent>) -> PortEvent {
         PortEvent::HubToPortRead(hub.clone())
-    }
-    pub fn new_control(hub: &Cap<HubEvent>, payload: &Payload) -> PortEvent {
-        PortEvent::Control(hub.clone(), payload.clone())
     }
 }
 
@@ -99,7 +93,6 @@ pub struct Port {
     pollster: Option<Cap<PollsterEvent>>,
     reader: Option<Cap<HubEvent>>,
     writer: Option<Cap<HubEvent>>,
-    ctrl_msgs: VecDeque<Payload>,
 }
 impl Port {
     pub fn create(link: &Cap<LinkEvent>) -> Cap<PortEvent> {
@@ -110,7 +103,6 @@ impl Port {
             pollster: None,
             reader: None,
             writer: None,
-            ctrl_msgs: VecDeque::new(),
         });
         //port.send(PortEvent::new_init(&port)); // NOTE: this is done in Hub::create() now...
         port
@@ -207,20 +199,12 @@ impl Actor for Port {
             PortEvent::LinkToPortRead => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
                 println!("Port{}::LinkToPortRead link={}", myself, self.link);
-                match &self.ctrl_msgs.pop_front() {
-                    Some(payload) => {
-                        // control message(s) pending, send first one...
-                        self.link.send(LinkEvent::new_write(&myself, &payload));
+                match &self.writer {
+                    Some(hub) => {
+                        hub.send(HubEvent::new_port_to_hub_read(&myself));
+                        self.writer = None;
                     },
-                    None => {
-                        // no control messages pending, so read from hub...
-                        if let Some(hub) = &self.writer {
-                            hub.send(HubEvent::new_port_to_hub_read(&myself));
-                            self.writer = None;
-                        } else {
-                            panic!("Writer (hub) not ready");
-                        }
-                    },
+                    None => panic!("Writer (hub) not ready"),
                 }
             }
             PortEvent::HubToPortWrite(cust, payload) => {
@@ -250,24 +234,6 @@ impl Actor for Port {
                             myself, cust, _cust
                         );
                     }
-                }
-            }
-            PortEvent::Control(cust, payload) => {
-                let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::Control hub={} payload={:?}", myself, cust, payload);
-                let hub = self.hub.as_ref().expect("Port::hub not set!");
-                assert_eq!(hub, cust);
-                assert!(payload.ctrl); // control message expected
-                match &self.writer {
-                    None => {
-                        // no write in progress, send immediately...
-                        self.writer = Some(cust.clone());
-                        self.link.send(LinkEvent::new_write(&myself, &payload));
-                    }
-                    Some(_cust) => {
-                        // write in progress, add to queue...
-                        self.ctrl_msgs.push_back(payload.clone());
-                    },
                 }
             }
         }

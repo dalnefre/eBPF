@@ -100,7 +100,7 @@ impl Hub {
             .iter()
             .map(|port| PortOut {
                 reader: Some(port.clone()),
-                ctrl_msgs: VecDeque::new(),
+                ctrl_msgs: VecDeque::with_capacity(MAX_PORTS),
             })
             .collect();
         assert_eq!(ports.len(), port_in.len());
@@ -155,7 +155,7 @@ impl Actor for Hub {
                         myself, n, m
                     );
                     self.route_port = m;
-                    // send failover control message
+                    // enqueue failover control message
                     let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
                     let msg = Payload::ctrl_msg(
                         &id,
@@ -164,7 +164,7 @@ impl Actor for Hub {
                         activity.sequence,
                         0x44556677
                     );
-                    self.ports[m].send(PortEvent::new_control(&myself, &msg));
+                    self.port_out[m].ctrl_msgs.push_back(msg);
                     // re-route waiting token from cell
                     let routes = &mut self.cell_out.send_to;
                     for i in 0..routes.len() {
@@ -198,6 +198,7 @@ impl Actor for Hub {
                         panic!("Hub::Status new Port {} not ready!?", m);
                     }
                     */
+                    self.try_everyone();
                 }
             }
             HubEvent::PortToHubWrite(cust, payload) => {
@@ -206,12 +207,12 @@ impl Actor for Hub {
                 if payload.ctrl {
                     let myself = self.myself.as_ref().expect("Hub::myself not set!");
                     println!("Hub{}::Control port={} msg={:?}", myself, cust, payload);
-                    cust.send(PortEvent::new_hub_to_port_read(&myself)); // ack control msg
+                    let port_out = &mut self.port_out[n];
                     if payload.get_op() == frame::FAILOVER_R {
                         let bal = payload.get_u8() as i8 as isize;
                         let seq = payload.get_u16();
                         println!("Hub{}::Control FAILOVER_R bal={} seq={}", myself, bal, seq);
-                        // send failover done message
+                        // enqueue failover done message
                         let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
                         let msg = Payload::ctrl_msg(
                             &id,
@@ -220,10 +221,13 @@ impl Actor for Hub {
                             0x2233, //activity.sequence,
                             0x44556677
                         );
-                        cust.send(PortEvent::new_control(&myself, &msg));
+                        port_out.ctrl_msgs.push_back(msg);
+                        //cust.send(PortEvent::new_control(&myself, &msg));
                     } else if payload.get_op() == frame::FAILOVER_D {
                         println!("Hub{}::Control FAILOVER_D ... do nothing?", myself);
                     }
+                    cust.send(PortEvent::new_hub_to_port_read(&myself)); // ack control msg
+                    self.try_everyone();
                 } else {
                     let port_in = &mut self.port_in[n];
                     match &port_in.writer {
