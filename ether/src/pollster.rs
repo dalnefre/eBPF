@@ -10,7 +10,7 @@ use std::collections::HashMap;
 pub enum PollsterEvent {
     Init(Cap<PollsterEvent>),
     Poll(Cap<HubEvent>),
-    PortStatus(Cap<PortEvent>, PortActivity),
+    Activity(Cap<PortEvent>, PortActivity),
 }
 impl PollsterEvent {
     pub fn new_init(pollster: &Cap<PollsterEvent>) -> PollsterEvent {
@@ -19,8 +19,8 @@ impl PollsterEvent {
     pub fn new_poll(hub: &Cap<HubEvent>) -> PollsterEvent {
         PollsterEvent::Poll(hub.clone())
     }
-    pub fn new_port_status(port: &Cap<PortEvent>, state: &PortActivity) -> PollsterEvent {
-        PollsterEvent::PortStatus(port.clone(), state.clone())
+    pub fn new_port_activity(port: &Cap<PortEvent>, activity: &PortActivity) -> PollsterEvent {
+        PollsterEvent::Activity(port.clone(), activity.clone())
     }
 }
 
@@ -78,14 +78,11 @@ impl Actor for Pollster {
                     println!("pollster already polling...");
                 }
             }
-            PollsterEvent::PortStatus(port, state) => {
+            PollsterEvent::Activity(port, activity) => {
                 let n = self.port_to_port_num(&port);
-                println!(
-                    "Pollster::LinkStatus[{}] port={}, link_state={:?}, ait_balance={}",
-                    n, port, state.link_state, state.ait_balance
-                );
+                println!("Pollster::Activity[{}] port={} {:?}", n, port, activity);
                 if let Some(poll) = self.poll.get_mut(port) {
-                    if state.link_state == LinkState::Live {
+                    if activity.link_state == LinkState::Live {
                         poll.idle = 0;
                     } else {
                         poll.idle += 1;

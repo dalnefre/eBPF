@@ -143,17 +143,11 @@ impl Actor for Hub {
             HubEvent::Status(cust, status) => {
                 let myself = self.myself.as_ref().expect("Hub::myself not set!");
                 let n = self.port_to_port_num(&cust);
-                println!(
-                    "Hub{}::Status[{}] port={} status={:?}",
-                    myself, n, cust, status
-                );
+                println!("Hub{}::Status[{}] port={} {:?}", myself, n, cust, status);
                 let activity = &status.activity;
                 if activity.link_state == LinkState::Stop {
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
-                    println!(
-                        "Hub{}::Status REROUTE from Port({}) to Port({})",
-                        myself, n, m
-                    );
+                    println!("Hub{}::Status REROUTE Port({}) -> Port({})", myself, n, m);
                     self.route_port = m;
                     // enqueue failover control message
                     let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
@@ -173,10 +167,7 @@ impl Actor for Hub {
                             Route::Port(p) => {
                                 if p == n {
                                     routes[i] = Route::Port(m);
-                                    println!(
-                                        "Hub{}::Status rerouting cell-out from {} to {}",
-                                        myself, n, m
-                                    );
+                                    println!("Hub{}::Status rerouting cell-out {} -> {}", myself, n, m);
                                 }
                             }
                         }

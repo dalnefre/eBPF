@@ -7,13 +7,17 @@ use crate::pollster::PollsterEvent;
 #[derive(Debug, Clone)]
 pub enum PortEvent {
     Init(Cap<PortEvent>, Cap<HubEvent>),    // init from parent
+
     Start(Cap<HubEvent>),                   // start request
     Stop(Cap<HubEvent>),                    // stop request
     Status(PortStatus),                     // status report
+
     Poll(Cap<PollsterEvent>),               // poll for activity
     Activity(PortActivity),                 // activity report
+
     LinkToPortWrite(Payload),               // inbound token
     LinkToPortRead,                         // outbound-ready
+
     HubToPortWrite(Cap<HubEvent>, Payload), // outbound token
     HubToPortRead(Cap<HubEvent>),           // inbound-credit
 }
@@ -121,7 +125,7 @@ impl Actor for Port {
             }
             PortEvent::Start(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                //println!("Port{}::Start cust={}", myself, cust);
+                println!("Port{}::Start cust={}", myself, cust);
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 assert_eq!(hub, cust);
                 self.link.send(LinkEvent::new_start(&myself));
@@ -133,14 +137,14 @@ impl Actor for Port {
             }
             PortEvent::Stop(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                //println!("Port{}::Stop cust={}", myself, cust);
+                println!("Port{}::Stop cust={}", myself, cust);
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 assert_eq!(hub, cust);
                 self.link.send(LinkEvent::new_stop(&myself));
             }
             PortEvent::Status(status) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                //println!("Port{}::Status {:?}", myself, info);
+                println!("Port{}::Status {:?}", myself, status);
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 hub.send(HubEvent::new_status(&myself, &status));
                 if status.activity.link_state == LinkState::Stop {
@@ -177,7 +181,7 @@ impl Actor for Port {
                 //println!("Port{}::Activity {:?}", myself, state);
                 match &self.pollster {
                     Some(cust) => {
-                        cust.send(PollsterEvent::new_port_status(&myself, &activity));
+                        cust.send(PollsterEvent::new_port_activity(&myself, &activity));
                         self.pollster = None;
                     }
                     None => {
