@@ -58,15 +58,17 @@ struct CellOut {
 
 struct PortIn {
     // Inbound from port
-    writer: Option<Cap<PortEvent>>,
-    payload: Option<Payload>,
-    send_to: Vec<Route>,
+    writer: Option<Cap<PortEvent>>, // inbound writer
+    payload: Option<Payload>, // inbound payload
+    send_to: Vec<Route>, // routes for inbound delivery
 }
 
 struct PortOut {
     // Outbound to port
-    reader: Option<Cap<PortEvent>>,
-    ctrl_msgs: VecDeque<Payload>,
+    reader: Option<Cap<PortEvent>>, // outbound read credit
+    ctrl_msgs: VecDeque<Payload>, // outbound contol messages
+    failover_r: Option<PortStatus>, // status to satisfy FAILOVER_R
+    failover_d: Option<PortStatus>, // status to satisfy FAILOVER_D
 }
 
 // Multi-Port Hub (Node)
@@ -101,6 +103,8 @@ impl Hub {
             .map(|port| PortOut {
                 reader: Some(port.clone()),
                 ctrl_msgs: VecDeque::with_capacity(MAX_PORTS),
+                failover_r: None,
+                failover_d: None,
             })
             .collect();
         assert_eq!(ports.len(), port_in.len());
@@ -146,10 +150,11 @@ impl Actor for Hub {
                 println!("Hub{}::Status[{}] port={} {:?}", myself, n, cust, status);
                 let activity = &status.activity;
                 if activity.link_state == LinkState::Stop {
+                    self.port_out[n].failover_r = Some(status.clone()); // save Port status for FAILOVER_R
+                    self.port_out[n].failover_d = Some(status.clone()); // save Port status for FAILOVER_D
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
-                    println!("Hub{}::Status REROUTE Port({}) -> Port({})", myself, n, m);
-                    self.route_port = m;
                     // enqueue failover control message
+                    println!("Hub{}::Status FAILOVER Port({}) -> Port({})", myself, n, m);
                     let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
                     let msg = Payload::ctrl_msg(
                         &id,
@@ -159,6 +164,10 @@ impl Actor for Hub {
                         0x44556677
                     );
                     self.port_out[m].ctrl_msgs.push_back(msg);
+                    /* FIXME: re-start and re-send should occur in FAILOVER_D handling...
+                    // update routing "table"
+                    println!("Hub{}::Status REROUTE Port({}) -> Port({})", myself, n, m);
+                    self.route_port = m;
                     // re-route waiting token from cell
                     let routes = &mut self.cell_out.send_to;
                     for i in 0..routes.len() {
@@ -172,7 +181,6 @@ impl Actor for Hub {
                             }
                         }
                     }
-                    /* FIXME: re-start and re-send should occur in FAILOVER_D handling...
                     // attempt to re-start stopped link
                     // FIXME: we want to re-start the port,
                     //        but it should only get a read-credit
@@ -198,24 +206,47 @@ impl Actor for Hub {
                 if payload.ctrl {
                     let myself = self.myself.as_ref().expect("Hub::myself not set!");
                     println!("Hub{}::Control port={} msg={:?}", myself, cust, payload);
-                    let port_out = &mut self.port_out[n];
                     if payload.get_op() == frame::FAILOVER_R {
                         let bal = payload.get_u8() as i8 as isize;
                         let seq = payload.get_u16();
                         println!("Hub{}::Control FAILOVER_R bal={} seq={}", myself, bal, seq);
-                        // enqueue failover done message
-                        let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
-                        let msg = Payload::ctrl_msg(
-                            &id,
-                            frame::FAILOVER_D,
-                            0x11, //activity.ait_balance as u8,
-                            0x2233, //activity.sequence,
-                            0x44556677
-                        );
-                        port_out.ctrl_msgs.push_back(msg);
-                        //cust.send(PortEvent::new_control(&myself, &msg));
+                        // check for STOP'd Port status
+                        let m = (if n < 1 { self.ports.len() } else { n }) - 1; // failed port number
+                        match &self.port_out[m].failover_r {
+                            Some(status) => {
+                                println!("Hub{}::failover_r[{}] {:?}", myself, m, status);
+                                let activity = &status.activity;
+                                // enqueue failover done message
+                                let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
+                                let msg = Payload::ctrl_msg(
+                                    &id,
+                                    frame::FAILOVER_D,
+                                    activity.ait_balance as u8,
+                                    activity.sequence,
+                                    0x44556677
+                                );
+                                self.port_out[n].ctrl_msgs.push_back(msg);
+                                self.port_out[m].failover_r = None;
+                            },
+                            None => {
+                                panic!("Hub::FAILOVER_R missing STOP status!");
+                                // FIXME: store FAILOVER_R info and wait for STOP from failing Port...
+                            },
+                        };
                     } else if payload.get_op() == frame::FAILOVER_D {
-                        println!("Hub{}::Control FAILOVER_D ... do nothing?", myself);
+                        let bal = payload.get_u8() as i8 as isize;
+                        let seq = payload.get_u16();
+                        println!("Hub{}::Control FAILOVER_D bal={} seq={}", myself, bal, seq);
+                        let m = (if n < 1 { self.ports.len() } else { n }) - 1; // failed port number
+                        match &self.port_out[m].failover_d {
+                            Some(status) => {
+                                println!("Hub{}::failover_d[{}] {:?}", myself, m, status);
+                                self.port_out[m].failover_d = None;
+                            },
+                            None => {
+                                panic!("Hub::FAILOVER_D missing STOP status!");
+                            },
+                        };
                     }
                     cust.send(PortEvent::new_hub_to_port_read(&myself)); // ack control msg
                     self.try_everyone();
