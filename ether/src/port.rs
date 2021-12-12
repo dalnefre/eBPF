@@ -125,7 +125,7 @@ impl Actor for Port {
             }
             PortEvent::Start(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::Start cust={}", myself, cust);
+                //println!("Port{}::Start cust={}", myself, cust);
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 assert_eq!(hub, cust);
                 self.link.send(LinkEvent::new_start(&myself));
@@ -137,16 +137,17 @@ impl Actor for Port {
             }
             PortEvent::Stop(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::Stop cust={}", myself, cust);
+                //println!("Port{}::Stop cust={}", myself, cust);
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 assert_eq!(hub, cust);
                 self.link.send(LinkEvent::new_stop(&myself));
             }
             PortEvent::Status(status) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::Status {:?}", myself, status);
+                //println!("Port{}::Status {:?}", myself, status);
                 let hub = self.hub.as_ref().expect("Port::hub not set!");
                 hub.send(HubEvent::new_status(&myself, &status));
+                // FIXME: move this processing to Hub...
                 if status.activity.link_state == LinkState::Stop {
                     // on surplus, release inbound token
                     if status.activity.ait_balance > 0 {
@@ -191,7 +192,7 @@ impl Actor for Port {
             }
             PortEvent::LinkToPortWrite(payload) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::LinkToPortWrite link={}", myself, self.link);
+                //println!("Port{}::LinkToPortWrite link={}", myself, self.link);
                 match &self.reader {
                     Some(hub) => {
                         hub.send(HubEvent::new_port_to_hub_write(&myself, &payload));
@@ -202,7 +203,7 @@ impl Actor for Port {
             }
             PortEvent::LinkToPortRead => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::LinkToPortRead link={}", myself, self.link);
+                //println!("Port{}::LinkToPortRead link={}", myself, self.link);
                 match &self.writer {
                     Some(hub) => {
                         hub.send(HubEvent::new_port_to_hub_read(&myself));
@@ -213,7 +214,7 @@ impl Actor for Port {
             }
             PortEvent::HubToPortWrite(cust, payload) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::HubToPortWrite hub={}", myself, cust);
+                //println!("Port{}::HubToPortWrite hub={}", myself, cust);
                 match &self.writer {
                     None => {
                         self.writer = Some(cust.clone());
@@ -224,7 +225,7 @@ impl Actor for Port {
             }
             PortEvent::HubToPortRead(cust) => {
                 let myself = self.myself.as_ref().expect("Port::myself not set!");
-                println!("Port{}::HubToPortRead hub={}", myself, cust);
+                //println!("Port{}::HubToPortRead hub={}", myself, cust);
                 match &self.reader {
                     None => {
                         self.reader = Some(cust.clone());

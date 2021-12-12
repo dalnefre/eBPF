@@ -66,7 +66,7 @@ impl Actor for Pollster {
                 Some(_) => panic!("Pollster::myself already set"),
             },
             PollsterEvent::Poll(hub) => {
-                println!("Pollster::Poll hub={}", hub);
+                //println!("Pollster::Poll hub={}", hub);
                 let myself = self.myself.as_ref().expect("Pollster::myself not set!");
                 if self.hub.is_none() {
                     self.hub = Some(hub.clone());
@@ -75,28 +75,30 @@ impl Actor for Pollster {
                         port.send(PortEvent::new_poll(&myself));
                     }
                 } else {
-                    println!("pollster already polling...");
+                    println!("Pollster::Poll already polling...");
                 }
             }
             PollsterEvent::Activity(port, activity) => {
-                let n = self.port_to_port_num(&port);
-                println!("Pollster::Activity[{}] port={} {:?}", n, port, activity);
+                let _n = self.port_to_port_num(&port);
+                //println!("Pollster::Activity[{}] port={} {:?}", _n, port, activity);
                 if let Some(poll) = self.poll.get_mut(port) {
                     if activity.link_state == LinkState::Live {
                         poll.idle = 0;
                     } else {
                         poll.idle += 1;
                     }
-                    println!("Pollster::poll[{}].idle = {}", n, poll.idle);
+                    //println!("Pollster::poll[{}].idle = {}", _n, poll.idle);
                 }
                 assert!(self.pending > 0);
                 self.pending -= 1;
                 if self.pending == 0 {
                     if let Some(hub) = &self.hub {
+                        println!("Pollster::Activity hub={} pending={}", hub, self.pending);
                         self.poll
                             .iter_mut()
                             .filter(|(_port, poll)| poll.idle > 3)
                             .for_each(|(port, poll)| {
+                                println!("Pollster::Activity hub={} port={} DECLARED DEAD", hub, port);
                                 // attempt to stop the dead port
                                 port.send(PortEvent::new_stop(&hub));
                                 // attempt to re-start the dead port

@@ -181,10 +181,10 @@ impl Actor for Hub {
             }
             HubEvent::PortToHubWrite(cust, payload) => {
                 let n = self.port_to_port_num(&cust);
-                println!("Hub::PortToHubWrite[{}] port={}", n, cust);
+                //println!("Hub::PortToHubWrite[{}] port={}", n, cust);
                 if payload.ctrl {
                     let myself = self.myself.as_ref().expect("Hub::myself not set!");
-                    println!("Hub{}::Control port={} msg={:?}", myself, cust, payload);
+                    println!("Hub{}::Control[{}] port={} msg={:?}", myself, n, cust, payload);
                     if payload.get_op() == frame::FAILOVER_R {
                         let bal = payload.get_u8() as i8 as isize;
                         let seq = payload.get_u16();
@@ -261,7 +261,7 @@ impl Actor for Hub {
             }
             HubEvent::PortToHubRead(cust) => {
                 let n = self.port_to_port_num(&cust);
-                println!("Hub::PortToHubRead[{}] port={}", n, cust);
+                //println!("Hub::PortToHubRead[{}] port={}", n, cust);
                 let port_out = &mut self.port_out[n];
                 match &port_out.reader {
                     None => {
@@ -272,7 +272,7 @@ impl Actor for Hub {
                 }
             }
             HubEvent::CellToHubWrite(cust, payload) => {
-                println!("Hub::CellToHubWrite cell={}", cust);
+                //println!("Hub::CellToHubWrite cell={}", cust);
                 match &self.cell_out.writer {
                     None => {
                         self.cell_out.writer = Some(cust.clone());
@@ -284,7 +284,7 @@ impl Actor for Hub {
                 }
             }
             HubEvent::CellToHubRead(cust) => {
-                println!("Hub::CellToHubRead cell={}", cust);
+                //println!("Hub::CellToHubRead cell={}", cust);
                 match &self.cell_in.reader {
                     None => {
                         self.cell_in.reader = Some(cust.clone());
