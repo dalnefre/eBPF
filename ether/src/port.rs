@@ -151,13 +151,14 @@ impl Actor for Port {
                 if status.activity.link_state == LinkState::Stop {
                     // on surplus, release inbound token
                     if status.activity.ait_balance > 0 {
+                        println!("Port{}::Status releasing inbound AIT...", myself);
                         if let Some(payload) = &status.inbound {
                             if let Some(cust) = &self.reader {
                                 cust.send(HubEvent::new_port_to_hub_write(
                                     &myself, &payload,
                                 ));
                             } else {
-                                println!("Port::Status no reader for inbound release");
+                                println!("Port{}::Status no reader for inbound release", myself);
                             }
                         }
                     }

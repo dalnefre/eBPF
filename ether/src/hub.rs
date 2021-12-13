@@ -71,6 +71,7 @@ struct PortOut {
 
 struct Failover {
     // Failover recovery information
+    payload_r: Option<Payload>, // payload from early FAILOVER_R
     status_r: Option<PortStatus>, // status to satisfy FAILOVER_R
     status_d: Option<PortStatus>, // status to satisfy FAILOVER_D
 }
@@ -113,6 +114,7 @@ impl Hub {
         let failover: Vec<_> = port_set
             .iter()
             .map(|_port| Failover {
+                payload_r: None,
                 status_r: None,
                 status_d: None,
             })
@@ -162,9 +164,8 @@ impl Actor for Hub {
                 println!("Hub{}::Status[{}] port={} {:?}", myself, n, cust, status);
                 let activity = &status.activity;
                 if activity.link_state == LinkState::Stop {
-                    self.failover[n].status_r = Some(status.clone()); // save Port status for FAILOVER_R
-                    self.failover[n].status_d = Some(status.clone()); // save Port status for FAILOVER_D
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
+                    self.failover[n].status_d = Some(status.clone()); // save Port status for FAILOVER_D
                     // enqueue failover control message
                     println!("Hub{}::Status FAILOVER Port({}) -> Port({})", myself, n, m);
                     let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
@@ -176,6 +177,26 @@ impl Actor for Hub {
                         0x44556677
                     );
                     self.port_out[m].ctrl_msgs.push_back(msg);
+                    if let Some(_payload) = &self.failover[n].payload_r {
+                        // got early FAILOVER_R, send FAILOVER_D immediately...
+                        println!("Hub{}::Status early failover_r[{}->{}] {:?}", myself, n, m, status);
+                        assert!(self.failover[n].status_r.is_none());
+                        let activity = &status.activity;
+                        // enqueue failover done message
+                        let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
+                        let msg = Payload::ctrl_msg(
+                            &id,
+                            frame::FAILOVER_D,
+                            activity.ait_balance as u8,
+                            activity.sequence,
+                            0x44556677
+                        );
+                        self.port_out[m].ctrl_msgs.push_back(msg);
+                        self.failover[n].payload_r = None; // clear early FAILOVER_R
+                        // FIXME: `failover[n].payload_r` is never used, could be a Boolean flag?
+                    } else {
+                        self.failover[n].status_r = Some(status.clone()); // save Port status for FAILOVER_R
+                    }
                     self.try_everyone();
                 }
             }
@@ -208,8 +229,9 @@ impl Actor for Hub {
                                 self.failover[m].status_r = None;
                             },
                             None => {
-                                panic!("Hub::FAILOVER_R missing STOP status!");
-                                // FIXME: store FAILOVER_R info and wait for STOP from failing Port...
+                                // store FAILOVER_R info and wait for STOP from failing Port...
+                                println!("Hub{}::failover_r[{}] waiting for STOP...", myself, m);
+                                self.failover[m].payload_r = Some(payload.clone());
                             },
                         };
                     } else if payload.get_op() == frame::FAILOVER_D {
