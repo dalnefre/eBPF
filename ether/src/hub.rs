@@ -226,6 +226,7 @@ impl Actor for Hub {
                                     0x44556677
                                 );
                                 self.port_out[n].ctrl_msgs.push_back(msg);
+                                // clear saved status
                                 self.failover[m].status_r = None;
                             },
                             None => {
@@ -252,13 +253,32 @@ impl Actor for Hub {
                                         panic!("Hub{}:failover_d missing payload! (deficit balance)", myself);
                                     }
                                 }
-                                Self::reroute(
-                                    &myself,
-                                    &mut self.route_port,
-                                    &mut self.cell_out,
-                                    m,
-                                    n,
-                                );
+                                // update routing "table"
+                                println!("Hub{}::reroute Port({}) -> Port({})", myself, m, n);
+                                self.route_port = n;
+                                // re-route waiting token from cell
+                                let routes = &mut self.cell_out.send_to;
+                                for i in 0..routes.len() {
+                                    match routes[i] {
+                                        Route::Cell => {}
+                                        Route::Port(num) => {
+                                            if num == m {
+                                                routes[i] = Route::Port(n);
+                                                println!("Hub{}::reroute cell-out {} -> {}", myself, m, n);
+                                            }
+                                        }
+                                    }
+                                }
+                                // FIXME: we want to re-start the port,
+                                //        but it should only get a read-credit
+                                //        if port_in[m] is empty (the inbound token buffer)
+                                // attempt to re-start stopped link
+                                println!("Hub{}::restarting Port({})", myself, m);
+                                self.ports
+                                    .get(m)
+                                    .unwrap()
+                                    .send(PortEvent::new_start(&myself));
+                                // clear saved status
                                 self.failover[m].status_d = None;
                             },
                             None => {
@@ -374,37 +394,6 @@ impl Hub {
                 }
             }
         }
-    }
-    fn reroute(
-        hub: &Cap<HubEvent>,
-        route_port: &mut usize,
-        cell_out: &mut CellOut,
-        from: usize,
-        to: usize,
-    ) {
-        // update routing "table"
-        println!("Hub{}::reroute Port({}) -> Port({})", hub, from, to);
-        *route_port = to;
-        // re-route waiting token from cell
-        let routes = &mut cell_out.send_to;
-        for i in 0..routes.len() {
-            match routes[i] {
-                Route::Cell => {}
-                Route::Port(num) => {
-                    if num == from {
-                        routes[i] = Route::Port(to);
-                        println!("Hub{}::reroute cell-out {} -> {}", hub, from, to);
-                    }
-                }
-            }
-        }
-        /*
-        // attempt to re-start stopped link
-        // FIXME: we want to re-start the port,
-        //        but it should only get a read-credit
-        //        if port_in[n] is empty (the inbound token buffer)
-        cust.send(PortEvent::new_start(&myself));
-        */
     }
     fn try_everyone(&mut self) {
         let myself = self.myself.as_ref().expect("Hub::myself not set!");
