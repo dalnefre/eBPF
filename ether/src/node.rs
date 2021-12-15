@@ -54,7 +54,10 @@ impl Node {
     pub fn get_port_iter(&self) -> Iter<Port> {
         self.ports.iter()
     }
-    //pub fn get_port(&self, id: usize) -> &Port {}
+    pub fn get_port(&self, id: usize) -> Option<&Port> {
+        //self.ports[id]
+        self.ports.get(id)
+    }
     pub fn is_foo(&self) -> bool {
         self.foo
     }
@@ -75,9 +78,10 @@ mod tests {
 
     #[test]
     fn can_construct_a_single_node() {
-        let node = Node::new(TreeId::new(12345), 3);
+        let node = Node::new(TreeId::new(12345), 5);
         assert_eq!(12345, node.get_id().get_id());
-        assert_eq!(3, node.get_num_ports());
+        assert_eq!(5, node.get_num_ports());
+        assert!(node.get_port(MAX_PORTS).is_none());
         let mut port_id = 0;
         for port in node.get_port_iter() {
             assert_eq!(port_id, port.get_id());
@@ -96,7 +100,7 @@ mod tests {
         // and each direction has two "parts", a caller and callee.
         // In this test, the "caller" is the test iteself,
         // and the "callee" is the Node created by the test.
-        let mut node = Node::new(TreeId::new(2112), 5);
+        let mut node = Node::new(TreeId::new(2112), 3);
 
         println!("before foo forward foo={}", node.is_foo());
         node.event_forward_foo();
