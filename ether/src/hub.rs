@@ -164,8 +164,8 @@ impl Actor for Hub {
                 println!("Hub{}::Status[{}] port={} {:?}", myself, n, cust, status);
                 let activity = &status.activity;
                 if activity.link_state == LinkState::Stop {
-                    println!("Hub{}::Status[{}] STOP ... reader was {:?}",
-                        myself, n, self.port_out[n].reader);
+                    println!("Hub{}::Status[{}] STOP ... reader={}",
+                        myself, n, self.port_out[n].reader.is_some());
                     self.port_out[n].reader = None; // clear outbound reader (port disabled)
                     let m = (n + 1) % self.ports.len(); // wrap-around fail-over port numbers
                     self.failover[n].status_d = Some(status.clone()); // save Port status for FAILOVER_D
@@ -182,9 +182,8 @@ impl Actor for Hub {
                     self.port_out[m].ctrl_msgs.push_back(msg);
                     if let Some(_payload) = &self.failover[n].payload_r {
                         // got early FAILOVER_R, send FAILOVER_D immediately...
-                        println!("Hub{}::Status early failover_r[{}->{}] {:?}", myself, n, m, status);
+                        println!("Hub{}::Status early failover_r[{}->{}]", myself, n, m);
                         assert!(self.failover[n].status_r.is_none());
-                        let activity = &status.activity;
                         // enqueue failover done message
                         let id = TreeId::new(0x8888); // FIXME: need the TreeId of our peer node
                         let msg = Payload::ctrl_msg(
@@ -198,6 +197,7 @@ impl Actor for Hub {
                         self.failover[n].payload_r = None; // clear early FAILOVER_R
                         // FIXME: `failover[n].payload_r` is never used, could be a Boolean flag?
                     } else {
+                        println!("Hub{}::Status[{}] waiting for failover_d...", myself, n);
                         self.failover[n].status_r = Some(status.clone()); // save Port status for FAILOVER_R
                     }
                     self.try_everyone();
@@ -208,11 +208,11 @@ impl Actor for Hub {
                 //println!("Hub::PortToHubWrite[{}] port={}", n, cust);
                 if payload.ctrl {
                     let myself = self.myself.as_ref().expect("Hub::myself not set!");
-                    println!("Hub{}::Control[{}] port={} msg={:?}", myself, n, cust, payload);
+                    //println!("Hub{}::Control[{}] port={} msg={:?}", myself, n, cust, payload);
                     if payload.get_op() == frame::FAILOVER_R {
-                        let bal = payload.get_u8() as i8 as isize;
-                        let seq = payload.get_u16();
-                        println!("Hub{}::Control FAILOVER_R bal={} seq={}", myself, bal, seq);
+                        let peer_bal = payload.get_u8() as i8 as isize;
+                        let peer_seq = payload.get_u16();
+                        println!("Hub{}::Control FAILOVER_R peer bal={} seq={}", myself, peer_bal, peer_seq);
                         // check for STOP'd Port status
                         let m = (if n < 1 { self.ports.len() } else { n }) - 1; // failed port number
                         match &self.failover[m].status_r {
@@ -277,18 +277,13 @@ impl Actor for Hub {
                                         }
                                     }
                                 }
-                                // FIXME: we want to re-start the port,
-                                //        but it should only get a read-credit
-                                //        if port_in[m] is empty (the inbound token buffer)
-                                println!("Hub{}::restarting Port({}) ... inbound = {:?}",
-                                    myself, m, self.port_in[m].payload);
-                                println!("Hub{}::restarting Port({}) ... reader = {:?}",
-                                    myself, m, self.port_out[m].reader);
-                                if self.port_in[m].payload.is_none() {
+                                // attempt to re-start stopped link
+                                let credit = self.port_in[m].payload.is_none(); // read credit needed
+                                println!("Hub{}::restarting Port({}) ... credit={}", myself, m, credit);
+                                if credit {
                                     // provide read credit
                                     self.port_out[m].reader = Some(self.ports[m].clone());
                                 }
-                                // attempt to re-start stopped link
                                 self.ports
                                     .get(m)
                                     .unwrap()
@@ -300,6 +295,8 @@ impl Actor for Hub {
                                 panic!("Hub::FAILOVER_D missing STOP status!");
                             },
                         };
+                    } else {
+                        println!("Hub{}::CONTROL UNKNOWN ... port={} msg={:?}", myself, cust, payload);
                     }
                     cust.send(PortEvent::new_hub_to_port_read(&myself)); // ack control msg
                     self.try_everyone();
@@ -391,7 +388,7 @@ impl Hub {
             match routes[i] {
                 Route::Cell => {
                     if let Some(cell) = &cell_in.reader {
-                        println!("Hub{}::send_to_routes {:?} to Cell {}", hub, payload, cell);
+                        //println!("Hub{}::send_to_routes {:?} to Cell {}", hub, payload, cell);
                         cell.send(CellEvent::new_hub_to_cell_write(&payload));
                         cell_in.reader = None;
                         routes.remove(i);
@@ -401,7 +398,7 @@ impl Hub {
                 }
                 Route::Port(to) => {
                     if let Some(port) = &port_out[to].reader {
-                        println!("Hub{}::send_to_routes {:?} to Port({}) {}", hub, payload, to, port);
+                        //println!("Hub{}::send_to_routes {:?} to Port({}) {}", hub, payload, to, port);
                         port.send(PortEvent::new_hub_to_port_write(&hub, &payload));
                         port_out[to].reader = None;
                         routes.remove(i);
@@ -419,7 +416,7 @@ impl Hub {
         while let Some(port_out) = it.next() {
             if let Some(port) = &port_out.reader {
                 if let Some(payload) = &port_out.ctrl_msgs.pop_front() {
-                    println!("Hub{}::try_everyone control {:?} to port {}", myself, payload, port);
+                    //println!("Hub{}::try_everyone control {:?} to port {}", myself, payload, port);
                     port.send(PortEvent::new_hub_to_port_write(&myself, &payload));
                     port_out.reader = None;
                 }
