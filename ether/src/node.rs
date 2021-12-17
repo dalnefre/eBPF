@@ -1,5 +1,6 @@
 //use std::collections::VecDeque;
 use std::slice::Iter;
+use std::rc::Rc;
 
 use crate::frame::{Payload, TreeId};
 
@@ -28,7 +29,7 @@ impl Port {
 pub struct Node {
     id: TreeId, // Unique persistent ID of the "black" tree rooted at this Node
     ports: Vec<Port>,
-    foo: bool,
+    foo: isize,
 }
 impl Node {
     pub fn new(id: TreeId, num_ports: usize) -> Node {
@@ -41,7 +42,7 @@ impl Node {
         let node = Node {
             id,
             ports,
-            foo: false,
+            foo: 0,
         };
         node
     }
@@ -58,27 +59,48 @@ impl Node {
         //self.ports[id]
         self.ports.get(id)
     }
-    pub fn is_foo(&self) -> bool {
+    pub fn is_foo(&self) -> isize {
         self.foo
     }
     pub fn event_forward_foo(&mut self) {
-        self.foo = true;
+        self.foo = self.foo.wrapping_add(1);
         println!("foo happened");
     }
     pub fn event_reverse_foo(&mut self) {
-        self.foo = false;
+        self.foo = self.foo.wrapping_sub(1);
         println!("foo unhappened");
         //panic!("foo unhappened");
     }
 }
 
+// Automic Information Transfer (AIT)
+pub struct AIT {
+    _node: Rc<Node>,
+}
+impl AIT {
+    pub fn new(node: &Rc<Node>) -> AIT {
+        let ait = AIT {
+            _node: Rc::clone(node),
+        };
+        ait
+    }
+    pub fn start(&self) {}
+    pub fn reverse(&self) {}
+    pub fn cancel(&self) {}
+    pub fn is_complete(&self) {}
+    pub fn is_failed(&self) {}
+    pub fn get_result(&self) {}
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{rc::Rc, borrow::BorrowMut};
+
     use super::*;
 
     #[test]
     fn can_construct_a_single_node() {
-        let node = Node::new(TreeId::new(12345), 5);
+        let node = Rc::new(Node::new(TreeId::new(12345), 5));
         assert_eq!(12345, node.get_id().get_id());
         assert_eq!(5, node.get_num_ports());
         assert!(node.get_port(MAX_PORTS).is_none());
@@ -103,11 +125,22 @@ mod tests {
         let mut node = Node::new(TreeId::new(2112), 3);
 
         println!("before foo forward foo={}", node.is_foo());
-        node.event_forward_foo();
+        node.borrow_mut().event_forward_foo();
         println!("after foo forward foo={}", node.is_foo());
 
         println!("before foo reverse foo={}", node.is_foo());
-        node.event_reverse_foo();
+        node.borrow_mut().event_reverse_foo();
         println!("after foo reverse foo={}", node.is_foo());
+
+        println!("before foo event foo={}", node.is_foo());
+        //let x = node.event_foo();
+        let x = AIT::new(&Rc::new(node));
+        x.start();
+        println!("after foo event foo={}", node.is_foo());
+        x.reverse();
+        x.cancel();
+        x.is_complete();
+        x.is_failed();
+        x.get_result();
     }
 }

@@ -249,7 +249,7 @@ impl Actor for Hub {
                                 println!("Hub{}::failover_d[{}->{}] {:?}", myself, m, n, status);
                                 let balance = status.activity.ait_balance;
                                 let resend = (balance == -1 && peer_bal == 0)
-                                    || (balance == 0 && status.outbound.is_some());
+                                    || (balance != -1 && status.outbound.is_some());
                                 if resend {
                                     // resend AIT
                                     if let Some(_ait) = &status.outbound {
