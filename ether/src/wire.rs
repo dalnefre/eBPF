@@ -1,8 +1,5 @@
 use crate::actor::{self, Actor, Cap};
-/*
 use crate::frame::{self, Frame};
-*/
-use crate::frame::Frame;
 use crate::link::LinkEvent;
 
 use crossbeam::crossbeam_channel::{Receiver, Sender};
@@ -101,10 +98,12 @@ impl Actor for FaultyWire {
                 if let Some(filter) = self.filter {
                     if filter == frame.get_sequence() {
                         println!(
-                            "Wire::outbound #{} ({},{}) FILTERED {}",
+                            "Wire::outbound #{} ({}={},{}={}) FILTERED {}",
                             frame.get_sequence(),
                             frame.get_i_state(),
+                            state_name(frame.get_i_state()),
                             frame.get_u_state(),
+                            state_name(frame.get_u_state()),
                             pretty_hex(&frame.data)
                         );
                         /*
@@ -126,6 +125,22 @@ impl Actor for FaultyWire {
                         link.send(LinkEvent::new_frame(&frame));
                     }
                 });
+            }
+        }
+    }
+}
+
+pub fn state_name(state: u8) -> &'static str {
+    match state {
+        frame::TICK => "TICK",
+        frame::TECK => "TECK",
+        frame::RTECK => "RTECK",
+        frame::TACK => "TACK",
+        _ => {
+            if frame::CTRL & state == frame::CTRL {
+                "CTRL"
+            } else {
+                "????"
             }
         }
     }

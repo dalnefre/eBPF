@@ -227,10 +227,11 @@ fn start_2port_hub(
     //let wire0 = Wire::create(&wire0_tx, &wire0_rx); // "reliable" connection
     //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 16); // drop 16th frame (before)
     //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 17); // drop 17th frame (AIT 1)
-    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 18); // drop 18th frame (AIT 2)
+    //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 18); // drop 18th frame (AIT 2)
     //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 19); // drop 19th frame (AIT 3)
     //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 20); // drop 20th frame (AIT 4)
     //let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 21); // drop 21st frame (after)
+    let wire0 = FaultyWire::create(&wire0_tx, &wire0_rx, 100); // drop 100th frame (idle)
     let wire1 = Wire::create(&wire1_tx, &wire1_rx); // "reliable" connection
 
     let link0 = Link::create(&wire0, nonce);
